@@ -16,11 +16,11 @@ Netkit 不打算成为高阶生产力开发工具，而是作为一个可靠效�
 关于测试
 ---------
 
-现在，已经提供了一下子模块：
+现在，已经提供了一个子模块：
 
 - buffer 内部实现了 ``MarkableCircularBuffer``，下一步的计划是对该模块进行更多严格的单元测试和基准测试 (性能比较)；另一个计划是开始编写 HTTP Parser
 
-[Circular buffer Wiki](https://en.wikipedia.org/wiki/Circular_buffer)
+[Circular buffer Wiki](https://en.wikipedia.org/wiki/Circular_buffer)  
 [Circular buffer Wiki-中文](https://zh.wikipedia.org/wiki/%E7%92%B0%E5%BD%A2%E7%B7%A9%E8%A1%9D%E5%8D%80)
 
 运行测试：软件包提供了一个自动测试脚本，查看 config.nims 了解详情。``$ nim test <测试文件名>`` 可以测试指定的文件，比如 ``$ nim test tbuffer`` 将测试 tests/tbuffer.nim 文件。``$ nimble test`` 将会测试所有 tests 目录内的测试文件。
