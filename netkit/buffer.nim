@@ -86,7 +86,6 @@
 ##    ``n`` 表示实际提取的长度，同时表示该长度的数据已经被清空。
 
 const BufferSize* {.intdefine.}: uint16 = 8*1024  # 0..65535/2
-const DoubleBufferSize: uint16 = 2'u16 * BufferSize   # 0..65535
 
 type 
   MarkableCircularBuffer* = object         ## A markable circular buffer object that supports incremental marks.
