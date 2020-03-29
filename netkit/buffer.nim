@@ -99,7 +99,7 @@ template offset(p: pointer, n: uint16): pointer =
   cast[pointer](cast[ByteAddress](p) + n.int)
 
 proc capacity*(b: MarkableCircularBuffer): uint16 = 
-  ## Get the capacity of the buffer.
+  ## Gets the capacity of the buffer.
   BufferSize
 
 proc len*(b: MarkableCircularBuffer): uint16 = 
@@ -107,6 +107,9 @@ proc len*(b: MarkableCircularBuffer): uint16 =
   b.endMirrorPos - b.startPos
 
 proc next*(b: var MarkableCircularBuffer): (pointer, uint16) = 
+  ## Gets the next secure storage area. You can only get one block per operation.
+  ## Returns the address and storable length of the area. Then you can manually
+  ## store the data for that area.
   ## 获取下一个安全的存储区域，每次操作只能获得一块，返回该区域的地址和可存储长度。之后，您可以对该区域手动
   ## 存储数据。
   result[0] = offset(b.value.addr, b.endPos)
@@ -114,6 +117,9 @@ proc next*(b: var MarkableCircularBuffer): (pointer, uint16) =
               else: b.startPos - b.endPos
 
 proc pack*(b: var MarkableCircularBuffer, n: uint16): uint16 = 
+  ## The area of ``n`` length inside the buffer is regarded as valid data and returns the actual length.
+  ## Once this operation is performed, this space will be forced to be used as valid data. In other words,
+  ## this method increases the length of the buffer's valid data.
   ## 将 buffer 内部 ``n`` 长度的空间区域视为有效数据，返回实际有效的长度。一旦执行这个操作，这部分空间将被
   ## 强制作为有效数据使用。换句话说，这个方法增长了 buffer 有效数据的长度。
   assert n > 0'u16
@@ -127,6 +133,11 @@ proc pack*(b: var MarkableCircularBuffer, n: uint16): uint16 =
     b.endPos = b.endMirrorPos mod BufferSize
 
 proc copyTo*(b: var MarkableCircularBuffer, dest: pointer, length: uint16): uint16 = 
+  ## Directly extracts a sequence of the specified length and copys this data to the target space.
+  ## `dest` specifies the target space, and `length` specifies the length of the target space.
+  ## Returns the number of bytes actually copied.
+  ##
+  ## This process clears the actual copied data and resets all marked data.
   ## 直接提取指定长度的序列，将这些数据复制到目标空间。`dest` 指定目标空间，`length` 指定目标空间的长度。
   ## 返回实际复制的字节数量。
   ##
@@ -170,6 +181,7 @@ proc copyTo*(b: var MarkableCircularBuffer, dest: pointer, length: uint16): uint
   b.markedPos = b.startPos
 
 proc put*(b: var MarkableCircularBuffer, data: pointer, length: uint16): uint16 = 
+  ## Writes `data` of `length` length to the buffer and returns the actual length written.
   ## 从 `data` 写入 `length` 长度的数据，返回实际写入的长度。
   let region = b.next()
   result = min(region[1], length)
@@ -178,6 +190,7 @@ proc put*(b: var MarkableCircularBuffer, data: pointer, length: uint16): uint16 
     discard b.pack(result)
 
 proc put*(b: var MarkableCircularBuffer, c: char): uint16 = 
+  ## Writes char `c` and returns the actual length written.
   ## 写入一个字符 `c`，返回实际写入的长度。
   let region = b.next()
   result = min(region[1], 1)
@@ -185,11 +198,11 @@ proc put*(b: var MarkableCircularBuffer, c: char): uint16 =
     cast[ptr char](region[0])[] = c
     discard b.pack(result)
 
-iterator items*(b: var MarkableCircularBuffer): char =
+iterator items*(b: MarkableCircularBuffer): char =
   ## Iterates over all available data (chars) but not mark. 
   var i = b.startPos
   while i < b.endMirrorPos:
-    yield b.value[i]
+    yield b.value[i mod BufferSize]
     i.inc()
 
 iterator marks*(b: var MarkableCircularBuffer): char =
