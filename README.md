@@ -1,4 +1,4 @@
-Netkit
+Netkit [![Build Status](https://travis-ci.org/tulayang/netkit.svg?branch=master)](https://travis-ci.org/tulayang/netkit)
 ==========
 
 > PS: 请在有时间的时候将文档翻译成英文；这篇文档还在修改中，还不着急。

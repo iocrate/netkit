@@ -37,4 +37,4 @@ install:
   - choosenim $CHANNEL
 
 script:
-    - nimble test
+  - nimble test
