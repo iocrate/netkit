@@ -54,36 +54,39 @@
 ##
 ## 1. 手动存储：获取缓冲区下一块有效的存储区域，手动存储
 ##
-##     var buffer = MarkableCircularBuffer()
-##     var (regionPtr, regionLen) = buffer.next()
+##        var buffer = MarkableCircularBuffer()
+##        var (regionPtr, regionLen) = buffer.next()
 ##  
-##     var n = socket.read(regionPtr, regionLen)
-##     buffer.pack(n)
+##        var n = socket.read(regionPtr, regionLen)
+##        buffer.pack(n)
 ##    
 ##    如果 ``length`` 为 ``0`` 说明已满无法继续存储
 ##
 ## 2. 自动存储：
 ##
-##    var n = buffer.put('A')
+##        var n = buffer.put('A')
 ##
 ##    或者
 ##
-##    var str = "123"
-##    var n = buffer.put(str.cstring, 3)
+##        var str = "123"
+##        var n = buffer.put(str.cstring, 3)
 ##
 ## 3. 标记，提取标记序列。这个过程清空所有已标记的数据
 ##
-##     for c in buffer.marks():
-##       if c == '\L':
-##         break
+##        for c in buffer.marks():
+##          if c == '\L':
+##            break
 ##
-##     var lineString = buffer.getMarks(1)
+##        var lineString = buffer.getMarks(1)
+##
+##    或者
+##
+##        buffer.markUntil('\L')
 ##
 ## 4. 您也直接提取指定长度的序列，同时重置所有已经标记的字符。这个过程清空有效长度的数据
 ##
-##     var n = buffer.copyTo(dest, destLen)
-##
-##    ``n`` 表示实际提取的长度，同时表示该长度的数据已经被清空。
+##     var getLen = buffer.get(dest, destLen)
+##     var delLen = buffer.del(getLen)
 
 const BufferSize* {.intdefine.}: uint16 = 8*1024  # 0..65535/2
 
