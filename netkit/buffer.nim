@@ -252,13 +252,13 @@ iterator marks*(b: var MarkableCircularBuffer): char =
     b.markedPos.inc()
     yield b.value[i]
 
-proc mark*(b: var MarkableCircularBuffer, n: uint16): uint16 =
-  ## 立刻标记缓冲区的数据，直到 ``n`` 个或者到达数据尾部，返回实际标记的数量。标记是增量
+proc mark*(b: var MarkableCircularBuffer, size: uint16): uint16 =
+  ## 立刻标记缓冲区的数据，直到 ``size`` 个或者到达数据尾部，返回实际标记的数量。标记是增量
   ## 进行的，也就是说，下一次标记会从上一次标记继续。
-  let m = b.markedPos + n
+  let m = b.markedPos + size
   if m <= b.endMirrorPos:
     b.markedPos = m
-    result = n
+    result = size
   else:
     result = b.endMirrorPos - b.markedPos
     b.markedPos = b.endMirrorPos
@@ -279,12 +279,12 @@ proc lenMarks*(b: MarkableCircularBuffer): uint16 =
   ## Gets the length of the data that has been makerd.
   b.markedPos - b.startPos
 
-proc popMarks*(b: var MarkableCircularBuffer, n: uint16 = 0): string = 
+proc popMarks*(b: var MarkableCircularBuffer, size: uint16 = 0): string = 
   ## Gets the currently marked data, skip backward `n` characters and deletes all marked data.
   if b.markedPos == b.startPos:
     return ""
 
-  let resultPos = b.markedPos - n
+  let resultPos = b.markedPos - size
   let resultLen = resultPos - b.startPos
 
   if resultLen > 0'u16:
