@@ -88,39 +88,43 @@
 const BufferSize* {.intdefine.}: uint16 = 8*1024  # 0..65535/2
 
 type 
-  MarkableCircularBuffer* = object         ## A markable circular buffer object that supports incremental marks.
+  CircularBuffer* = object of RootObj                ## A circular buffer object.
     value: array[0..BufferSize.int, char]
-    startPos: uint16                       # 0..<=n-1   
-    endPos: uint16                         # 0..<=n-1   
-    endMirrorPos: uint16                   # 0..<=2n-1  
-    markedPos: uint16                      # 0..<=2n-1 
+    startPos: uint16                                 # 0..n-1 
+    endPos: uint16                                   # 0..n-1 
+    endMirrorPos: uint16                             # 0..2n-1 
+
+  MarkableCircularBuffer* = object of CircularBuffer ## A markable circular buffer object that supports incremental marks.
+    markedPos: uint16                                # 0..2n-1 
 
 template offset(p: pointer, n: uint16): pointer = 
   cast[pointer](cast[ByteAddress](p) + n.int)
 
-proc capacity*(b: MarkableCircularBuffer): uint16 = 
+proc capacity*(b: CircularBuffer): uint16 = 
   ## Gets the capacity of the buffer.
   BufferSize
 
-proc len*(b: MarkableCircularBuffer): uint16 = 
+proc len*(b: CircularBuffer): uint16 = 
   ## Gets the length of the data.
   b.endMirrorPos - b.startPos
 
-proc next*(b: var MarkableCircularBuffer): (pointer, uint16) = 
+proc next*(b: var CircularBuffer): (pointer, uint16) = 
   ## Gets the next secure storage area. You can only get one block per operation.
   ## Returns the address and storable length of the area. Then you can manually
   ## store the data for that area.
+  ## 
   ## 获取下一个安全的存储区域，每次操作只能获得一块，返回该区域的地址和可存储长度。之后，您可以对该区域手动
   ## 存储数据。
   result[0] = offset(b.value.addr, b.endPos)
   result[1] = if b.endMirrorPos < BufferSize: BufferSize - b.endPos
               else: b.startPos - b.endPos
 
-proc pack*(b: var MarkableCircularBuffer, n: uint16): uint16 = 
+proc pack*(b: var CircularBuffer, n: uint16): uint16 = 
   ## The area of ``n`` length inside the buffer is regarded as valid data and returns the actual length.
   ## Once this operation is performed, this space will be forced to be used as valid data. In other words,
   ## this method increases the length of the buffer's valid data.
-  ## 将 buffer 内部 ``n`` 长度的空间区域视为有效数据，返回实际有效的长度。一旦执行这个操作，这部分空间将被
+  #
+  ## 将缓冲区内部 ``n`` 长度的空间区域视为有效数据，返回实际有效的长度。一旦执行这个操作，这部分空间将被
   ## 强制作为有效数据使用。换句话说，这个方法增长了 buffer 有效数据的长度。
   assert n > 0'u16
   if b.endMirrorPos < BufferSize:
@@ -132,17 +136,17 @@ proc pack*(b: var MarkableCircularBuffer, n: uint16): uint16 =
     b.endMirrorPos = b.endMirrorPos + result
     b.endPos = b.endMirrorPos mod BufferSize
 
-proc copyTo*(b: var MarkableCircularBuffer, dest: pointer, length: uint16): uint16 = 
+proc moveTo*(b: var CircularBuffer, dest: pointer, length: uint16): uint16 = 
   ## Directly extracts a sequence of the specified length and copys this data to the target space.
   ## `dest` specifies the target space, and `length` specifies the length of the target space.
   ## Returns the number of bytes actually copied.
   ##
-  ## This process clears the actual copied data and resets all marked data.
+  ## This process clears the actual copied data.
+  ##
   ## 直接提取指定长度的序列，将这些数据复制到目标空间。`dest` 指定目标空间，`length` 指定目标空间的长度。
   ## 返回实际复制的字节数量。
   ##
-  ## 这个过程清空实际复制的数据。
-  ## 这个过程重置所有已标记的数据。
+  ## 这个过程清空复制的数据。
   assert length > 0'u16
 
   if b.endMirrorPos == b.startPos:
@@ -178,18 +182,25 @@ proc copyTo*(b: var MarkableCircularBuffer, dest: pointer, length: uint16): uint
 
     result = d1 + d2
 
-  b.markedPos = b.startPos
-
-proc put*(b: var MarkableCircularBuffer, data: pointer, length: uint16): uint16 = 
+proc put*(b: var CircularBuffer, data: pointer, length: uint16): uint16 = 
   ## Writes `data` of `length` length to the buffer and returns the actual length written.
   ## 从 `data` 写入 `length` 长度的数据，返回实际写入的长度。
-  let region = b.next()
-  result = min(region[1], length)
+  result = min(BufferSize - b.len, length)
   if result > 0'u16:
-    copyMem(region[0], data, result)
-    discard b.pack(result)
+    let region = b.next()
+    if region[1] >= result:
+      copyMem(region[0], data, result)
+      discard b.pack(result)
+    else:
+      copyMem(region[0], data, region[1])
+      discard b.pack(region[1])
 
-proc put*(b: var MarkableCircularBuffer, c: char): uint16 = 
+      let d = result - region[1]
+      let region2 = b.next()
+      copyMem(region2[0], data.offset(region[1]), d)
+      discard b.pack(d)
+
+proc put*(b: var CircularBuffer, c: char): uint16 = 
   ## Writes char `c` and returns the actual length written.
   ## 写入一个字符 `c`，返回实际写入的长度。
   let region = b.next()
@@ -198,19 +209,58 @@ proc put*(b: var MarkableCircularBuffer, c: char): uint16 =
     cast[ptr char](region[0])[] = c
     discard b.pack(result)
 
-iterator items*(b: MarkableCircularBuffer): char =
-  ## Iterates over all available data (chars) but not mark. 
+iterator items*(b: CircularBuffer): char =
+  ## Iterates over all available data (chars). 
   var i = b.startPos
   while i < b.endMirrorPos:
     yield b.value[i mod BufferSize]
     i.inc()
 
+proc moveTo*(b: var MarkableCircularBuffer, dest: pointer, length: uint16): uint16 = 
+  ## Directly extracts a sequence of the specified length and copys this data to the target space.
+  ## `dest` specifies the target space, and `length` specifies the length of the target space.
+  ## Returns the number of bytes actually copied.
+  ##
+  ## This process clears the actual copied data.
+  ##
+  ## 直接提取指定长度的序列，将这些数据复制到目标空间。`dest` 指定目标空间，`length` 指定目标空间的长度。
+  ## 返回实际复制的字节数量。
+  ##
+  ## 这个过程清空复制的数据。
+  ## 这个过程重置所有标记的数据。
+  assert length > 0'u16
+  result = b.CircularBuffer.moveTo(dest, length)
+  b.markedPos = b.startPos
+
 iterator marks*(b: var MarkableCircularBuffer): char =
-  ## Incrementally iterates over and marks all available data (chars). 
+  ## 逐个标记缓冲区的数据，并 yield 每一个标记的数据。标记是增量进行的，也就是说，下一次标记会从上一次标记继续。
   while b.markedPos < b.endMirrorPos:
     let i = b.markedPos mod BufferSize
     b.markedPos.inc()
     yield b.value[i]
+
+proc mark*(b: var MarkableCircularBuffer, n: uint16): uint16 =
+  ## 立刻标记缓冲区的数据，直到 ``n`` 个或者到达数据尾部，返回实际标记的数量。标记是增量
+  ## 进行的，也就是说，下一次标记会从上一次标记继续。
+  let m = b.markedPos + n
+  if m <= b.endMirrorPos:
+    b.markedPos = m
+    result = n
+  else:
+    result = b.endMirrorPos - b.markedPos
+    b.markedPos = b.endMirrorPos
+
+proc markUntil*(b: var MarkableCircularBuffer, c: char): bool =
+  ## 逐个标记缓冲区的数据，直到遇到一个字节是 ``c``，并返回 ``true``；如果没有字节是 ``c``，则返回 ``false``。标记是增量
+  ## 进行的，也就是说，下一次标记会从上一次标记继续。
+  result = false
+  for ch in b.marks():
+    if ch == c:
+      return true
+
+proc markAll*(b: var MarkableCircularBuffer) =
+  ## 立刻标记缓冲区所有的数据。标记是增量进行的，也就是说，下一次标记会从上一次标记继续。
+  b.markedPos = b.endMirrorPos
 
 proc lenMarks*(b: MarkableCircularBuffer): uint16 = 
   ## Gets the length of the data that has been makerd.
@@ -246,3 +296,4 @@ proc getMarks*(b: var MarkableCircularBuffer, n: uint16 = 0): string =
     b.startPos = b.markedPos
 
   b.markedPos = b.startPos
+
