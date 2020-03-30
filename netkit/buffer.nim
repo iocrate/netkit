@@ -182,6 +182,18 @@ proc moveTo*(b: var CircularBuffer, dest: pointer, length: uint16): uint16 =
 
     result = d1 + d2
 
+proc get*(b: var CircularBuffer, n: uint16): string = 
+  ## 复制最多 ``n`` 个数据，以一个字符串返回。这个过程清空复制的数据。
+  assert n > 0'u16
+  let length = min(b.len, n)
+  if length > 0'u16:
+    result = newString(length)
+    discard b.moveTo(result.cstring, length)
+
+proc get*(b: var CircularBuffer): string = 
+  ## 复制所有数据，以一个字符串返回。这个过程清空复制的数据。
+  result = b.get(b.len)
+
 proc put*(b: var CircularBuffer, data: pointer, length: uint16): uint16 = 
   ## Writes `data` of `length` length to the buffer and returns the actual length written.
   ## 从 `data` 写入 `length` 长度的数据，返回实际写入的长度。
@@ -231,6 +243,15 @@ proc moveTo*(b: var MarkableCircularBuffer, dest: pointer, length: uint16): uint
   assert length > 0'u16
   result = b.CircularBuffer.moveTo(dest, length)
   b.markedPos = b.startPos
+
+proc get*(b: var MarkableCircularBuffer, n: uint16): string = 
+  ## 复制最多 ``n`` 个数据，以一个字符串返回。这个过程清空复制的数据。这个过程重置所有标记的数据。
+  assert n > 0'u16
+  result = b.CircularBuffer.get(n)
+
+proc get*(b: var MarkableCircularBuffer): string = 
+  ## 复制所有数据，以一个字符串返回。这个过程清空复制的数据。这个过程重置所有标记的数据。
+  result = b.get(b.len)
 
 iterator marks*(b: var MarkableCircularBuffer): char =
   ## 逐个标记缓冲区的数据，并 yield 每一个标记的数据。标记是增量进行的，也就是说，下一次标记会从上一次标记继续。
