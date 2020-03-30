@@ -77,7 +77,7 @@
 ##          if c == '\L':
 ##            break
 ##
-##        var lineString = buffer.getMarks(1)
+##        var lineString = buffer.popMarks(1)
 ##
 ##    或者
 ##
