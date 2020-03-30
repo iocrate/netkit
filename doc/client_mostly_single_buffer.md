@@ -105,7 +105,7 @@ await req3
 而如果你对 IO 编程掌握还不够熟练，或者编程的程序比较随意，Mostly Single Buffer 总能保证你的程序正确运行，但是会消耗一些内存。比如 (创建三块缓冲区)：
 
 ```nim
-var req1 = mysql.query("select * from users")   # 第一个请求
+var req1 = mysql.query("select * from users")    # 第一个请求
 var req2 = mysql.query("select * from blogs")    # 第二个请求
 var req3 = mysql.query("select * from comments") # 第三个请求
 
