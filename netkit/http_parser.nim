@@ -4,14 +4,16 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-import buffer
+import buffer, uri, tables
 
 # [RFC5234](https://tools.ietf.org/html/rfc5234#appendix-B.1)
 const SP = '\x20'
 const CR = '\x0D'
 const LF = '\x0A'
-const CRLF = "\x0D\x0A"
 const COLON = ':'
+const HTAB = '\x09'
+const CRLF = "\x0D\x0A"
+const WS = {SP, HTAB}
 
 const LimitRequestLine* {.intdefine.} = 8*1024
 const LimitRequestFieldSize* {.intdefine.} = 8*1024
@@ -44,18 +46,25 @@ type
     secondaryBuffer: string
     currentLineLen: int
     currentFieldName: string
+    currentRequest: Request
     state: HttpParseState
 
-    reqMethod: string
+  Request* = ref object
+    reqMethod: HttpMethod
     url: string
-    version: string
+    version: tuple[orig: string, major, minor: int]
+    headers: Table[string, seq[string]]  # TODO 开发 distinct Table 接口
+    contentLen: int
+    transferEncoding: TransferEncoding
     
+  HttpParseState {.pure.} = enum
+    INIT, statMethod, URL, VERSION, FIELD_NAME, FIELD_VALUE, BODY
 
-  HttpParseState* {.pure.} = enum
-    METHOD, URL, VERSION, FIELD_NAME, FIELD_VALUE, BODY
-
-  MarkResultKind {.pure.} = enum
+  MarkProcessKind {.pure.} = enum
     UNKNOWN, TOKEN, CRLF
+
+  TransferEncoding {.pure.} = enum
+    UNKNOWN, CHUNKED
 
 proc popToken(p: var HttpParser, size: uint16 = 0): string = 
   if p.secondaryBuffer.len > 0:
@@ -64,6 +73,8 @@ proc popToken(p: var HttpParser, size: uint16 = 0): string =
     p.secondaryBuffer = ""
   else:
     result = p.buffer.popMarks(size)
+  if result.len == 0:
+    raise newException(ValueError, "Bad Request")
 
 proc popMarksToLargerIfFull(p: var HttpParser) = 
   if p.buffer.len == p.buffer.capacity:
@@ -85,168 +96,173 @@ proc markRequestFieldChar(p: var HttpParser, c: char): bool =
   if p.currentLineLen.int > LimitRequestFieldSize:
     raise newException(OverflowError, "request-field too long")
 
-proc markCharOrCRLF(p: var HttpParser, c: char): MarkResultKind = 
-  result = MarkResultKind.UNKNOWN
+proc markCharOrCRLF(p: var HttpParser, c: char): MarkProcessKind = 
+  result = MarkProcessKind.UNKNOWN
   let oldLen = p.buffer.lenMarks
   for ch in p.buffer.marks():
     if ch == c:
-      result = MarkResultKind.TOKEN
+      result = MarkProcessKind.TOKEN
     elif ch == LF:
       if p.popToken() != CRLF:
         raise newException(EOFError, "无效的 CRLF")
-      result = MarkResultKind.CRLF
-  if result == MarkResultKind.CRLF:
+      result = MarkProcessKind.CRLF
+  if result == MarkProcessKind.CRLF:
     p.currentLineLen = 0
   else:
     let newLen = p.buffer.lenMarks
     p.currentLineLen.inc((newLen - oldLen).int)
 
-proc markRequestLineCharOrCRLF(p: var HttpParser, c: char): MarkResultKind = 
+proc markRequestLineCharOrCRLF(p: var HttpParser, c: char): MarkProcessKind = 
   result = p.markCharOrCRLF(c)
   if p.currentLineLen.int > LimitRequestLine:
     raise newException(IndexError, "request-line too long")
 
-proc markRequestFieldCharOrCRLF(p: var HttpParser, c: char): MarkResultKind = 
+proc markRequestFieldCharOrCRLF(p: var HttpParser, c: char): MarkProcessKind = 
   result = p.markCharOrCRLF(c)
   if p.currentLineLen.int > LimitRequestFieldSize:
     raise newException(IndexError, "request-field too long")
 
+proc parseHttpMethod(m: string): HttpMethod =
+  result =
+    case m
+    of "GET": HttpGet
+    of "POST": HttpPost
+    of "HEAD": HttpHead
+    of "PUT": HttpPut
+    of "DELETE": HttpDelete
+    of "PATCH": HttpPatch
+    of "OPTIONS": HttpOptions
+    of "CONNECT": HttpConnect
+    of "TRACE": HttpTrace
+    else: raise newException(ValueError, "Not Implemented")
+
+proc parseHttpVersion(version: string): tuple[orig: string, major, minor: int] =
+  if version.len != 8 or version[6] != '.':
+    raise newException(ValueError, "Bad Request")
+  let major = version[5].ord - 48
+  let minor = version[7].ord - 48
+  if major != 1 or minor != 1 or minor != 0:
+    raise newException(ValueError, "Bad Request")
+  const name = "HTTP/"
+  var i = 0
+  while i < 5:
+    if name[i] != version[i]:
+      raise newException(ValueError, "Bad Request")
+    i.inc()
+  result = (version, major, minor)
+
 proc parseRequest*(p: var HttpParser): bool = 
-  ## 
+  ## 解析 HTTP 请求包。这个过程是增量进行的，也就是说，下一次解析会从上一次解析继续。
   result = false
   while true:
     case p.state
+    of HttpParseState.INIT:
+      p.currentRequest = new(Request)
+      p.currentRequest.headers = initTable[string, seq[string]](modeCaseInsensitive)
+      p.state = HttpParseState.METHOD
     of HttpParseState.METHOD:
+      # [RFC7230-3.5](https://tools.ietf.org/html/rfc7230#section-3.5) 
+      # SHOULD ignore at least one empty line (CRLF) received prior to the request-line
       case p.markRequestLineCharOrCRLF(SP)
-      of MarkResultKind.TOKEN:
+      of MarkProcessKind.TOKEN:
+        p.currentRequest.reqMethod = p.popToken(1).parseHttpMethod()
         p.state = HttpParseState.URL
-        p.reqMethod = p.popToken(1)
-        # TODO: normalize METHOD
-      of MarkResultKind.CRLF:
+      of MarkProcessKind.CRLF:
         discard
-      of MarkResultKind.UNKNOWN:
+      of MarkProcessKind.UNKNOWN:
         p.popMarksToLargerIfFull()
         break
     of HttpParseState.URL:
       if p.markRequestLineChar(SP):
+        p.currentRequest.url = p.popToken(1).decode
         p.state = HttpParseState.VERSION
-        p.url = p.popToken(1)
-        # TODO: normalize URL
       else:
         p.popMarksToLargerIfFull()
         break
     of HttpParseState.VERSION:
+      # [RFC7230-3.5](https://tools.ietf.org/html/rfc7230#section-3.5) 
+      # Although the line terminator for the start-line and header fields is the sequence 
+      # CRLF, a recipient MAY recognize a single LF as a line terminator and ignore any 
+      # preceding CR.
       if p.markRequestLineChar(LF):
-        p.state = HttpParseState.FIELD_NAME
         p.currentLineLen = 0
-        p.version = p.popToken(1)
-        let lastIdx = p.version.len - 1
-        if p.version[lastIdx] == CR:
-          p.version.setLen(lastIdx)
-        # TODO: normalize Version
+        let version = p.popToken(1)
+        let lastIdx = version.len - 1
+        if version[lastIdx] == CR:
+          version.setLen(lastIdx)
+        p.currentRequest.version = version.parseHttpVersion()
+        p.state = HttpParseState.FIELD_NAME
       else:
         p.popMarksToLargerIfFull()
         break
     of HttpParseState.FIELD_NAME:
       case p.markRequestFieldCharOrCRLF(COLON)
-      of MarkResultKind.TOKEN:
+      of MarkProcessKind.TOKEN:
         p.state = HttpParseState.FIELD_VALUE
-        # p.headers[p.popToken(1)] = ""
-        # TODO: normalize Name
-      of MarkResultKind.CRLF:
+        p.currentFieldName = p.popToken(1)
+        let lastIdx = p.currentFieldName.len - 1
+        # [RFC7230-3](https://tools.ietf.org/html/rfc7230#section-3) 
+        # A recipient that receives whitespace between the start-line and the first 
+        # header field MUST either reject the message as invalid or consume each 
+        # whitespace-preceded line without further processing of it.
+        if p.currentFieldName[0] == SP or p.currentFieldName[0] == HTAB:
+          raise newException(ValueError, "Bad Request")
+        # [RFC7230-3.2.4](https://tools.ietf.org/html/rfc7230#section-3.2.4) 
+        # A server MUST reject any received request message that contains whitespace 
+        # between a header field-name and colon with a response code of 400.
+        if p.currentFieldName[lastIdx] == CR or p.currentFieldName[lastIdx] == HTAB:
+          raise newException(ValueError, "Bad Request")
+      of MarkProcessKind.CRLF:
+        p.currentFieldName = ""
         p.state = HttpParseState.BODY
-      of MarkResultKind.UNKNOWN:
+
+        # TODO: 更多 Headers 解析存储
+        # TODO: Set-Cookie 允许多个 Headers 并存
+        # TODO: strtab => table
+        # p.currentRequest.contentLen = p.currentRequest.headers.getOrDefault("Content-Length", "0").parseInt()
+        # if p.currentRequest.headers.getOrDefault("Transfer-Encoding") == "chunked":
+        #   p.currentRequest.transferEncoding = TransferEncoding.CHUNKED
+
+
+
+        return true
+      of MarkProcessKind.UNKNOWN:
         p.popMarksToLargerIfFull()
         break
     of HttpParseState.FIELD_VALUE:
+      # [RFC7230-3.5](https://tools.ietf.org/html/rfc7230#section-3.5) 
+      # Although the line terminator for the start-line and header fields is the sequence 
+      # CRLF, a recipient MAY recognize a single LF as a line terminator and ignore any 
+      # preceding CR.
       if p.markRequestFieldChar(LF): 
-        p.state = HttpParseState.FIELD_NAME
+        let fieldValue = p.popToken(1).removePrefix(WS).removeSuffix(WS)
+        if fieldValue.len == 0:
+          raise newException(ValueError, "Bad Request")
+        p.currentRequest.headers[p.currentFieldName].add(fieldValue.shallowCopy())
         p.currentLineLen = 0
-        # p.headers[headerName] = p.popToken(1)
-        # if p.headers[headerName][p.headers[headerName].len-1] == CR:
-        #   p.headers[headerName].setLen(p.headers[headerName].len - 1)
-        # TODO: normalize Value
+        p.state = HttpParseState.FIELD_NAME
       else:
         p.popMarksToLargerIfFull()
         break
     of HttpParseState.BODY:
-      discard
+      return true
 
 when isMainModule:
   import net
+
+  var parser: HttpParser
+  var socket: Socket
+
   while true:
-    var parser: HttpParser
-    var socket: Socket
     let (regionPtr, regionLen) = parser.buffer.next()
     let readLen = socket.recv(regionPtr, regionLen.int)
     if readLen == 0:
       ## TODO: close socket 对方关闭了连接
       discard 
-    while true:
-      case parser.state
-      of HttpParseState.METHOD:
-        if parser.markRequestLineChar(SP):
-          parser.state = HttpParseState.URL
-          parser.reqMethod = parser.popToken(1)
-          # TODO: normalize Method
-        else:
-          # parser.popMarksToLargerIfFull()
-          break
-      of HttpParseState.URL:
-        if parser.markRequestLineChar(SP):
-          parser.state = HttpParseState.VERSION
-          parser.url = parser.popToken(1)
-          # TODO: normalize URL
-        else:
-          parser.popMarksToLargerIfFull()
-          break
-      of HttpParseState.VERSION:
-        if parser.markRequestLineChar(LF):
-          parser.state = HttpParseState.FIELD_NAME
-          parser.currentLineLen = 0
-          parser.version = parser.popToken(1)
-          if parser.version[parser.version.len-1] == CR:
-            parser.version.setLen(parser.version.len - 1)
-          # TODO: normalize Version
-        else:
-          # parser.popMarksToLargerIfFull()
-          break
-      of HttpParseState.FIELD_NAME:
-        let oldLen = parser.buffer.lenMarks
-        var succ = false
-        for c in parser.buffer.marks():
-          if c == COLON:
-            succ = true
-          elif c == LF:
-            parser.state = HttpParseState.BODY
-            var a = parser.popToken(1)
-            if not ((a[0] == CR and a.len == 1) or a.len == 0):
-              raise newException(IndexError, "无效的 CRLF")
-            continue
-        let newLen = parser.buffer.lenMarks
-        parser.currentLineLen.inc((newLen - oldLen).int)
-        if parser.currentLineLen.int > LimitRequestFieldSize:
-          raise newException(IndexError, "")
-        if succ: # TODO: 常量
-          parser.state = HttpParseState.FIELD_VALUE
-          # parser.headers[parser.popToken(1)] = ""
-          # TODO: normalize Name
-        else:
-          parser.popMarksToLargerIfFull()
-          break
-      of HttpParseState.FIELD_VALUE:
-        if parser.markRequestFieldChar(LF): # TODO: 常量
-          parser.state = HttpParseState.FIELD_NAME
-          parser.currentLineLen = 0
-          # parser.headers[headerName] = parser.popToken(1)
-          # if parser.headers[headerName][parser.headers[headerName].len-1] == CR:
-          #   parser.headers[headerName].setLen(parser.headers[headerName].len - 1)
-          # TODO: normalize Value
-        else:
-          parser.popMarksToLargerIfFull()
-          break
-      of HttpParseState.BODY:
-        discard
-    
+    parser.buffer.pack(readLen)
+    if not parser.parseRequest():
+      continue
+
+    var req = parser.currentRequest
 
 

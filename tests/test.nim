@@ -7,4 +7,5 @@
 import unittest
 
 test "todo":
+  echo '0'.ord - 48
   discard
