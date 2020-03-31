@@ -7,10 +7,11 @@
 import buffer
 
 # [RFC5234](https://tools.ietf.org/html/rfc5234#appendix-B.1)
-const SP   = '\x20'
-const CR   = '\x0D'
-const LF   = '\x0A'
+const SP = '\x20'
+const CR = '\x0D'
+const LF = '\x0A'
 const CRLF = "\x0D\x0A"
+const COLON = ':'
 
 const LimitRequestLine* {.intdefine.} = 8*1024
 const LimitRequestFieldSize* {.intdefine.} = 8*1024
@@ -40,19 +41,33 @@ type
 
   HttpParser* = object
     buffer: MarkableCircularBuffer
-    largeBuffer: string
-
+    secondaryBuffer: string
     currentLineLen: int
+    currentFieldName: string
+    state: HttpParseState
 
     reqMethod: string
     url: string
     version: string
-
-    state: HttpParseState
     
 
   HttpParseState* {.pure.} = enum
-    METHOD, URL, VERSION, HEADER_NAME, HEADER_VALUE, BODY
+    METHOD, URL, VERSION, FIELD_NAME, FIELD_VALUE, BODY
+
+  MarkResultKind {.pure.} = enum
+    UNKNOWN, TOKEN, CRLF
+
+proc popToken(p: var HttpParser, size: uint16 = 0): string = 
+  if p.secondaryBuffer.len > 0:
+    p.secondaryBuffer.add(p.buffer.popMarks(size))
+    result = p.secondaryBuffer
+    p.secondaryBuffer = ""
+  else:
+    result = p.buffer.popMarks(size)
+
+proc popMarksToLargerIfFull(p: var HttpParser) = 
+  if p.buffer.len == p.buffer.capacity:
+    p.secondaryBuffer.add(p.buffer.popMarks())
 
 proc markChar(p: var HttpParser, c: char): bool = 
   let oldLen = p.buffer.lenMarks
@@ -70,20 +85,92 @@ proc markRequestFieldChar(p: var HttpParser, c: char): bool =
   if p.currentLineLen.int > LimitRequestFieldSize:
     raise newException(OverflowError, "request-field too long")
 
-proc popToken(p: var HttpParser, size: uint16): string = 
-  if p.largeBuffer.len > 0:
-    p.largeBuffer.add(p.buffer.popMarks(size))
-    result = p.largeBuffer
-    p.largeBuffer = ""
+proc markCharOrCRLF(p: var HttpParser, c: char): MarkResultKind = 
+  result = MarkResultKind.UNKNOWN
+  let oldLen = p.buffer.lenMarks
+  for ch in p.buffer.marks():
+    if ch == c:
+      result = MarkResultKind.TOKEN
+    elif ch == LF:
+      if p.popToken() != CRLF:
+        raise newException(EOFError, "无效的 CRLF")
+      result = MarkResultKind.CRLF
+  if result == MarkResultKind.CRLF:
+    p.currentLineLen = 0
   else:
-    result = p.buffer.popMarks(size)
+    let newLen = p.buffer.lenMarks
+    p.currentLineLen.inc((newLen - oldLen).int)
 
-proc popMarksToLargerIfFull(p: var HttpParser) = 
-  if p.buffer.len == p.buffer.capacity:
-    if p.largeBuffer.len > 0:
-      p.largeBuffer.add(p.buffer.popMarks())
-    else:
-      p.largeBuffer = p.buffer.popMarks()
+proc markRequestLineCharOrCRLF(p: var HttpParser, c: char): MarkResultKind = 
+  result = p.markCharOrCRLF(c)
+  if p.currentLineLen.int > LimitRequestLine:
+    raise newException(IndexError, "request-line too long")
+
+proc markRequestFieldCharOrCRLF(p: var HttpParser, c: char): MarkResultKind = 
+  result = p.markCharOrCRLF(c)
+  if p.currentLineLen.int > LimitRequestFieldSize:
+    raise newException(IndexError, "request-field too long")
+
+proc parseRequest*(p: var HttpParser): bool = 
+  ## 
+  result = false
+  while true:
+    case p.state
+    of HttpParseState.METHOD:
+      case p.markRequestLineCharOrCRLF(SP)
+      of MarkResultKind.TOKEN:
+        p.state = HttpParseState.URL
+        p.reqMethod = p.popToken(1)
+        # TODO: normalize METHOD
+      of MarkResultKind.CRLF:
+        discard
+      of MarkResultKind.UNKNOWN:
+        p.popMarksToLargerIfFull()
+        break
+    of HttpParseState.URL:
+      if p.markRequestLineChar(SP):
+        p.state = HttpParseState.VERSION
+        p.url = p.popToken(1)
+        # TODO: normalize URL
+      else:
+        p.popMarksToLargerIfFull()
+        break
+    of HttpParseState.VERSION:
+      if p.markRequestLineChar(LF):
+        p.state = HttpParseState.FIELD_NAME
+        p.currentLineLen = 0
+        p.version = p.popToken(1)
+        let lastIdx = p.version.len - 1
+        if p.version[lastIdx] == CR:
+          p.version.setLen(lastIdx)
+        # TODO: normalize Version
+      else:
+        p.popMarksToLargerIfFull()
+        break
+    of HttpParseState.FIELD_NAME:
+      case p.markRequestFieldCharOrCRLF(COLON)
+      of MarkResultKind.TOKEN:
+        p.state = HttpParseState.FIELD_VALUE
+        # p.headers[p.popToken(1)] = ""
+        # TODO: normalize Name
+      of MarkResultKind.CRLF:
+        p.state = HttpParseState.BODY
+      of MarkResultKind.UNKNOWN:
+        p.popMarksToLargerIfFull()
+        break
+    of HttpParseState.FIELD_VALUE:
+      if p.markRequestFieldChar(LF): 
+        p.state = HttpParseState.FIELD_NAME
+        p.currentLineLen = 0
+        # p.headers[headerName] = p.popToken(1)
+        # if p.headers[headerName][p.headers[headerName].len-1] == CR:
+        #   p.headers[headerName].setLen(p.headers[headerName].len - 1)
+        # TODO: normalize Value
+      else:
+        p.popMarksToLargerIfFull()
+        break
+    of HttpParseState.BODY:
+      discard
 
 when isMainModule:
   import net
@@ -115,7 +202,7 @@ when isMainModule:
           break
       of HttpParseState.VERSION:
         if parser.markRequestLineChar(LF):
-          parser.state = HttpParseState.HEADER_NAME
+          parser.state = HttpParseState.FIELD_NAME
           parser.currentLineLen = 0
           parser.version = parser.popToken(1)
           if parser.version[parser.version.len-1] == CR:
@@ -124,11 +211,11 @@ when isMainModule:
         else:
           # parser.popMarksToLargerIfFull()
           break
-      of HttpParseState.HEADER_NAME:
+      of HttpParseState.FIELD_NAME:
         let oldLen = parser.buffer.lenMarks
         var succ = false
         for c in parser.buffer.marks():
-          if c == ':':
+          if c == COLON:
             succ = true
           elif c == LF:
             parser.state = HttpParseState.BODY
@@ -138,18 +225,18 @@ when isMainModule:
             continue
         let newLen = parser.buffer.lenMarks
         parser.currentLineLen.inc((newLen - oldLen).int)
-        if parser.currentLineLen.int > LimitRequestLine:
+        if parser.currentLineLen.int > LimitRequestFieldSize:
           raise newException(IndexError, "")
         if succ: # TODO: 常量
-          parser.state = HttpParseState.HEADER_VALUE
+          parser.state = HttpParseState.FIELD_VALUE
           # parser.headers[parser.popToken(1)] = ""
           # TODO: normalize Name
         else:
           parser.popMarksToLargerIfFull()
           break
-      of HttpParseState.HEADER_VALUE:
+      of HttpParseState.FIELD_VALUE:
         if parser.markRequestFieldChar(LF): # TODO: 常量
-          parser.state = HttpParseState.HEADER_NAME
+          parser.state = HttpParseState.FIELD_NAME
           parser.currentLineLen = 0
           # parser.headers[headerName] = parser.popToken(1)
           # if parser.headers[headerName][parser.headers[headerName].len-1] == CR:
