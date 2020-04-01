@@ -265,7 +265,7 @@ proc mark*(b: var MarkableCircularBuffer, size: uint16): uint16 =
     b.markedPos = b.endMirrorPos
 
 proc markUntil*(b: var MarkableCircularBuffer, c: char): bool =
-  ## 逐个标记缓冲区的数据， 直到遇到一个字节是 ``c`` ， 并返回 ``true``；如果没有字节是 ``c`` ， 则返回 ``false`` 。 标记是增量
+  ## 逐个标记缓冲区的数据， 直到遇到一个字节是 ``c`` ， 并返回 ``true`` ；如果没有字节是 ``c`` ， 则返回 ``false`` 。 标记是增量
   ## 进行的， 也就是说， 下一次标记会从上一次标记继续。 
   result = false
   for ch in b.marks():
