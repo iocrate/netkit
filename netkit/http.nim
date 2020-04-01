@@ -8,11 +8,19 @@ import asyncdispatch, nativesockets, os
 include buffer, http_parser
 
 type
+  HttpSession* = ref object
+    buffer: MarkableCircularBuffer
+    parser: HttpParser
+
+  Request* = ref object
+    session: HttpSession
+    packet: RequestPacket
+    socket: AsyncFD
+    contentLen: int
+    chunked: bool
+
   AsyncHttpServer* = ref object
     socket: AsyncFD
-
-  AsyncSocket = ref object
-    parser: HttpParser
 
 proc bindAddr*(fd: SocketHandle, port = 0.Port, address = "") {.tags: [ReadIOEffect].} =
   ## Binds ``address``:``port`` to the socket.
@@ -55,34 +63,34 @@ proc acceptAddr2*(socket: AsyncFD, flags = {SocketFlag.SafeDisconn}):
       else:
         retFuture.complete((future.read.address, future.read.client))
 
-proc read*(s: AsyncSocket, socket: AsyncFD, buf: pointer, size: Natural): Future[Natural] {.async.} =
+proc read*(req: Request, buf: pointer, size: Natural): Future[Natural] {.async.} =
   # TODO: 考虑 chunked
   
-  if s.parser.currentRequest.contentLen > 0:
-    result = min(s.parser.currentRequest.contentLen, size)
+  if req.contentLen > 0:
+    result = min(req.contentLen, size)
     if result > 0:
-      let restLen = s.parser.buffer.len
+      let restLen = req.session.buffer.len
       if restLen.int >= result:
-        discard s.parser.buffer.get(buf, restLen)
-        discard s.parser.buffer.del(restLen)
+        discard req.session.buffer.get(buf, restLen)
+        discard req.session.buffer.del(restLen)
       else:
-        discard s.parser.buffer.get(buf, restLen)
-        discard s.parser.buffer.del(restLen)
+        discard req.session.buffer.get(buf, restLen)
+        discard req.session.buffer.del(restLen)
 
-        let (regionPtr, regionLen) = s.parser.buffer.next()
-        let readLen = await socket.recvInto(regionPtr, regionLen.int)
+        let (regionPtr, regionLen) = req.session.buffer.next()
+        let readLen = await req.socket.recvInto(regionPtr, regionLen.int)
         if readLen == 0:
           ## TODO: close socket 对方关闭了连接
           return 
-        discard s.parser.buffer.pack(readLen.uint16)
+        discard req.session.buffer.pack(readLen.uint16)
 
         let remainingLen = result.uint16 - restLen
-        discard s.parser.buffer.get(buf.offset(restLen), remainingLen)
-        discard s.parser.buffer.del(remainingLen)
+        discard req.session.buffer.get(buf.offset(restLen), remainingLen)
+        discard req.session.buffer.del(remainingLen)
 
-      s.parser.currentRequest.contentLen.dec(result)  
+      req.contentLen.dec(result)  
       # TODO:
-      # if s.parser.currentRequest.contentLen == 0:
+      # if req.contentLen == 0:
       #   next parse Request
     
 proc serve*(
@@ -109,33 +117,38 @@ proc serve*(
     var (address, client) = await server.socket.acceptAddr2()
     client.SocketHandle.setBlocking(false)
     
-    var s = new(AsyncSocket)
+    var s = new(HttpSession)
 
     while true:
-      let (regionPtr, regionLen) = s.parser.buffer.next()
+      var req = new(Request)
+      req.session = s
+      req.socket = client
+      req.chunked = false
+
+      let (regionPtr, regionLen) = s.buffer.next()
       let readLen = await client.recvInto(regionPtr, regionLen.int)
       if readLen == 0:
         ## TODO: close socket 对方关闭了连接
         client.closeSocket()
         break 
-      discard s.parser.buffer.pack(readLen.uint16)
+      discard s.buffer.pack(readLen.uint16)
 
-      if not s.parser.parseRequest():
+      if not s.parser.parseRequest(req.packet, s.buffer):
         continue
 
       echo "request ..." 
-      echo $s.parser.currentRequest.reqMethod 
-      echo s.parser.currentRequest.url 
-      echo repr s.parser.currentRequest.version 
-      echo repr s.parser.currentRequest.chunked
+      echo $req.packet.reqMethod 
+      echo req.packet.url 
+      echo req.packet.version 
+      echo req.chunked
 
-      for key in s.parser.currentRequest.headers.keys():
+      for key in req.packet.headers.keys():
         echo key
 
       var buf = newString(100)
 
       while true:
-        var n = await s.read(client, buf.cstring, 100)
+        var n = await req.read(buf.cstring, 100)
         if n == 0:
           break
         echo buf
