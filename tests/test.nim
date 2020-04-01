@@ -6,8 +6,12 @@
 
 import unittest, strutils
 
-test "todo":
-  echo '0'.ord - 48
+type Opt = object
 
-  echo "c, b,a ,chunked   ".split({' ', ','})
+proc f(o: var Opt) = 
+  echo 1
+
+test "todo":
+  var o = new(Opt)
+  o[].f()
   discard
