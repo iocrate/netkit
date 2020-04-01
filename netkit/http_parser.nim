@@ -4,6 +4,8 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
+# 这个文件很混乱，待整理！！！
+
 import buffer, uri, tables, strutils, net
 
 # [RFC5234](https://tools.ietf.org/html/rfc5234#appendix-B.1)
@@ -43,7 +45,6 @@ type
     HttpPatch        ## Applies partial modifications to a resource.
 
   HttpParser* = object ## HTTP 包解析器。 
-    # buffer: MarkableCircularBuffer
     secondaryBuffer: string
     currentLineLen: int
     currentFieldName: string
@@ -275,29 +276,7 @@ proc parseRequest*(p: var HttpParser, req: var RequestPacket, buf: var MarkableC
     of HttpParseState.BODY:
       return true
 
-# when isMainModule:
-#   import net
 
-#   var parser: HttpParser
-#   var socket: Socket
-
-#   while true:
-#     let (regionPtr, regionLen) = parser.buffer.next()
-#     let readLen = socket.recv(regionPtr, regionLen.int)
-#     if readLen == 0:
-#       ## TODO: close socket 对方关闭了连接
-#       discard 
-#     discard parser.buffer.pack(readLen.uint16)
-
-#     if not parser.parseRequest():
-#       continue
-
-#     var buf: pointer
-
-#     while true:
-#       var n = parser.read(socket, buf, 100)
-#       if n == 0:
-#         break
 
 
 

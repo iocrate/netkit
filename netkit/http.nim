@@ -4,6 +4,8 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
+# 这个文件很混乱，待整理！！！
+
 import asyncdispatch, nativesockets, os
 include buffer, http_parser
 
@@ -63,9 +65,21 @@ proc acceptAddr2*(socket: AsyncFD, flags = {SocketFlag.SafeDisconn}):
       else:
         retFuture.complete((future.read.address, future.read.client))
 
+proc reqMethod*(req: Request): HttpMethod {.inline.} = 
+  req.packet.reqMethod
+
+proc url*(req: Request): string {.inline.} = 
+  req.packet.url
+
+proc version*(req: Request): tuple[orig: string, major, minor: int] {.inline.} = 
+  req.packet.version
+
+proc headers*(req: Request): Table[string, seq[string]] {.inline.} = 
+  req.packet.headers
+
 proc read*(req: Request, buf: pointer, size: Natural): Future[Natural] {.async.} =
   # TODO: 考虑 chunked
-  
+  # TODO: Future 优化
   if req.contentLen > 0:
     result = min(req.contentLen, size)
     if result > 0:
