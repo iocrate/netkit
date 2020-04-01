@@ -100,7 +100,7 @@ type
   MarkableCircularBuffer* = object of CircularBuffer ## A markable circular buffer object that supports incremental marks.
     markedPos: uint16                                # 0..2n-1 
 
-template offset(p: pointer, n: uint16): pointer = 
+template offset*(p: pointer, n: uint16): pointer = 
   cast[pointer](cast[ByteAddress](p) + n.int)
 
 proc capacity*(b: CircularBuffer): uint16 = 

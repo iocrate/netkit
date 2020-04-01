@@ -4,10 +4,12 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-import unittest, strutils
+import unittest, ../netkit/http, asyncdispatch
 
-test "todo":
-  echo '0'.ord - 48
+# test "todo":
+#   discard
 
-  echo "c, b,a ,chunked   ".split({' ', ','})
-  discard
+var server = new(AsyncHttpServer)
+asyncCheck server.serve()
+
+runForever()

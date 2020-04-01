@@ -4,13 +4,14 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-import buffer, uri, tables
+import buffer, uri, tables, strutils, net
 
 # [RFC5234](https://tools.ietf.org/html/rfc5234#appendix-B.1)
 const SP = '\x20'
 const CR = '\x0D'
 const LF = '\x0A'
 const COLON = ':'
+const COMMA = ','
 const HTAB = '\x09'
 const CRLF = "\x0D\x0A"
 const WS = {SP, HTAB}
@@ -55,16 +56,13 @@ type
     version: tuple[orig: string, major, minor: int]
     headers: Table[string, seq[string]]  # TODO 开发 distinct Table 接口
     contentLen: int
-    transferEncoding: TransferEncoding
+    chunked: bool
     
   HttpParseState {.pure.} = enum
-    INIT, statMethod, URL, VERSION, FIELD_NAME, FIELD_VALUE, BODY
+    INIT, METHOD, URL, VERSION, FIELD_NAME, FIELD_VALUE, BODY
 
   MarkProcessKind {.pure.} = enum
     UNKNOWN, TOKEN, CRLF
-
-  TransferEncoding {.pure.} = enum
-    UNKNOWN, CHUNKED
 
 proc popToken(p: var HttpParser, size: uint16 = 0): string = 
   if p.secondaryBuffer.len > 0:
@@ -102,10 +100,12 @@ proc markCharOrCRLF(p: var HttpParser, c: char): MarkProcessKind =
   for ch in p.buffer.marks():
     if ch == c:
       result = MarkProcessKind.TOKEN
+      break
     elif ch == LF:
       if p.popToken() != CRLF:
         raise newException(EOFError, "无效的 CRLF")
       result = MarkProcessKind.CRLF
+      break
   if result == MarkProcessKind.CRLF:
     p.currentLineLen = 0
   else:
@@ -141,7 +141,7 @@ proc parseHttpVersion(version: string): tuple[orig: string, major, minor: int] =
     raise newException(ValueError, "Bad Request")
   let major = version[5].ord - 48
   let minor = version[7].ord - 48
-  if major != 1 or minor != 1 or minor != 0:
+  if major != 1 or minor notin {0, 1}:
     raise newException(ValueError, "Bad Request")
   const name = "HTTP/"
   var i = 0
@@ -151,6 +151,39 @@ proc parseHttpVersion(version: string): tuple[orig: string, major, minor: int] =
     i.inc()
   result = (version, major, minor)
 
+proc normalizeTransforEncoding(p: var HttpParser) =
+  if p.currentRequest.headers.contains("Transfer-Encoding"):
+    var chunkedNum = 0
+    var values: seq[string]
+    for value in p.currentRequest.headers["Transfer-Encoding"]:
+      for x in value.split({SP, HTAB, COMMA}):
+        if x.len > 0:
+          if x == "chunked":
+            chunkedNum.inc()
+          values.add(x)
+    if chunkedNum > 1:
+      raise newException(ValueError, "Bad Request")
+    if chunkedNum == 1:
+      if values[values.len-1].toLower() == "chunked":
+        p.currentRequest.chunked = true
+      else:
+        raise newException(ValueError, "Bad Request")
+
+proc normalizeContentLength(p: var HttpParser) =
+  if p.currentRequest.headers.contains("Content-Length"):
+    if p.currentRequest.headers["Content-Length"].len > 1:
+      raise newException(ValueError, "Bad Request")
+    p.currentRequest.contentLen = p.currentRequest.headers["Content-Length"][0].parseInt()
+    if p.currentRequest.contentLen < 0:
+      raise newException(ValueError, "Bad Request")
+
+proc normalizeSpecificFields(p: var HttpParser) =
+  # 这个函数用来规范化常用的 HTTP Headers 字段
+  #
+  # TODO: 规范化更多的字段
+  p.normalizeContentLength()
+  p.normalizeTransforEncoding()
+
 proc parseRequest*(p: var HttpParser): bool = 
   ## 解析 HTTP 请求包。这个过程是增量进行的，也就是说，下一次解析会从上一次解析继续。
   result = false
@@ -158,7 +191,8 @@ proc parseRequest*(p: var HttpParser): bool =
     case p.state
     of HttpParseState.INIT:
       p.currentRequest = new(Request)
-      p.currentRequest.headers = initTable[string, seq[string]](modeCaseInsensitive)
+      p.currentRequest.headers = initTable[string, seq[string]]()
+      p.currentRequest.chunked = false
       p.state = HttpParseState.METHOD
     of HttpParseState.METHOD:
       # [RFC7230-3.5](https://tools.ietf.org/html/rfc7230#section-3.5) 
@@ -174,7 +208,7 @@ proc parseRequest*(p: var HttpParser): bool =
         break
     of HttpParseState.URL:
       if p.markRequestLineChar(SP):
-        p.currentRequest.url = p.popToken(1).decode
+        p.currentRequest.url = p.popToken(1).decodeUrl()
         p.state = HttpParseState.VERSION
       else:
         p.popMarksToLargerIfFull()
@@ -186,7 +220,7 @@ proc parseRequest*(p: var HttpParser): bool =
       # preceding CR.
       if p.markRequestLineChar(LF):
         p.currentLineLen = 0
-        let version = p.popToken(1)
+        var version = p.popToken(1)
         let lastIdx = version.len - 1
         if version[lastIdx] == CR:
           version.setLen(lastIdx)
@@ -213,18 +247,9 @@ proc parseRequest*(p: var HttpParser): bool =
         if p.currentFieldName[lastIdx] == CR or p.currentFieldName[lastIdx] == HTAB:
           raise newException(ValueError, "Bad Request")
       of MarkProcessKind.CRLF:
+        p.normalizeSpecificFields()
         p.currentFieldName = ""
         p.state = HttpParseState.BODY
-
-        # TODO: 更多 Headers 解析存储
-        # TODO: Set-Cookie 允许多个 Headers 并存
-        # TODO: strtab => table
-        # p.currentRequest.contentLen = p.currentRequest.headers.getOrDefault("Content-Length", "0").parseInt()
-        # if p.currentRequest.headers.getOrDefault("Transfer-Encoding") == "chunked":
-        #   p.currentRequest.transferEncoding = TransferEncoding.CHUNKED
-
-
-
         return true
       of MarkProcessKind.UNKNOWN:
         p.popMarksToLargerIfFull()
@@ -235,10 +260,14 @@ proc parseRequest*(p: var HttpParser): bool =
       # CRLF, a recipient MAY recognize a single LF as a line terminator and ignore any 
       # preceding CR.
       if p.markRequestFieldChar(LF): 
-        let fieldValue = p.popToken(1).removePrefix(WS).removeSuffix(WS)
+        var fieldValue = p.popToken(1)
+        fieldValue.removePrefix(WS)
+        fieldValue.removeSuffix(WS)
         if fieldValue.len == 0:
           raise newException(ValueError, "Bad Request")
-        p.currentRequest.headers[p.currentFieldName].add(fieldValue.shallowCopy())
+        if not p.currentRequest.headers.contains(p.currentFieldName):
+          p.currentRequest.headers[p.currentFieldName] = @[]
+        p.currentRequest.headers[p.currentFieldName].add(fieldValue)
         p.currentLineLen = 0
         p.state = HttpParseState.FIELD_NAME
       else:
@@ -247,22 +276,29 @@ proc parseRequest*(p: var HttpParser): bool =
     of HttpParseState.BODY:
       return true
 
-when isMainModule:
-  import net
+# when isMainModule:
+#   import net
 
-  var parser: HttpParser
-  var socket: Socket
+#   var parser: HttpParser
+#   var socket: Socket
 
-  while true:
-    let (regionPtr, regionLen) = parser.buffer.next()
-    let readLen = socket.recv(regionPtr, regionLen.int)
-    if readLen == 0:
-      ## TODO: close socket 对方关闭了连接
-      discard 
-    parser.buffer.pack(readLen)
-    if not parser.parseRequest():
-      continue
+#   while true:
+#     let (regionPtr, regionLen) = parser.buffer.next()
+#     let readLen = socket.recv(regionPtr, regionLen.int)
+#     if readLen == 0:
+#       ## TODO: close socket 对方关闭了连接
+#       discard 
+#     discard parser.buffer.pack(readLen.uint16)
 
-    var req = parser.currentRequest
+#     if not parser.parseRequest():
+#       continue
+
+#     var buf: pointer
+
+#     while true:
+#       var n = parser.read(socket, buf, 100)
+#       if n == 0:
+#         break
+
 
 
