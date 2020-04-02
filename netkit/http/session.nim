@@ -119,7 +119,7 @@ proc processNextRequest*(session: HttpSession) {.async.} =
   req.normalizeSpecificFields()
   asyncCheck session.requestHandler(req)
 
-proc read*(req: Request, buf: pointer, size: Natural): Future[Natural] {.async.} =
+proc read*(req: Request, buf: pointer, size: Natural): Future[int] {.async.} =
   ## 对 HTTP 请求 ``req`` 读取最多 ``size`` 个数据， 复制到 ``buf`` 存储空间， 返回实际读取的数量。 如果返回 ``0``， 
   ## 表示已经到达数据尾部，不会再有数据可读。 
   # TODO: 考虑 chunked
