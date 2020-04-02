@@ -38,6 +38,8 @@ proc newHttpSession*(socket: AsyncFD, address: string, handler: RequestHandler):
 proc newRequest*(session: HttpSession): Request = 
   new(result)
   result.session = session
+  result.packetHeader = initServerReqHeader()
+  result.contentLen = 0
   result.chunked = false
   result.readEnded = false
   result.writeEnded = false

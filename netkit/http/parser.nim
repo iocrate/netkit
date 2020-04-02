@@ -19,7 +19,7 @@ type
     state: HttpParseState
     
   HttpParseState {.pure.} = enum
-    INIT, METHOD, URL, VERSION, FIELD_NAME, FIELD_VALUE, BODY
+    METHOD, URL, VERSION, FIELD_NAME, FIELD_VALUE, BODY
 
   MarkProcessKind {.pure.} = enum
     UNKNOWN, TOKEN, CRLF
@@ -116,13 +116,6 @@ proc parseRequest*(p: var HttpParser, req: var ServerReqHeader, buf: var Markabl
   result = false
   while true:
     case p.state
-    of HttpParseState.INIT:
-      # TODO: 移除
-      # req.reqMethod = ""
-      # req.url = ""
-      # req.headers = initTable[string, seq[string]]()
-      #req.chunked = false # TODO:
-      p.state = HttpParseState.METHOD
     of HttpParseState.METHOD:
       # [RFC7230-3.5](https://tools.ietf.org/html/rfc7230#section-3.5) 
       # SHOULD ignore at least one empty line (CRLF) received prior to the request-line

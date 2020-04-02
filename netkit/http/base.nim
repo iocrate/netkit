@@ -41,7 +41,7 @@ type
     reqMethod*: HttpMethod
     url*: string
     version*: HttpVersion
-    headers*: HttpHeaders  # TODO 开发 distinct Table 接口
+    headers*: HttpHeaders  
 
   ServerResHeader* = object ## 表示服务器端 HTTP 响应包的头部。 每一个 HTTP 响应应该包含且只包含一个头部。
     statusCode*: HttpCode
@@ -50,7 +50,7 @@ type
   ClientReqHeader* = object ## 表示客户端 HTTP 请求包的头部。 每一个 HTTP 请求应该包含且只包含一个头部。
     reqMethod*: HttpMethod
     url*: string
-    headers*: HttpHeaders  # TODO 开发 distinct Table 接口
+    headers*: HttpHeaders  
 
   ClientResHeader* = object ## 表示客户端 HTTP 响应包的头部。 每一个 HTTP 响应应该包含且只包含一个头部。
     statusCode*: HttpCode
@@ -316,8 +316,7 @@ proc initClientResHeader*(): ClientResHeader =
   result.headers = HttpHeaders(initTable[string, seq[string]]())
 
 proc `$`*(H: ServerResHeader): string = 
-  ## 获取 ``ServerResHeader`` 的 HTTP 字符序列表示。 
-  # TODO: 优化
+  ## 获取 ``ServerResHeader`` 的 HTTP 字符序列表示。
   result.add("HTTP/1.1 " & $H.statusCode & CRLF)
   for name, value in H.headers.pairs():
     result.add(name & ": " & value & CRLF)
