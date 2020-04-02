@@ -4,12 +4,16 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-import unittest, ../netkit/http, asyncdispatch
+import unittest, netkit/http/server, asyncdispatch
 
-# test "todo":
+test "todo":
+  discard
+
+# var server2 = new(AsyncHttpServer)
+
+# proc handler(req: Request): Future[void] {.async.} =
 #   discard
 
-# var server = new(AsyncHttpServer)
-# asyncCheck server.serve()
+# asyncCheck server2.serve(8001.Port, handler)
 
 # runForever()
