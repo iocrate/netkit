@@ -9,7 +9,7 @@ import unittest, ../netkit/http, asyncdispatch
 # test "todo":
 #   discard
 
-var server = new(AsyncHttpServer)
-asyncCheck server.serve()
+# var server = new(AsyncHttpServer)
+# asyncCheck server.serve()
 
-runForever()
+# runForever()
