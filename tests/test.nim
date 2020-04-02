@@ -14,4 +14,6 @@ proc f(o: var Opt) =
 test "todo":
   var o = new(Opt)
   o[].f()
+
+  echo("abc: " & @["a", "b"].join(", "))
   discard

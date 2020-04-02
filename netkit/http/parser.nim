@@ -4,58 +4,19 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-# 这个文件很混乱，待整理！！！
+import uri, strutils, net
+import netkit/buffer, netkit/http/base
 
-import uri, tables, strutils, net
-import netkit/buffer
-
-# [RFC5234](https://tools.ietf.org/html/rfc5234#appendix-B.1)
-const SP = '\x20'
-const CR = '\x0D'
-const LF = '\x0A'
-const COLON = ':'
-const COMMA = ','
-const HTAB = '\x09'
-const CRLF = "\x0D\x0A"
-const WS = {SP, HTAB}
-
-const LimitRequestLine* {.intdefine.} = 8*1024
-const LimitRequestFieldSize* {.intdefine.} = 8*1024
-const LimitRequestFieldCount* {.intdefine.} = 100
+const LimitStartLineLen* {.intdefine.} = 8*1024 ## HTTP 起始行的最大长度。 
+const LimitHeaderFieldLen* {.intdefine.} = 8*1024 ## HTTP 头字段的最大长度。 
+const LimitHeaderFieldCount* {.intdefine.} = 100 ## HTTP 头字段的最大个数。 
 
 type
-  HttpCode* = distinct range[0 .. 599]
-
-  HttpMethod* = enum
-    HttpHead,        ## Asks for the response identical to the one that would
-                     ## correspond to a GET request, but without the response
-                     ## body.
-    HttpGet,         ## Retrieves the specified resource.
-    HttpPost,        ## Submits data to be processed to the identified
-                     ## resource. The data is included in the body of the
-                     ## request.
-    HttpPut,         ## Uploads a representation of the specified resource.
-    HttpDelete,      ## Deletes the specified resource.
-    HttpTrace,       ## Echoes back the received request, so that a client
-                     ## can see what intermediate servers are adding or
-                     ## changing in the request.
-    HttpOptions,     ## Returns the HTTP methods that the server supports
-                     ## for specified address.
-    HttpConnect,     ## Converts the request connection to a transparent
-                     ## TCP/IP tunnel, usually used for proxies.
-    HttpPatch        ## Applies partial modifications to a resource.
-
   HttpParser* = object ## HTTP 包解析器。 
     secondaryBuffer: string
     currentLineLen: int
     currentFieldName: string
     state: HttpParseState
-
-  RequestPacket* = tuple ## 表示 HTTP 请求包。 请注意，HTTP Body 并没有描述在这个对象里面。 
-    reqMethod: HttpMethod
-    url: string
-    version: tuple[orig: string, major, minor: int]
-    headers: Table[string, seq[string]]  # TODO 开发 distinct Table 接口
     
   HttpParseState {.pure.} = enum
     INIT, METHOD, URL, VERSION, FIELD_NAME, FIELD_VALUE, BODY
@@ -85,12 +46,12 @@ proc markChar(p: var HttpParser, buf: var MarkableCircularBuffer, c: char): bool
 
 proc markRequestLineChar(p: var HttpParser, buf: var MarkableCircularBuffer, c: char): bool = 
   result = p.markChar(buf, c)
-  if p.currentLineLen.int > LimitRequestLine:
+  if p.currentLineLen.int > LimitStartLineLen:
     raise newException(OverflowError, "request-line too long")
 
 proc markRequestFieldChar(p: var HttpParser, buf: var MarkableCircularBuffer, c: char): bool = 
   result = p.markChar(buf, c)
-  if p.currentLineLen.int > LimitRequestFieldSize:
+  if p.currentLineLen.int > LimitHeaderFieldLen:
     raise newException(OverflowError, "request-field too long")
 
 proc markCharOrCRLF(p: var HttpParser, buf: var MarkableCircularBuffer, c: char): MarkProcessKind = 
@@ -113,12 +74,12 @@ proc markCharOrCRLF(p: var HttpParser, buf: var MarkableCircularBuffer, c: char)
 
 proc markRequestLineCharOrCRLF(p: var HttpParser, buf: var MarkableCircularBuffer, c: char): MarkProcessKind = 
   result = p.markCharOrCRLF(buf, c)
-  if p.currentLineLen.int > LimitRequestLine:
+  if p.currentLineLen.int > LimitStartLineLen:
     raise newException(IndexError, "request-line too long")
 
 proc markRequestFieldCharOrCRLF(p: var HttpParser, buf: var MarkableCircularBuffer, c: char): MarkProcessKind = 
   result = p.markCharOrCRLF(buf, c)
-  if p.currentLineLen.int > LimitRequestFieldSize:
+  if p.currentLineLen.int > LimitHeaderFieldLen:
     raise newException(IndexError, "request-field too long")
 
 proc parseHttpMethod(m: string): HttpMethod =
@@ -150,23 +111,16 @@ proc parseHttpVersion(version: string): tuple[orig: string, major, minor: int] =
     i.inc()
   result = (version, major, minor)
 
-proc normalizeSpecificFields(p: var HttpParser) =
-  # 这个函数用来规范化常用的 HTTP Headers 字段
-  #
-  # TODO: 规范化更多的字段
-  # p.normalizeContentLength()
-  # p.normalizeTransforEncoding()
-  discard
-
-proc parseRequest*(p: var HttpParser, req: var RequestPacket, buf: var MarkableCircularBuffer): bool = 
+proc parseRequest*(p: var HttpParser, req: var ServerReqHeader, buf: var MarkableCircularBuffer): bool = 
   ## 解析 HTTP 请求包。这个过程是增量进行的，也就是说，下一次解析会从上一次解析继续。
   result = false
   while true:
     case p.state
     of HttpParseState.INIT:
+      # TODO: 移除
       # req.reqMethod = ""
       # req.url = ""
-      req.headers = initTable[string, seq[string]]()
+      # req.headers = initTable[string, seq[string]]()
       #req.chunked = false # TODO:
       p.state = HttpParseState.METHOD
     of HttpParseState.METHOD:
@@ -222,7 +176,6 @@ proc parseRequest*(p: var HttpParser, req: var RequestPacket, buf: var MarkableC
         if p.currentFieldName[lastIdx] == CR or p.currentFieldName[lastIdx] == HTAB:
           raise newException(ValueError, "Bad Request")
       of MarkProcessKind.CRLF:
-        p.normalizeSpecificFields()
         p.currentFieldName = ""
         p.state = HttpParseState.BODY
         return true
@@ -240,9 +193,7 @@ proc parseRequest*(p: var HttpParser, req: var RequestPacket, buf: var MarkableC
         fieldValue.removeSuffix(WS)
         if fieldValue.len == 0:
           raise newException(ValueError, "Bad Request")
-        if not req.headers.contains(p.currentFieldName):
-          req.headers[p.currentFieldName] = @[]
-        req.headers[p.currentFieldName].add(fieldValue)
+        req.headers.add(p.currentFieldName, fieldValue)
         p.currentLineLen = 0
         p.state = HttpParseState.FIELD_NAME
       else:

@@ -6,8 +6,8 @@
 
 # 这个文件很混乱，待整理！！！
 
-import asyncdispatch, nativesockets, tables
-import netkit/buffer, netkit/http/parser
+import asyncdispatch, nativesockets, strutils
+import netkit/buffer, netkit/http/base, netkit/http/parser
 
 type
   HttpSession* = ref object ## 表示客户端与服务器之间的一个活跃的通信会话。 这个对象不由用户代码直接构造。 
@@ -15,11 +15,11 @@ type
     parser: HttpParser
     requestHandler: RequestHandler
     socket: AsyncFD
+    address: string
 
   Request* = ref object ## 表示客户端发起的一次 HTTP 请求。 这个对象不由用户代码直接构造。 
     session: HttpSession
-    packet: RequestPacket
-    # socket: AsyncFD
+    packetHeader: ServerReqHeader
     contentLen: int
     chunked: bool
     readEnded: bool
@@ -27,12 +27,13 @@ type
     
   RequestHandler* = proc (req: Request): Future[void] {.closure, gcsafe.}
 
-proc newHttpSession*(socket: AsyncFD, handler: RequestHandler): HttpSession = 
+proc newHttpSession*(socket: AsyncFD, address: string, handler: RequestHandler): HttpSession = 
   new(result)
   result.buffer = MarkableCircularBuffer()
   result.parser = HttpParser()
   result.requestHandler = handler
   result.socket = socket
+  result.address = address
 
 proc newRequest*(session: HttpSession): Request = 
   new(result)
@@ -43,18 +44,18 @@ proc newRequest*(session: HttpSession): Request =
 
 proc reqMethod*(req: Request): HttpMethod {.inline.} = 
   ## 获取请求方法。 
-  req.packet.reqMethod
+  req.packetHeader.reqMethod
 
 proc url*(req: Request): string {.inline.} = 
   ## 获取请求的 URL 字符串。 
-  req.packet.url
+  req.packetHeader.url
 
-proc version*(req: Request): tuple[orig: string, major, minor: int] {.inline.} = 
-  req.packet.version
+proc version*(req: Request): HttpVersion {.inline.} = 
+  req.packetHeader.version
 
-proc headers*(req: Request): Table[string, seq[string]] {.inline.} = 
+proc headers*(req: Request): HttpHeaders {.inline.} = 
   ## 获取请求头对象。 每个头字段值是一个字符串序列。 
-  req.packet.headers
+  req.packetHeader.headers
 
 proc normalizeTransforEncoding(req: Request) =
   if req.headers.contains("Transfer-Encoding"):
@@ -95,7 +96,7 @@ proc processNextRequest*(session: HttpSession) {.async.} =
 
   if session.buffer.len.int > 0:
     req = newRequest(session)
-    parsed = session.parser.parseRequest(req.packet, session.buffer)
+    parsed = session.parser.parseRequest(req.packetHeader, session.buffer)
 
   if not parsed:
     while true:
@@ -110,7 +111,7 @@ proc processNextRequest*(session: HttpSession) {.async.} =
       if req.isNil:
         req = newRequest(session)
 
-      if session.parser.parseRequest(req.packet, session.buffer):
+      if session.parser.parseRequest(req.packetHeader, session.buffer):
         break
 
   req.normalizeSpecificFields()
@@ -164,6 +165,12 @@ proc write*(req: Request, buf: pointer, size: Natural): Future[void] {.async.} =
 
   await req.session.socket.send(buf, size)
 
+proc write*(req: Request, data: string): Future[void] {.async.} =
+  ## 对 HTTP 请求 ``req`` 写入响应数据。 
+  # TODO: 考虑 chunked
+  # TODO: Future 优化
+  await req.write(data.cstring, data.len)
+
 proc writeEnd*(req: Request): Future[void] {.async.} =
   ## 对 HTTP 请求 ``req`` 写入结尾信号。 
   # TODO: 考虑 chunked
@@ -172,6 +179,3 @@ proc writeEnd*(req: Request): Future[void] {.async.} =
     req.writeEnded = true
     if req.readEnded:
       asyncCheck req.session.processNextRequest()
-
-  
-

@@ -7,7 +7,7 @@
 # 这个文件很混乱，待整理！！！
 
 import asyncdispatch, nativesockets, os
-include netkit/buffer, netkit/http/parser, netkit/http/session
+import netkit/http/session
 
 type
   AsyncHttpServer* = ref object
@@ -64,5 +64,5 @@ proc serve*(
   while true:
     let (clientAddress, clientSocket) = await server.socket.acceptAddr()
     clientSocket.SocketHandle.setBlocking(false)
-    asyncCheck newHttpSession(clientSocket, handler).processNextRequest()
+    asyncCheck newHttpSession(clientSocket, clientAddress, handler).processNextRequest()
     
