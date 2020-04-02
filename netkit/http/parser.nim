@@ -34,7 +34,7 @@ proc popToken(p: var HttpParser, buf: var MarkableCircularBuffer, size: uint16 =
   if result.len == 0:
     raise newException(ValueError, "Bad Request")
 
-proc popMarksToLargerIfFull(p: var HttpParser, buf: var MarkableCircularBuffer) = 
+proc popMarksToSecondaryIfFull(p: var HttpParser, buf: var MarkableCircularBuffer) = 
   if buf.len == buf.capacity:
     p.secondaryBuffer.add(buf.popMarks())
 
@@ -126,14 +126,14 @@ proc parseRequest*(p: var HttpParser, req: var ServerReqHeader, buf: var Markabl
       of MarkProcessKind.CRLF:
         discard
       of MarkProcessKind.UNKNOWN:
-        p.popMarksToLargerIfFull(buf)
+        p.popMarksToSecondaryIfFull(buf)
         break
     of HttpParseState.URL:
       if p.markRequestLineChar(buf, SP):
         req.url = p.popToken(buf, 1).decodeUrl()
         p.state = HttpParseState.VERSION
       else:
-        p.popMarksToLargerIfFull(buf)
+        p.popMarksToSecondaryIfFull(buf)
         break
     of HttpParseState.VERSION:
       # [RFC7230-3.5](https://tools.ietf.org/html/rfc7230#section-3.5) 
@@ -149,7 +149,7 @@ proc parseRequest*(p: var HttpParser, req: var ServerReqHeader, buf: var Markabl
         req.version = version.parseHttpVersion()
         p.state = HttpParseState.FIELD_NAME
       else:
-        p.popMarksToLargerIfFull(buf)
+        p.popMarksToSecondaryIfFull(buf)
         break
     of HttpParseState.FIELD_NAME:
       case p.markRequestFieldCharOrCRLF(buf, COLON)
@@ -173,7 +173,7 @@ proc parseRequest*(p: var HttpParser, req: var ServerReqHeader, buf: var Markabl
         p.state = HttpParseState.BODY
         return true
       of MarkProcessKind.UNKNOWN:
-        p.popMarksToLargerIfFull(buf)
+        p.popMarksToSecondaryIfFull(buf)
         break
     of HttpParseState.FIELD_VALUE:
       # [RFC7230-3.5](https://tools.ietf.org/html/rfc7230#section-3.5) 
@@ -190,7 +190,7 @@ proc parseRequest*(p: var HttpParser, req: var ServerReqHeader, buf: var Markabl
         p.currentLineLen = 0
         p.state = HttpParseState.FIELD_NAME
       else:
-        p.popMarksToLargerIfFull(buf)
+        p.popMarksToSecondaryIfFull(buf)
         break
     of HttpParseState.BODY:
       return true
