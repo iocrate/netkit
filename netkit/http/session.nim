@@ -29,8 +29,8 @@ type
 
 proc newHttpSession*(socket: AsyncFD, address: string, handler: RequestHandler): HttpSession = 
   new(result)
-  result.buffer = MarkableCircularBuffer()
-  result.parser = HttpParser()
+  result.buffer = initMarkableCircularBuffer()
+  result.parser = initHttpParser()
   result.requestHandler = handler
   result.socket = socket
   result.address = address

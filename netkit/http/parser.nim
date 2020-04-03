@@ -24,6 +24,9 @@ type
   MarkProcessKind {.pure.} = enum
     UNKNOWN, TOKEN, CRLF
 
+proc initHttpParser*(): HttpParser =
+  discard
+
 proc popToken(p: var HttpParser, buf: var MarkableCircularBuffer, size: uint16 = 0): string = 
   if p.secondaryBuffer.len > 0:
     p.secondaryBuffer.add(buf.popMarks(size))
