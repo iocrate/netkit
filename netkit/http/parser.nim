@@ -5,7 +5,7 @@
 #    distribution, for details about the copyright.
 
 import uri, strutils, net
-import netkit/buffer, netkit/http/base
+import netkit/buffer/circular, netkit/http/base
 
 const LimitStartLineLen* {.intdefine.} = 8*1024 ## HTTP 起始行的最大长度。 
 const LimitHeaderFieldLen* {.intdefine.} = 8*1024 ## HTTP 头字段的最大长度。 

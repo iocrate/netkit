@@ -87,28 +87,18 @@
 ##
 ##     var getLen = buffer.get(dest, destLen)
 ##     var delLen = buffer.del(getLen)
-##
-##
-## 本模块还实现了一个动态增长的缓冲区 ``VectorBuffer`` 。 该缓冲区可以根据您的需要成倍增长，直到某个临界值。
 
-const BufferSize* {.intdefine.}: uint16 = 8*1024  # 0..65535/2
+import netkit/buffer/constants
 
 type 
   CircularBuffer* = object of RootObj                ## A circular buffer object.
     value: array[0..BufferSize.int, char]
-    startPos: uint16                                 #  0..n-1 
-    endPos: uint16                                   #  0..n-1 
-    endMirrorPos: uint16                             #  0..2n-1 
+    startPos: uint32                                 #  0..n-1 
+    endPos: uint32                                   #  0..n-1 
+    endMirrorPos: uint32                             #  0..2n-1 
 
   MarkableCircularBuffer* = object of CircularBuffer ## A markable circular buffer object that supports incremental marks.
-    markedPos: uint16                                #  0..2n-1 
-
-  VectorBuffer* = object of RootObj                  ## A growable buffer.
-    value: seq[char]
-    endPos: uint32                                   #  0..n-1 
-    capacity: uint32
-    minCapacity: uint32
-    maxCapacity: uint32
+    markedPos: uint32                                #  0..2n-1 
 
 template offset*(p: pointer, n: uint32): pointer = 
   cast[pointer](cast[ByteAddress](p) + n.int64)
@@ -119,15 +109,15 @@ proc initCircularBuffer*(): CircularBuffer =
 proc initMarkableCircularBuffer*(): MarkableCircularBuffer =
   discard
 
-proc capacity*(b: CircularBuffer): uint16 = 
+proc capacity*(b: CircularBuffer): uint32 = 
   ## Gets the capacity of the buffer.
   BufferSize
 
-proc len*(b: CircularBuffer): uint16 = 
+proc len*(b: CircularBuffer): uint32 = 
   ## Gets the length of the data.
   b.endMirrorPos - b.startPos
 
-proc next*(b: var CircularBuffer): (pointer, uint16) = 
+proc next*(b: var CircularBuffer): (pointer, uint32) = 
   ## Gets the next secure storage area. You can only get one block per operation.
   ## Returns the address and storable length of the area. Then you can manually
   ## store the data for that area.
@@ -138,14 +128,14 @@ proc next*(b: var CircularBuffer): (pointer, uint16) =
   result[1] = if b.endMirrorPos < BufferSize: BufferSize - b.endPos
               else: b.startPos - b.endPos
 
-proc pack*(b: var CircularBuffer, size: uint16): uint16 = 
+proc pack*(b: var CircularBuffer, size: uint32): uint32 = 
   ## The area of ``size`` length inside the buffer is regarded as valid data and returns the actual length.
   ## Once this operation is performed, this space will be forced to be used as valid data. In other words,
   ## this method increases the length of the buffer's valid data.
   #
   ## 将缓冲区内部 ``size`` 长度的空间区域视为有效数据， 返回实际有效的长度。 一旦执行这个操作， 这部分空间将被
   ## 强制作为有效数据使用。 换句话说， 这个方法增长了 ``buffer`` 有效数据的长度。 
-  assert size > 0'u16
+  assert size > 0'u32
   if b.endMirrorPos < BufferSize:
     result = min(size, BufferSize - b.endPos) 
     b.endMirrorPos = b.endMirrorPos + result
@@ -155,12 +145,12 @@ proc pack*(b: var CircularBuffer, size: uint16): uint16 =
     b.endMirrorPos = b.endMirrorPos + result
     b.endPos = b.endMirrorPos mod BufferSize
 
-proc put*(b: var CircularBuffer, source: pointer, size: uint16): uint16 = 
+proc put*(b: var CircularBuffer, source: pointer, size: uint32): uint32 = 
   ## Writes ``source`` of ``size`` length to the buffer and returns the actual size written.
   ##
   ## 从 ``source`` 写入 ``size`` 长度的数据， 返回实际写入的长度。 
   result = min(BufferSize - b.len, size)
-  if result > 0'u16:
+  if result > 0'u32:
     let region = b.next()
     if region[1] >= result:
       copyMem(region[0], source, result)
@@ -173,20 +163,20 @@ proc put*(b: var CircularBuffer, source: pointer, size: uint16): uint16 =
       copyMem(region2[0], source.offset(region[1]), d)
       discard b.pack(d)
 
-proc put*(b: var CircularBuffer, c: char): uint16 = 
+proc put*(b: var CircularBuffer, c: char): uint32 = 
   ## Writes char ``c`` and returns the actual length written.
   ##
   ## 写入一个字符 ``c`` 返回实际写入的长度。 
   let region = b.next()
   result = min(region[1], 1)
-  if result > 0'u16:
+  if result > 0'u32:
     cast[ptr char](region[0])[] = c
     discard b.pack(result)
 
-proc get*(b: var CircularBuffer, dest: pointer, size: uint16): uint16 = 
+proc get*(b: var CircularBuffer, dest: pointer, size: uint32): uint32 = 
   ## 获取最多 ``size`` 个数据， 将其复制到目标空间 ``dest`` ， 返回实际复制的数量。 
   result = min(size, b.endMirrorPos - b.startPos)
-  if result > 0'u16:
+  if result > 0'u32:
     if b.startPos + result <= BufferSize: # only right
       copyMem(dest, b.value.addr.offset(b.startPos), result)
     else:                                 # both right and left
@@ -194,10 +184,10 @@ proc get*(b: var CircularBuffer, dest: pointer, size: uint16): uint16 =
       copyMem(dest, b.value.addr.offset(b.startPos), majorLen)
       copyMem(dest.offset(majorLen), b.value.addr, result - majorLen)
   
-proc get*(b: var CircularBuffer, size: uint16): string = 
+proc get*(b: var CircularBuffer, size: uint32): string = 
   ## 获取最多 ``size`` 个数据， 以一个字符串返回。 
   let length = min(b.endMirrorPos - b.startPos, size)
-  if length > 0'u16:
+  if length > 0'u32:
     result = newString(length)
     discard b.get(result.cstring, length)
 
@@ -205,10 +195,10 @@ proc get*(b: var CircularBuffer): string =
   ## 获取所有数据， 以一个字符串返回。 
   result = b.get(b.endMirrorPos - b.startPos)
 
-proc del*(b: var CircularBuffer, size: uint16): uint16 = 
+proc del*(b: var CircularBuffer, size: uint32): uint32 = 
   ## 删除最多 ``size`` 个数据， 返回实际删除的数量。 
   result = min(size, b.endMirrorPos - b.startPos)
-  if result > 0'u16:
+  if result > 0'u32:
     b.startPos = b.startPos + result
     if b.startPos < b.endMirrorPos:
       if b.startPos < BufferSize:
@@ -231,10 +221,10 @@ iterator items*(b: CircularBuffer): char =
     yield b.value[i mod BufferSize]
     i.inc()
       
-proc del*(b: var MarkableCircularBuffer, size: uint16): uint16 = 
+proc del*(b: var MarkableCircularBuffer, size: uint32): uint32 = 
   ## 删除最多 ``size`` 个数据， 返回实际删除的数量。 
   result = min(size, b.endMirrorPos - b.startPos)
-  if result > 0'u16:
+  if result > 0'u32:
     b.startPos = b.startPos + result
     if b.startPos < b.endMirrorPos:
       if b.startPos < BufferSize:
@@ -268,7 +258,7 @@ iterator marks*(b: var MarkableCircularBuffer): char =
     b.markedPos.inc()
     yield b.value[i]
 
-proc mark*(b: var MarkableCircularBuffer, size: uint16): uint16 =
+proc mark*(b: var MarkableCircularBuffer, size: uint32): uint32 =
   ## 立刻标记缓冲区的数据， 直到 ``size`` 个或者到达数据尾部， 返回实际标记的数量。 标记是增量
   ## 进行的， 也就是说， 下一次标记会从上一次标记继续。 
   let m = b.markedPos + size
@@ -291,11 +281,11 @@ proc markAll*(b: var MarkableCircularBuffer) =
   ## 立刻标记缓冲区所有的数据。 标记是增量进行的， 也就是说， 下一次标记会从上一次标记继续。 
   b.markedPos = b.endMirrorPos
 
-proc lenMarks*(b: MarkableCircularBuffer): uint16 = 
+proc lenMarks*(b: MarkableCircularBuffer): uint32 = 
   ## Gets the length of the data that has been makerd.
   b.markedPos - b.startPos
 
-proc popMarks*(b: var MarkableCircularBuffer, size: uint16 = 0): string = 
+proc popMarks*(b: var MarkableCircularBuffer, size: uint32 = 0): string = 
   ## Gets the currently marked data, skip backward ``n`` characters and deletes all marked data.
   if b.markedPos == b.startPos:
     return ""
@@ -303,7 +293,7 @@ proc popMarks*(b: var MarkableCircularBuffer, size: uint16 = 0): string =
   let resultPos = b.markedPos - size
   let resultLen = resultPos - b.startPos
 
-  if resultLen > 0'u16:
+  if resultLen > 0'u32:
     result = newString(resultLen)
     if resultPos <= BufferSize: # only right
       copyMem(result.cstring, b.value.addr.offset(b.startPos), resultLen)
@@ -324,76 +314,3 @@ proc popMarks*(b: var MarkableCircularBuffer, size: uint16 = 0): string =
 
   b.markedPos = b.startPos
 
-proc initVectorBuffer*(
-  minCapacity: uint32 = BufferSize,
-  maxCapacity: uint32 = BufferSize
-): VectorBuffer = 
-  ## 初始化缓冲区。 ``minCapacity`` 指定最小容量， ``maxCapacity`` 指定最大容量。 
-  result.capacity = minCapacity
-  result.minCapacity = minCapacity
-  result.maxCapacity = maxCapacity
-  result.value = newSeqOfCap[char](minCapacity)
-
-proc capacity*(b: VectorBuffer): uint32 = 
-  ## Gets the capacity of the buffer.
-  b.capacity
-
-proc len*(b: VectorBuffer): uint32 = 
-  ## Gets the length of the data.
-  b.endPos
-
-proc reset*(b: var VectorBuffer): uint32 = 
-  ## 重置缓冲区，恢复到初始容量，并且清空所有数据。 
-  b.capacity = b.minCapacity
-  b.endPos = 0
-  b.value = newSeqOfCap[char](b.capacity)
-
-proc extend*(b: var VectorBuffer) = 
-  ## 扩展缓冲区的容量，增长一倍。 如果超过了最大容量，则抛出异常。
-  let newCapacity = b.capacity * 2
-  if newCapacity > b.maxCapacity:
-    raise newException(OverflowError, "capacity overflow")
-  var newValue = newSeqOfCap[char](newCapacity)
-  copyMem(newValue.addr, b.value.addr, b.endPos)
-  b.capacity = newCapacity
-  b.value.shallowCopy(newValue)
-
-proc next*(b: var VectorBuffer): (pointer, uint32) = 
-  ## Gets the next secure storage area. 
-  ## Returns the address and storable length of the area. Then you can manually
-  ## store the data for that area.
-  ## 
-  ## 获取下一个安全的存储区域， 返回该区域的地址和可存储长度。 之后， 您可以对该区域手动存储数据。 
-  result[0] = b.value.addr.offset(b.endPos)
-  result[1] = b.capacity - b.endPos
-
-proc pack*(b: var VectorBuffer, size: uint32): uint32 = 
-  ## The area of ``size`` length inside the buffer is regarded as valid data and returns the actual length.
-  ## Once this operation is performed, this space will be forced to be used as valid data. In other words,
-  ## this method increases the length of the buffer's valid data.
-  #
-  ## 将缓冲区内部 ``size`` 长度的空间区域视为有效数据， 返回实际有效的长度。 一旦执行这个操作， 这部分空间将被
-  ## 强制作为有效数据使用。 换句话说， 这个方法增长了 ``buffer`` 有效数据的长度。 
-  result = min(size, b.capacity - b.endPos) 
-  b.endPos = b.endPos + result
-
-proc put*(b: var VectorBuffer, source: pointer, size: uint32): uint32 = 
-  ## Writes ``source`` of ``size`` length to the buffer and returns the actual size written.
-  ##
-  ## 从 ``source`` 写入 ``size`` 长度的数据， 返回实际写入的长度。 
-  result = min(size, b.capacity - b.endPos)
-  if result > 0'u32:
-    copyMem(b.value.addr.offset(b.endPos), source, result)
-    b.endPos = b.endPos + result
-
-proc get*(b: var VectorBuffer, dest: pointer, size: uint32, start: uint32): uint32 = 
-  ## 从 ``start`` 开始，获取最多 ``size`` 个数据， 将其复制到目标空间 ``dest`` ， 返回实际复制的数量。 
-  result = min(size, b.endPos - start)
-  if result > 0'u32:
-    copyMem(dest, b.value.addr.offset(start), result)
-  elif result < 0'u32:
-    result = 0
-
-proc clear*(b: var VectorBuffer): uint32 = 
-  ## 删除所有数据。 
-  b.endPos = 0

@@ -7,7 +7,7 @@
 # 这个文件很混乱，待整理！！！
 
 import asyncdispatch, nativesockets, strutils
-import netkit/buffer, netkit/http/base, netkit/http/parser
+import netkit/buffer/circular, netkit/http/base, netkit/http/parser
 
 type
   HttpSession* = ref object ## 表示客户端与服务器之间的一个活跃的通信会话。 这个对象不由用户代码直接构造。 
@@ -108,7 +108,7 @@ proc processNextRequest*(session: HttpSession) {.async.} =
         ## TODO: 标记 HttpSession 已经关闭
         session.socket.closeSocket()
         return 
-      discard session.buffer.pack(recvLen.uint16)
+      discard session.buffer.pack(recvLen.uint32)
 
       if req.isNil:
         req = newRequest(session)
@@ -144,9 +144,9 @@ proc read*(req: Request, buf: pointer, size: Natural): Future[int] {.async.} =
           req.readEnded = true
           session.socket.closeSocket()
           return 
-        discard session.buffer.pack(readLen.uint16)
+        discard session.buffer.pack(readLen.uint32)
 
-        let remainingLen = result.uint16 - restLen
+        let remainingLen = result.uint32 - restLen
         discard session.buffer.get(buf.offset(restLen), remainingLen)
         discard session.buffer.del(remainingLen)
 

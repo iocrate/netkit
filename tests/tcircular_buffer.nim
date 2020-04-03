@@ -5,7 +5,7 @@
 #    distribution, for details about the copyright.
 
 import unittest
-import ../netkit/buffer
+import netkit/buffer/constants, netkit/buffer/circular
 
 suite "MarkableCircularBuffer":
   setup:
