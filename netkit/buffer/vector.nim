@@ -95,11 +95,11 @@ proc put*(b: var VectorBuffer, source: pointer, size: uint32): uint32 =
 
 proc get*(b: var VectorBuffer, dest: pointer, size: uint32, start: uint32): uint32 = 
   ## 从 ``start`` 开始，获取最多 ``size`` 个数据， 将其复制到目标空间 ``dest`` ， 返回实际复制的数量。 
+  if start > b.endPos:
+    return 0
   result = min(size, b.endPos - start)
   if result > 0'u32:
     copyMem(dest, b.value.addr.offset(start), result)
-  elif result < 0'u32:
-    result = 0
 
 proc clear*(b: var VectorBuffer): uint32 = 
   ## 删除所有数据。 
