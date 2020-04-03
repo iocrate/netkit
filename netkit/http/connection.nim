@@ -181,21 +181,21 @@ proc write*(
   req: Request, 
   statusCode: HttpCode,
   fields: openArray[tuple[name: string, value: seq[string]]]
-): Future[void] {.async.} =
+): Future[void] =
   ## 对 HTTP 请求 ``req`` 写入响应数据。 等价于 ``write($initResponseHeader(statusCode, fields))`` 。 
   # TODO: 考虑 chunked
   # TODO: Future 优化
-  await req.write($initResponseHeader(statusCode, fields))
+  return req.write($initResponseHeader(statusCode, fields))
 
 proc write*(
   req: Request, 
   statusCode: HttpCode,
   fields: openArray[tuple[name: string, value: string]]
-): Future[void] {.async.} =
+): Future[void]  =
   ## 对 HTTP 请求 ``req`` 写入响应数据。 等价于 ``write($initResponseHeader(statusCode, fields))`` 。 
   # TODO: 考虑 chunked
   # TODO: Future 优化
-  await req.write($initResponseHeader(statusCode, fields))
+  return req.write($initResponseHeader(statusCode, fields))
 
 proc writeEnd*(req: Request): Future[void] {.async.} =
   ## 对 HTTP 请求 ``req`` 写入结尾信号。 
