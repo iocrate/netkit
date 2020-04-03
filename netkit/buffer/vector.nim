@@ -37,6 +37,14 @@ proc capacity*(b: VectorBuffer): uint32 =
   ## Gets the capacity of the buffer.
   b.capacity
 
+proc minCapacity*(b: VectorBuffer): uint32 = 
+  ## Gets the min capacity of the buffer.
+  b.minCapacity
+
+proc maxCapacity*(b: VectorBuffer): uint32 = 
+  ## Gets the max capacity of the buffer.
+  b.maxCapacity
+
 proc len*(b: VectorBuffer): uint32 = 
   ## Gets the length of the data.
   b.endPos

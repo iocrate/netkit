@@ -114,7 +114,7 @@ proc parseHttpVersion(version: string): tuple[orig: string, major, minor: int] =
     i.inc()
   result = (version, major, minor)
 
-proc parseRequest*(p: var HttpParser, req: var ServerReqHeader, buf: var MarkableCircularBuffer): bool = 
+proc parseRequest*(p: var HttpParser, req: var RequestHeader, buf: var MarkableCircularBuffer): bool = 
   ## 解析 HTTP 请求包。这个过程是增量进行的，也就是说，下一次解析会从上一次解析继续。
   result = false
   while true:
@@ -189,7 +189,7 @@ proc parseRequest*(p: var HttpParser, req: var ServerReqHeader, buf: var Markabl
         fieldValue.removeSuffix(WS)
         if fieldValue.len == 0:
           raise newException(ValueError, "Bad Request")
-        req.headers.add(p.currentFieldName, fieldValue)
+        req.fields.add(p.currentFieldName, fieldValue)
         p.currentLineLen = 0
         p.state = HttpParseState.FIELD_NAME
       else:
