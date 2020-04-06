@@ -9,26 +9,65 @@
 import tables, strutils
 
 type
-  HttpCode* = distinct range[0..599] ## HTTP 响应状态码。 
+  HttpCode* = enum ## HTTP 响应状态码。 
+    Http100 = "100 Continue"
+    Http101 = "101 Switching Protocols"
+    Http200 = "200 OK"
+    Http201 = "201 Created"
+    Http202 = "202 Accepted"
+    Http203 = "203 Non-Authoritative Information"
+    Http204 = "204 No Content"
+    Http205 = "205 Reset Content"
+    Http206 = "206 Partial Content"
+    Http300 = "300 Multiple Choices"
+    Http301 = "301 Moved Permanently"
+    Http302 = "302 Found"
+    Http303 = "303 See Other"
+    Http304 = "304 Not Modified"
+    Http305 = "305 Use Proxy"
+    Http307 = "307 Temporary Redirect"
+    Http400 = "400 Bad Request"
+    Http401 = "401 Unauthorized"
+    Http403 = "403 Forbidden"
+    Http404 = "404 Not Found"
+    Http405 = "405 Method Not Allowed"
+    Http406 = "406 Not Acceptable"
+    Http407 = "407 Proxy Authentication Required"
+    Http408 = "408 Request Timeout"
+    Http409 = "409 Conflict"
+    Http410 = "410 Gone"
+    Http411 = "411 Length Required"
+    Http412 = "412 Precondition Failed"
+    Http413 = "413 Request Entity Too Large"
+    Http414 = "414 Request-URI Too Long"
+    Http415 = "415 Unsupported Media Type"
+    Http416 = "416 Requested Range Not Satisfiable"
+    Http417 = "417 Expectation Failed"
+    Http418 = "418 I'm a teapot"
+    Http421 = "421 Misdirected Request"
+    Http422 = "422 Unprocessable Entity"
+    Http426 = "426 Upgrade Required"
+    Http428 = "428 Precondition Required"
+    Http429 = "429 Too Many Requests"
+    Http431 = "431 Request Header Fields Too Large"
+    Http451 = "451 Unavailable For Legal Reasons"
+    Http500 = "500 Internal Server Error"
+    Http501 = "501 Not Implemented"
+    Http502 = "502 Bad Gateway"
+    Http503 = "503 Service Unavailable"
+    Http504 = "504 Gateway Timeout"
+    Http505 = "505 HTTP Version Not Supported"
 
   HttpMethod* = enum ## HTTP 请求方法。 
-    HttpHead,        ## Asks for the response identical to the one that would
-                     ## correspond to a GET request, but without the response
-                     ## body.
-    HttpGet,         ## Retrieves the specified resource.
-    HttpPost,        ## Submits data to be processed to the identified
-                     ## resource. The data is included in the body of the
-                     ## request.
-    HttpPut,         ## Uploads a representation of the specified resource.
-    HttpDelete,      ## Deletes the specified resource.
-    HttpTrace,       ## Echoes back the received request, so that a client
-                     ## can see what intermediate servers are adding or
-                     ## changing in the request.
-    HttpOptions,     ## Returns the HTTP methods that the server supports
-                     ## for specified address.
-    HttpConnect,     ## Converts the request connection to a transparent
-                     ## TCP/IP tunnel, usually used for proxies.
-    HttpPatch        ## Applies partial modifications to a resource.
+    HttpHead = "HEAD",        
+    HttpGet = "GET",         
+    HttpPost = "POST",        
+    HttpPut = "PUT", 
+    HttpDelete = "DELETE", 
+    HttpTrace = "TRACE", 
+    HttpOptions = "OPTIONS", 
+    HttpConnect = "CONNECT", 
+    HttpPatch = "PATCH" 
 
   HttpVersion* = tuple ## 表示 HTTP 版本号。 
     orig: string
@@ -48,55 +87,6 @@ type
     version*: HttpVersion
     fields*: HeaderFields
 
-const
-  Http100* = HttpCode(100)
-  Http101* = HttpCode(101)
-  Http200* = HttpCode(200)
-  Http201* = HttpCode(201)
-  Http202* = HttpCode(202)
-  Http203* = HttpCode(203)
-  Http204* = HttpCode(204)
-  Http205* = HttpCode(205)
-  Http206* = HttpCode(206)
-  Http300* = HttpCode(300)
-  Http301* = HttpCode(301)
-  Http302* = HttpCode(302)
-  Http303* = HttpCode(303)
-  Http304* = HttpCode(304)
-  Http305* = HttpCode(305)
-  Http307* = HttpCode(307)
-  Http400* = HttpCode(400)
-  Http401* = HttpCode(401)
-  Http403* = HttpCode(403)
-  Http404* = HttpCode(404)
-  Http405* = HttpCode(405)
-  Http406* = HttpCode(406)
-  Http407* = HttpCode(407)
-  Http408* = HttpCode(408)
-  Http409* = HttpCode(409)
-  Http410* = HttpCode(410)
-  Http411* = HttpCode(411)
-  Http412* = HttpCode(412)
-  Http413* = HttpCode(413)
-  Http414* = HttpCode(414)
-  Http415* = HttpCode(415)
-  Http416* = HttpCode(416)
-  Http417* = HttpCode(417)
-  Http418* = HttpCode(418)
-  Http421* = HttpCode(421)
-  Http422* = HttpCode(422)
-  Http426* = HttpCode(426)
-  Http428* = HttpCode(428)
-  Http429* = HttpCode(429)
-  Http431* = HttpCode(431)
-  Http451* = HttpCode(451)
-  Http500* = HttpCode(500)
-  Http501* = HttpCode(501)
-  Http502* = HttpCode(502)
-  Http503* = HttpCode(503)
-  Http504* = HttpCode(504)
-  Http505* = HttpCode(505)
-
 const 
   # [RFC5234](https://tools.ietf.org/html/rfc5234#appendix-B.1)
   SP* = '\x20'
@@ -108,64 +98,89 @@ const
   CRLF* = "\x0D\x0A"
   WS* = {SP, HTAB}
 
-proc `==`*(a, b: HttpCode): bool {.borrow.}
-  ## 判断 HTTP 状态码是否相等。 
-  
-proc `$`*(httpMethod: HttpMethod): string = 
-  ## 获取 ``HttpMethod`` 的 HTTP 字符序列表示。 
-  return (system.`$`(httpMethod))[4..^1].toUpperAscii()
+proc toHttpCode*(code: int): HttpCode =
+  ## 获取整数 ``code`` 对应的 HttpCode 表示。
+  case code
+  of 100: Http100
+  of 101: Http101
+  of 200: Http200
+  of 201: Http201
+  of 202: Http202
+  of 203: Http203
+  of 204: Http204
+  of 205: Http205
+  of 206: Http206
+  of 300: Http300
+  of 301: Http301
+  of 302: Http302
+  of 303: Http303
+  of 304: Http304
+  of 305: Http305
+  of 307: Http307
+  of 400: Http400
+  of 401: Http401
+  of 403: Http403
+  of 404: Http404
+  of 405: Http405
+  of 406: Http406
+  of 407: Http407
+  of 408: Http408
+  of 409: Http409
+  of 410: Http410
+  of 411: Http411
+  of 412: Http412
+  of 413: Http413
+  of 414: Http414
+  of 415: Http415
+  of 416: Http416
+  of 417: Http417
+  of 418: Http418
+  of 421: Http421
+  of 422: Http422
+  of 426: Http426
+  of 428: Http428
+  of 429: Http429
+  of 431: Http431
+  of 451: Http451
+  of 500: Http500
+  of 501: Http501
+  of 502: Http502
+  of 503: Http503
+  of 504: Http504
+  of 505: Http505
+  else: raise newException(ValueError, "Not Implemented")
 
-proc `$`*(code: HttpCode): string =
-  ## 获取 ``HttpCode`` 的 HTTP 字符序列表示。
-  case code.int
-  of 100: "100 Continue"
-  of 101: "101 Switching Protocols"
-  of 200: "200 OK"
-  of 201: "201 Created"
-  of 202: "202 Accepted"
-  of 203: "203 Non-Authoritative Information"
-  of 204: "204 No Content"
-  of 205: "205 Reset Content"
-  of 206: "206 Partial Content"
-  of 300: "300 Multiple Choices"
-  of 301: "301 Moved Permanently"
-  of 302: "302 Found"
-  of 303: "303 See Other"
-  of 304: "304 Not Modified"
-  of 305: "305 Use Proxy"
-  of 307: "307 Temporary Redirect"
-  of 400: "400 Bad Request"
-  of 401: "401 Unauthorized"
-  of 403: "403 Forbidden"
-  of 404: "404 Not Found"
-  of 405: "405 Method Not Allowed"
-  of 406: "406 Not Acceptable"
-  of 407: "407 Proxy Authentication Required"
-  of 408: "408 Request Timeout"
-  of 409: "409 Conflict"
-  of 410: "410 Gone"
-  of 411: "411 Length Required"
-  of 412: "412 Precondition Failed"
-  of 413: "413 Request Entity Too Large"
-  of 414: "414 Request-URI Too Long"
-  of 415: "415 Unsupported Media Type"
-  of 416: "416 Requested Range Not Satisfiable"
-  of 417: "417 Expectation Failed"
-  of 418: "418 I'm a teapot"
-  of 421: "421 Misdirected Request"
-  of 422: "422 Unprocessable Entity"
-  of 426: "426 Upgrade Required"
-  of 428: "428 Precondition Required"
-  of 429: "429 Too Many Requests"
-  of 431: "431 Request Header Fields Too Large"
-  of 451: "451 Unavailable For Legal Reasons"
-  of 500: "500 Internal Server Error"
-  of 501: "501 Not Implemented"
-  of 502: "502 Bad Gateway"
-  of 503: "503 Service Unavailable"
-  of 504: "504 Gateway Timeout"
-  of 505: "505 HTTP Version Not Supported"
-  else: $(int(code))
+proc toHttpMethod*(s: string): HttpMethod {.raises: [ValueError].} =
+  ## 获取字符串 ``s`` 对应的 HttpMethod 表示。
+  result =
+    case s
+    of "GET": HttpGet
+    of "POST": HttpPost
+    of "HEAD": HttpHead
+    of "PUT": HttpPut
+    of "DELETE": HttpDelete
+    of "PATCH": HttpPatch
+    of "OPTIONS": HttpOptions
+    of "CONNECT": HttpConnect
+    of "TRACE": HttpTrace
+    else: raise newException(ValueError, "Not Implemented")
+
+proc toHttpVersion*(s: string): HttpVersion =
+  ## 获取字符串 ``s`` 对应的 HttpVersion 表示。 请注意， ``s`` 必须是 ``"HTTP/1.1"`` 或者是 ``"HTTP/1.0"``， 
+  ## 否则， 抛出异常。 当前， 仅支持 HTTP/1.1 和 HTTP/1.0。 
+  if s.len != 8 or s[6] != '.':
+    raise newException(ValueError, "Bad Request")
+  let major = s[5].ord - 48
+  let minor = s[7].ord - 48
+  if major != 1 or minor notin {0, 1}:
+    raise newException(ValueError, "Bad Request")
+  const name = "HTTP/"
+  var i = 0
+  while i < 5:
+    if name[i] != s[i]:
+      raise newException(ValueError, "Bad Request")
+    i.inc()
+  result = (s, major, minor)
 
 proc initHeaderFields*(): HeaderFields =
   ## 初始化一个 HTTP 头字段集合对象。
