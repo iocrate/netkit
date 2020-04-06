@@ -177,8 +177,3 @@ proc parseRequest*(p: var HttpParser, req: var RequestHeader, buf: var MarkableC
         p.popMarksToSecondaryIfFull(buf)
     of HttpParseState.BODY:
       return true
-
-
-
-
-
