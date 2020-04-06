@@ -72,22 +72,40 @@ suite "SetCookie":
       cookie.samesite == Lax
       setCookie(cookie) == fmt"{username}={password}; Max-Age={maxAge}; SameSite=Lax"
       $cookie == setCookie(cookie)
-    
-  test "expires":
+  
+  test "expires string":
     let 
-      expires = DateTime.default
+      expires = "Mon, 6 Apr 2020 12:55:00 GMT"
       cookie = initCookie(username, password, expires)
     check:
       cookie.name == username
       cookie.value == password
-      cookie.expires == "Tue, 30 Nov 0002 00:00:00 GMT"
+      cookie.expires == expires
       cookie.maxAge.isNone
       cookie.domain.len == 0
       cookie.path.len == 0
       not cookie.secure
       not cookie.httpOnly
       cookie.samesite == Lax
-      setCookie(cookie) == fmt"{username}={password}; Expires=Tue, 30 Nov 0002 00:00:00 GMT; SameSite=Lax"
+      setCookie(cookie) == fmt"{username}={password}; Expires={expires}; SameSite=Lax"
+      $cookie == setCookie(cookie)
+    
+  test "expires DateTime":
+    let 
+      dt = initDateTime(6, mApr, 2020, 13, 3, 0, 0, utc())
+      expires = format(dt, "ddd',' dd MMM yyyy HH:mm:ss 'GMT'")
+      cookie = initCookie(username, password, expires)
+    check:
+      cookie.name == username
+      cookie.value == password
+      cookie.expires == expires
+      cookie.maxAge.isNone
+      cookie.domain.len == 0
+      cookie.path.len == 0
+      not cookie.secure
+      not cookie.httpOnly
+      cookie.samesite == Lax
+      setCookie(cookie) == fmt"{username}={password}; Expires={expires}; SameSite=Lax"
       $cookie == setCookie(cookie)
 
   test "secure":
