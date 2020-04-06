@@ -158,3 +158,12 @@ suite "SetCookie":
       cookie.samesite == sameSite
       setCookie(cookie) == fmt"{username}={password}; SameSite={sameSite}"
       $cookie == setCookie(cookie)
+
+
+suite "CookieJar":
+  test "parse":
+    var cookieJar = initCookieJar()
+    cookieJar.parse("username=netkit; password=root")
+    check:
+      cookieJar["username"] == "netkit"
+      cookieJar["password"] == "root"

@@ -1,4 +1,4 @@
-import options, times
+import options, times, strtabs, parseutils
 
 
 type
@@ -14,6 +14,9 @@ type
     secure*: bool
     httpOnly*: bool
     sameSite*: SameSite
+
+  CookieJar* = object
+    data: StringTableRef
 
 
 proc initCookie*(name, value: string, expires = "", maxAge: Option[int] = none(int), 
@@ -49,3 +52,52 @@ proc setCookie*(cookie: Cookie): string =
 
 proc `$`*(cookie: Cookie): string {.inline.} = 
   setCookie(cookie)
+
+proc initCookieJar*(): CookieJar {.inline.} =
+  CookieJar(data: newStringTable(mode = modeCaseSensitive))
+
+proc len*(cookieJar: CookieJar): int {.inline.} =
+  cookieJar.data.len
+
+proc `[]`*(cookieJar: CookieJar, name: string): string {.inline.} =
+  cookieJar.data[name]
+
+proc getOrDefault*(cookieJar: CookieJar, name: string, default = ""): string {.inline.} =
+  cookieJar.data.getOrDefault(name, default)
+
+proc hasKey*(cookieJar: CookieJar, name: string): bool {.inline.} =
+  cookieJar.data.hasKey(name)
+
+proc contains*(cookieJar: CookieJar, name: string): bool {.inline.} =
+  cookieJar.data.contains(name)
+
+proc `[]=`*(cookieJar: var CookieJar, name: string, value: string) {.inline.} =
+  cookieJar.data[name] = value
+
+proc parse*(cookieJar: var CookieJar, text: string) {.inline.} =
+  var 
+    pos = 0
+    name, value: string
+  while true:
+    pos += skipWhile(text, {' ', '\t'}, pos)
+    pos += parseUntil(text, name, '=', pos)
+    if pos >= text.len:
+      break
+    inc(pos) # skip '='
+    pos += parseUntil(text, value, ';', pos)
+    cookieJar[name] = move(value)
+    if pos >= text.len:
+      break
+    inc(pos) # skip ';'
+
+iterator pairs*(cookieJar: CookieJar): tuple[name, value: string] =
+  for (name, value) in cookieJar.data.pairs:
+    yield (name, value)
+
+iterator keys*(cookieJar: CookieJar): string =
+  for name in cookieJar.data.keys:
+    yield name
+
+iterator values*(cookieJar: CookieJar): string =
+  for value in cookieJar.data.values:
+    yield value
