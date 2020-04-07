@@ -160,6 +160,84 @@ suite "SetCookie":
       $cookie == setCookie(cookie)
 
 
+suite "Parse":
+  test "parse cookie from string":
+    let 
+      text = "admin=root; Domain=www.netkit.com; Secure; HttpOnly"
+      cookie = initCookie(text)
+    check:
+      cookie.name == "admin"
+      cookie.value == "root"
+      cookie.domain == "www.netkit.com"
+      cookie.secure
+      cookie.httpOnly
+      cookie.sameSite == None
+      setCookie(cookie) == text
+      $cookie == setCookie(cookie)
+
+  test "parse samesite":
+    let 
+      expectedLax =  "foo=bar; SameSite=Lax"
+      expectedStrict =  "foo=bar; SameSite=Strict"
+      expectedNone = "foo=bar"
+
+    check:
+      $initCookie("foo=bar; SameSite=Lax") == expectedLax
+      $initCookie("foo=bar; SameSite=LAX") == expectedLax
+      $initCookie("foo=bar; SameSite=lax") == expectedLax
+      $initCookie("foo=bar; SAMESITE=Lax") == expectedLax
+      $initCookie("foo=bar; samesite=Lax") == expectedLax
+      
+      $initCookie("foo=bar; SameSite=Strict") == expectedStrict
+      $initCookie("foo=bar; SameSite=STRICT") == expectedStrict
+      $initCookie("foo=bar; SameSite=strict") == expectedStrict
+      $initCookie("foo=bar; SAMESITE=Strict") == expectedStrict
+      $initCookie("foo=bar; samesite=Strict") == expectedStrict
+
+      $initCookie("foo=bar; SameSite=None") == expectedNone
+      $initCookie("foo=bar; SameSite=NONE") == expectedNone
+      $initCookie("foo=bar; SameSite=none") == expectedNone
+      $initCookie("foo=bar; SAMESITE=None") == expectedNone
+      $initCookie("foo=bar; samesite=None") == expectedNone
+
+  test "parse error":
+    expect MissingValueError:
+      discard initCookie("bar")
+
+    expect MissingValueError:
+      discard initCookie("=bar")
+
+    expect MissingValueError:
+      discard initCookie(" =bar")
+
+    expect MissingValueError:
+      discard initCookie("foo=")
+
+  test "parse pair":
+    check $initCookie("foo", "bar=baz") == "foo=bar=baz; SameSite=Lax"
+
+    check:
+      initCookie("foo=bar=baz").name == "foo"
+      initCookie("foo=bar=baz").value == "bar=baz"
+
+    check:
+      $initCookie("foo=bar") == "foo=bar"
+      $initCookie(" foo = bar ") == "foo = bar "
+      $initCookie(" foo=bar ;Path=") == "foo=bar "
+      $initCookie(" foo=bar ; Path= ") == "foo=bar "
+      $initCookie(" foo=bar ; Ignored ") == "foo=bar "
+
+    check:
+      $initCookie("foo=bar; HttpOnly") != "foo=bar"
+      $initCookie("foo=bar;httpOnly") != "foo=bar"
+
+    check:
+      $initCookie("foo=bar; secure") == "foo=bar; Secure"
+      $initCookie(" foo=bar;Secure") == "foo=bar; Secure"
+      $initCookie(" foo=bar;SEcUrE=anything") == "foo=bar; Secure"
+      $initCookie(" foo=bar;httponyl;SEcUrE") == "foo=bar; Secure"
+
+
 suite "CookieJar":
   test "parse":
     var cookieJar = initCookieJar()
