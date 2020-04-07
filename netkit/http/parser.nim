@@ -49,21 +49,17 @@ proc markChar(p: var HttpParser, buf: var MarkableCircularBuffer, c: char): bool
 
 proc markCharOrCRLF(p: var HttpParser, buf: var MarkableCircularBuffer, c: char): MarkProcessKind = 
   result = MarkProcessKind.UNKNOWN
-  let oldLen = buf.lenMarks
   for ch in buf.marks():
+    p.currentLineLen.inc()
     if ch == c:
       result = MarkProcessKind.TOKEN
-      break
+      return
     elif ch == LF:
       if p.popToken(buf) != CRLF:
         raise newException(EOFError, "无效的 CRLF")
       result = MarkProcessKind.CRLF
-      break
-  if result == MarkProcessKind.CRLF:
-    p.currentLineLen = 0
-  else:
-    let newLen = buf.lenMarks
-    p.currentLineLen.inc((newLen - oldLen).int)
+      p.currentLineLen = 0
+      return
 
 proc markRequestLineChar(p: var HttpParser, buf: var MarkableCircularBuffer, c: char): bool = 
   result = p.markChar(buf, c)
@@ -75,8 +71,8 @@ proc markRequestLineCharOrCRLF(p: var HttpParser, buf: var MarkableCircularBuffe
   if p.currentLineLen.int > LimitStartLineLen:
     raise newException(IndexError, "request-line too long")
 
-proc markRequestFieldChar(p: var HttpParser, buf: var MarkableCircularBuffer, c: char): bool = 
-  result = p.markChar(buf, c)
+proc markRequestFieldCharOrCRLF(p: var HttpParser, buf: var MarkableCircularBuffer, c: char): MarkProcessKind = 
+  result = p.markCharOrCRLF(buf, c)
   if p.currentLineLen.int > LimitHeaderFieldLen:
     raise newException(OverflowError, "request-field too long")
 
@@ -106,7 +102,6 @@ proc parseRequest*(p: var HttpParser, req: var RequestHeader, buf: var MarkableC
         break
     of HttpParseState.VERSION:
       if p.markRequestLineChar(buf, LF):
-        p.currentLineLen = 0
         var version = p.popToken(buf, 1)
         # [RFC7230-3.5](https://tools.ietf.org/html/rfc7230#section-3.5) 
         # Although the line terminator for the start-line and header fields is the sequence 
@@ -116,16 +111,15 @@ proc parseRequest*(p: var HttpParser, req: var RequestHeader, buf: var MarkableC
         if version[lastIdx] == CR:
           version.setLen(lastIdx)
         req.version = version.toHttpVersion()
+        p.currentLineLen = 0
         p.state = HttpParseState.FIELD_NAME
       else:
         p.popMarksToSecondaryIfFull(buf)
         break
     of HttpParseState.FIELD_NAME:
-      case p.markCharOrCRLF(buf, COLON)
+      case p.markRequestFieldCharOrCRLF(buf, COLON)
       of MarkProcessKind.TOKEN:
-        p.state = HttpParseState.FIELD_VALUE
         p.currentFieldName = p.popToken(buf, 1)
-        let lastIdx = p.currentFieldName.len - 1
         # [RFC7230-3](https://tools.ietf.org/html/rfc7230#section-3) 
         # A recipient that receives whitespace between the start-line and the first 
         # header field MUST either reject the message as invalid or consume each 
@@ -135,8 +129,9 @@ proc parseRequest*(p: var HttpParser, req: var RequestHeader, buf: var MarkableC
         # [RFC7230-3.2.4](https://tools.ietf.org/html/rfc7230#section-3.2.4) 
         # A server MUST reject any received request message that contains whitespace 
         # between a header field-name and colon with a response code of 400.
-        if p.currentFieldName[lastIdx] in WS:
+        if p.currentFieldName[^1] in WS:
           raise newException(ValueError, "Bad Request")
+        p.state = HttpParseState.FIELD_VALUE
       of MarkProcessKind.CRLF:
         p.currentFieldName = ""
         p.state = HttpParseState.BODY
@@ -161,19 +156,20 @@ proc parseRequest*(p: var HttpParser, req: var RequestHeader, buf: var MarkableC
         elif c == LF:
           var fieldValue = p.popToken(buf, 1)
           let lastIdx = fieldValue.len - 1
-          if lastIdx >= 0 and fieldValue[lastIdx] == CR:
+          if fieldValue[lastIdx] == CR:
             fieldValue.setLen(lastIdx)
           fieldValue.removePrefix(WS)
           fieldValue.removeSuffix(WS)
           if fieldValue.len == 0:
             raise newException(ValueError, "Bad Request")
           req.fields.add(p.currentFieldName, fieldValue)
-          if p.currentLineLen.int > LimitHeaderFieldLen:
-            raise newException(OverflowError, "request-field too long")
-          p.currentLineLen = 0
           p.state = HttpParseState.FIELD_NAME
           break  
       if p.state == HttpParseState.FIELD_VALUE:
         p.popMarksToSecondaryIfFull(buf)
+      else:
+        if p.currentLineLen.int > LimitHeaderFieldLen:
+          raise newException(OverflowError, "request-field too long")
+        p.currentLineLen = 0
     of HttpParseState.BODY:
       return true

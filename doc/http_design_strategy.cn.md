@@ -40,6 +40,8 @@ HTTP 设计策略
 
 4. 提供 chunked 工具函数
 
+更新：下一条请求的触发条件能够精确控制 request handle 交给用户的时间，因此不再需要为 request write 提供 MSB 策略。request write 总能保证写的顺序。将会为其他客户端 API 提供 MSB 策略。
+
 关于下一条请求的触发条件
 ---------------------
 

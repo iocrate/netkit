@@ -12,10 +12,19 @@ proc f(o: var Opt) =
   echo 1
 
 test "todo":
-  # var o = new(Opt)
-  # o[].f()
+  var o = new(Opt)
+  o[].f()
 
-  # echo("abc: " & @["a", "b"].join(", "))
-  # discard
+  echo("abc: " & @["a", "b"].join(", "))
+  discard
 
-  echo Http200 == Http200
+  var s = "abc"
+
+  var a = "123"
+
+  a.shallowCopy(s)
+
+  echo repr a
+  echo a[2]
+
+  

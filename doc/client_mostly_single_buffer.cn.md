@@ -123,3 +123,51 @@ await req2
 这个 IO 缓冲区方案将会应用在 [netkit](https://github.com/iocrate/netkit) --- 一个正在积极开发的 Nim Network 工具包，以及其他的一些网络包中，比如 mysql connector。顺便一提的是，[asyncmysql](https://github.com/tulayang/asyncmysql) 使用了回调函数来处理 IO 一致性问题，但是却导致 API 调用比较难以使用，未来的连接器将会获得改善。
 
 Enjoy yourself! :)
+
+设计策略
+--------
+
+假设共有请求 [1, 2, 3, 4, 5, 6]，正在处理请求 1，则可能的缓冲策略是这样的：
+
+```
+[1] jobing ...
+[3] |...|...|...|
+[2] |...|
+[6] |...|...|
+
+[5] |...|...|...|
+```
+
+MostlgSingleBuffer = object [
+  {
+    id: 2
+    buffer: [,]
+  },
+  {
+    id: 3
+    buffer: [,,]
+  },
+  
+  
+  {
+    id: 5
+    buffer: [,,]
+  },
+  {
+    id: 6
+    buffer: [,]
+  }
+]
+
+MostlgSingleBufferItem = object
+  id,
+  buffer: []
+
+MSB.pop() 得到下一个 "序" 正确的处理目标，即依次得到 2,3,4,5,6
+MSB.pop().getBuffer() 得到其内部缓冲区
+
+MSB.push(req3, buffer3_1) 放入一个待处理目标
+MSB.push(req3, buffer3_2) 放入一个待处理目标
+MSB.push(req3, buffer3_3) 放入一个待处理目标
+
+MSB.push(req2, buffer2_1) 放入一个待处理目标
