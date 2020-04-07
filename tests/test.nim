@@ -4,27 +4,23 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-import unittest, strutils, netkit/http/base
+import unittest, netkit/http/base, asyncdispatch
 
-type Opt = object
-
-proc f(o: var Opt) = 
-  echo 1
-
-test "todo":
-  var o = new(Opt)
-  o[].f()
-
-  echo("abc: " & @["a", "b"].join(", "))
-  discard
-
-  var s = "abc"
-
-  var a = "123"
-
-  a.shallowCopy(s)
-
-  echo repr a
-  echo a[2]
-
+template f(t: untyped) =
+  proc cb() = 
+    let fut = t
+    fut.callback = proc () =
+      discard
   
+  echo "f()"    
+  cb()
+
+proc test(): char =
+  echo "..."
+  return 'a'
+
+proc futDemo(): Future[int] = 
+  echo "futDemo()"
+  result = newFuture[int]()
+
+f: futDemo()
