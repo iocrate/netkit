@@ -4,9 +4,6 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-# 这个文件很混乱，待整理！！！
-# 请注意，这个文件不再使用，作为一个备份暂时保留在这里。
-
 # TODO: 优化写操作。
 # TODO: 添加客户端 API 和客户端连接池。
 
@@ -14,7 +11,7 @@ import asyncdispatch, nativesockets, strutils
 import netkit/buffer/circular, netkit/http/base, netkit/http/parser
 
 type
-  HttpConnection* = ref object ## 表示客户端与服务器之间的一个活跃的通信会话。 这个对象不由用户代码直接构造。 
+  HttpConnection* = ref object ## 表示客户端与服务器之间的一个活跃的通信连接。 这个对象不由用户代码直接构造。 
     buffer: MarkableCircularBuffer
     parser: HttpParser
     requestHandler: RequestHandler
