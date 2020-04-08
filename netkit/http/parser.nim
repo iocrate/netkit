@@ -4,12 +4,9 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-import uri, strutils, net
-import netkit/buffer/circular, netkit/http/base
-
-const LimitStartLineLen* {.intdefine.} = 8*1024 ## HTTP 起始行的最大长度。 
-const LimitHeaderFieldLen* {.intdefine.} = 8*1024 ## HTTP 头字段的最大长度。 
-const LimitHeaderFieldCount* {.intdefine.} = 100 ## HTTP 头字段的最大个数。 
+import uri, strutils
+import netkit/buffer/circular
+import netkit/http/base, netkit/http/constants as http_constants
 
 type
   HttpParser* = object ## HTTP 包解析器。 
@@ -134,6 +131,7 @@ proc parseRequest*(p: var HttpParser, req: var RequestHeader, buf: var MarkableC
         p.state = HttpParseState.FIELD_VALUE
       of MarkProcessKind.CRLF:
         p.currentFieldName = ""
+        p.currentLineLen = 0
         p.state = HttpParseState.BODY
         return true
       of MarkProcessKind.UNKNOWN:
@@ -173,3 +171,39 @@ proc parseRequest*(p: var HttpParser, req: var RequestHeader, buf: var MarkableC
         p.currentLineLen = 0
     of HttpParseState.BODY:
       return true
+
+proc parseChunkHeader(line: string): ChunkHeader = 
+  result.size = 0
+  var i = 0
+  while true:
+    case line[i]
+    of '0'..'9':
+      result.size = result.size shl 4 or (line[i].ord() - '0'.ord())
+    of 'a'..'f':
+      result.size = result.size shl 4 or (line[i].ord() - 'a'.ord() + 10)
+    of 'A'..'F':
+      result.size = result.size shl 4 or (line[i].ord() - 'A'.ord() + 10)
+    of '\0': # TODO: what'is this
+      break
+    of ';':
+      # TODO: chunk-extensions
+      result.extensions = line[i..^1]
+      break
+    else:
+      raise newException(ValueError, "Invalid Chunk Encoded")
+    i.inc()
+
+proc parseChunkHeader*(p: var HttpParser, buf: var MarkableCircularBuffer): (bool, ChunkHeader) = 
+  let succ = p.markChar(buf, LF)
+  if p.currentLineLen.int > LimitChunkedSizeLen:
+    raise newException(OverflowError, "chunked-size-line too long")
+  if succ:
+    var line = p.popToken(buf, 1)
+    let lastIdx = line.len - 1
+    if lastIdx > 0 and line[lastIdx] == CR:
+      line.setLen(lastIdx)
+    p.currentLineLen = 0
+    result = (true, line.parseChunkHeader())
+  else:
+    p.popMarksToSecondaryIfFull(buf)
+    result = (false, ChunkHeader())

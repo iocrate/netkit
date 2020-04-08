@@ -76,6 +76,10 @@ type
 
   HeaderFields* = distinct Table[string, seq[string]] ## 表示 HTTP 头字段集合。 
 
+  ChunkHeader* = object ## 表示 HTTP ``Transfer-Encoding: chunked`` 编码数据的头部。
+    size*: int
+    extensions*: string
+
   RequestHeader* = object ## 表示 HTTP 请求包的头部。 每一个 HTTP 请求应该包含且只包含一个头部。
     reqMethod*: HttpMethod
     url*: string
