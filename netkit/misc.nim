@@ -4,7 +4,5 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-import netkit/checks
-
-const BufferSize* {.intdefine.}: Natural = 8*1024  
-checkDefNatural BufferSize, "BufferSize"
+template offset*(p: pointer, n: int): pointer = 
+  cast[pointer](cast[ByteAddress](p) + n)

@@ -6,21 +6,27 @@
 
 import unittest, netkit/http/base, asyncdispatch
 
-template f(t: untyped) =
-  proc cb() = 
-    let fut = t
-    fut.callback = proc () =
-      discard
+# template f(t: untyped) =
+#   proc cb() = 
+#     let fut = t
+#     fut.callback = proc () =
+#       discard
   
-  echo "f()"    
-  cb()
+#   echo "f()"    
+#   cb()
 
-proc test(): char =
-  echo "..."
-  return 'a'
+# proc test(): char =
+#   echo "..."
+#   return 'a'
 
-proc futDemo(): Future[int] = 
-  echo "futDemo()"
-  result = newFuture[int]()
+# proc futDemo(): Future[int] = 
+#   echo "futDemo()"
+#   result = newFuture[int]()
 
-f: futDemo()
+# f: futDemo()
+
+# proc f1(a: uint) =
+#   discard
+
+# var a = -100
+# f1(a)

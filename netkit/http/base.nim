@@ -71,13 +71,13 @@ type
 
   HttpVersion* = tuple ## 表示 HTTP 版本号。 
     orig: string
-    major: int
-    minor: int
+    major: Natural
+    minor: Natural
 
   HeaderFields* = distinct Table[string, seq[string]] ## 表示 HTTP 头字段集合。 
 
   ChunkHeader* = object ## 表示 HTTP ``Transfer-Encoding: chunked`` 编码数据的头部。
-    size*: int
+    size*: Natural
     extensions*: string
 
   RequestHeader* = object ## 表示 HTTP 请求包的头部。 每一个 HTTP 请求应该包含且只包含一个头部。
@@ -184,7 +184,7 @@ proc toHttpVersion*(s: string): HttpVersion =
     if name[i] != s[i]:
       raise newException(ValueError, "Bad Request")
     i.inc()
-  result = (s, major, minor)
+  result = (s, major.Natural, minor.Natural)
 
 proc initHeaderFields*(): HeaderFields =
   ## 初始化一个 HTTP 头字段集合对象。
@@ -310,7 +310,7 @@ proc initResponseHeader*(
   ## 初始化一个 HTTP 响应包的头部。  ``statusCode`` 指定状态码， HTTP 版本号设定为 "HTTP/1.1"， 
   ## ``fields`` 指定初始字段集合，每个字段可以有多个值。
   result.statusCode = statusCode
-  result.version = ("HTTP/1.1", 1, 1)
+  result.version = ("HTTP/1.1", 1.Natural, 1.Natural)
   result.fields = initHeaderFields(fields)
 
 proc initResponseHeader*(
@@ -320,7 +320,7 @@ proc initResponseHeader*(
   ## 初始化一个服务器端 HTTP 响应包的头部。  ``statusCode`` 指定状态码， HTTP 版本号设定为 "HTTP/1.1"， 
   ## ``fields`` 指定初始字段集合，每个字段可以有多个值。
   result.statusCode = statusCode
-  result.version = ("HTTP/1.1", 1, 1)
+  result.version = ("HTTP/1.1", 1.Natural, 1.Natural)
   result.fields = initHeaderFields(fields)
 
 proc `$`*(H: ResponseHeader): string = 

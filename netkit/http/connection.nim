@@ -44,7 +44,7 @@
 # TODO: 添加客户端 API 和客户端连接池。
 
 import asyncdispatch, nativesockets, strutils, deques
-import netkit/buffer/constants as buffer_constants, netkit/buffer/circular
+import netkit/misc, netkit/buffer/constants as buffer_constants, netkit/buffer/circular
 import netkit/http/base, netkit/http/constants as http_constants, netkit/http/parser
 
 type
@@ -60,7 +60,7 @@ type
     conn: HttpConnection
     header: RequestHeader
     readQueue: ReadQueue
-    contentLen: int
+    contentLen: Natural
     chunked: bool
     readEnded: bool
     writeEnded: bool
@@ -71,8 +71,36 @@ type
     data: Deque[proc ()] 
     reading: bool
 
-template offset(p: pointer, n: int): pointer = 
-  cast[pointer](cast[ByteAddress](p) + n)
+proc initReadQueue(): ReadQueue = 
+  result.data = initDeque[proc ()]()
+  result.reading = false
+
+template addOrCall[T](Q: var ReadQueue, retFuture: Future[T], wrapFuture: Future[T]) =
+  ## 如果 ``Q`` 正在读状态，则将 ``wrapFuture`` 放入队列；否则，立刻调用 ``wrapFuture`` 。 
+  template cbBody = 
+    try:
+      let fut: Future[T] = wrapFuture
+      fut.callback = proc (fut: Future[T]) =
+        if Q.data.len > 0:
+          Q.data.popFirst()()
+        else:
+          Q.reading = false
+        if fut.failed:
+          retFuture.fail(fut.readError())
+        else:
+          retFuture.complete(fut.read())
+    finally:
+      Q.reading = false
+      if Q.data.len > 0:
+        Q.data.clear()
+
+  proc cb() = cbBody
+
+  if Q.reading:
+    Q.data.addLast(cb)
+  else:
+    Q.reading = true
+    cbBody
 
 proc newHttpConnection*(socket: AsyncFD, address: string, handler: RequestHandler): HttpConnection = 
   new(result)
@@ -91,7 +119,7 @@ proc newRequest*(conn: HttpConnection): Request =
   result.chunked = false
   result.readEnded = false
   result.writeEnded = false
-  result.readQueue = ReadQueue(data: initDeque[proc ()](4), reading: false)
+  result.readQueue = initReadQueue()
 
 proc reqMethod*(req: Request): HttpMethod {.inline.} = 
   ## 获取请求方法。 
@@ -163,7 +191,7 @@ proc processNextRequest*(conn: HttpConnection): Future[void] {.async.} =
   req.normalizeSpecificFields()
   await conn.requestHandler(req)
 
-proc read(conn: HttpConnection, buf: pointer, size: Positive): Future[Natural] {.async.} = 
+proc read(conn: HttpConnection, buf: pointer, size: Natural): Future[Natural] {.async.} = 
   ## 读取最多 ``size`` 字节， 读取的数据填充在 ``buf``， 返回实际读取的数量。 如果返回 ``0``， 说明连接
   ## 已经关闭。 
   assert conn.closed == false
@@ -191,7 +219,7 @@ proc read(conn: HttpConnection, buf: pointer, size: Positive): Future[Natural] {
         discard conn.buffer.del(remainingLen.uint32)
         result.inc(remainingLen)
 
-proc readUntil(conn: HttpConnection, buf: pointer, size: Positive): Future[Natural] {.async.} =  
+proc readUntil(conn: HttpConnection, buf: pointer, size: Natural): Future[Natural] {.async.} =  
   ## 读取直到 ``size`` 字节， 读取的数据填充在 ``buf``， 返回实际读取的数量。 如果返回值不等于 ``size``， 说明
   ## 连接已经关闭。如果连接关闭， 则返回；否则，一直读取，直到 ``size`` 字节。
   assert conn.closed == false
@@ -222,34 +250,7 @@ proc readUntil(conn: HttpConnection, buf: pointer, size: Positive): Future[Natur
         result.inc(remainingLen)
         break
 
-template addOrCall[T](Q: var ReadQueue, retFuture: Future[T], wrapFuture: Future[T]) =
-  ## 如果 ``Q`` 正在读状态，则将 ``wrapFuture`` 放入队列；否则，立刻调用 ``wrapFuture`` 。 
-  template cbBody = 
-    try:
-      let fut: Future[T] = wrapFuture
-      fut.callback = proc (fut: Future[T]) =
-        if Q.data.len > 0:
-          Q.data.popFirst()()
-        else:
-          Q.reading = false
-        if fut.failed:
-          retFuture.fail(fut.readError())
-        else:
-          retFuture.complete(fut.read())
-    finally:
-      Q.reading = false
-      if Q.data.len > 0:
-        Q.data.clear()
-
-  proc cb() = cbBody
-
-  if Q.reading:
-    Q.data.addLast(cb)
-  else:
-    Q.reading = true
-    cbBody
-
-proc readUnsafe(req: Request, buf: pointer, size: Positive): Future[Natural] {.async.} =
+proc readUnsafe(req: Request, buf: pointer, size: Natural): Future[Natural] {.async.} =
   ## 读取最多 ``size`` 个数据， 读取的数据填充在 ``buf`` ， 返回实际读取的数量。 如果返回 ``0``， 
   ## 表示已经到达数据尾部，不会再有数据可读。 
   assert not req.readEnded
@@ -280,7 +281,7 @@ proc readUnsafe(req: Request): Future[string] {.async.} =
     if req.writeEnded:
       asyncCheck req.conn.processNextRequest()
 
-proc read*(req: Request, buf: pointer, size: Positive): Future[Natural] =
+proc read*(req: Request, buf: pointer, size: Natural): Future[Natural] =
   ## 读取最多 ``size`` 个数据， 读取的数据填充在 ``buf``， 返回实际读取的数量。 如果返回 ``0``， 
   ## 表示已经到达数据尾部，不会再有数据可读。 
   # TODO: 考虑 chunked
@@ -309,7 +310,7 @@ template readChunkHeaderUnsafe(req: Request, chunkHeader: ChunkHeader) =
         return 
       discard conn.buffer.pack(recvLen.uint32)  
 
-proc readChunkUnsafe(req: Request, buf: pointer, size: range[LimitChunkedDataLen..high(int)]): Future[Natural] {.async.} =
+proc readChunkUnsafe(req: Request, buf: pointer, size: range[LimitChunkedDataLen.int..high(int)]): Future[Natural] {.async.} =
   ## 读取一块 chunked 数据， 读取的数据填充在 ``buf`` 。 ``size`` 最少是 ``LimitChunkedDataLen``，以防止块数据过长导致
   ## 溢出。 如果返回 ``0``， 表示已经到达数据尾部，不会再有数据可读。
   var chunkHeader: ChunkHeader
@@ -349,7 +350,7 @@ proc readChunk*(req: Request): Future[string] =
   result = newFuture[string]("readChunk")
   req.readQueue.addOrCall(result): req.readChunkUnsafe()
 
-proc read*(req: Request, buf: pointer, size: range[LimitChunkedDataLen..high(int)]): Future[Natural] =
+proc read*(req: Request, buf: pointer, size: range[LimitChunkedDataLen.int..high(int)]): Future[Natural] =
   ## 读取最多 ``size`` 个数据， 读取的数据填充在 ``buf``， 返回实际读取的数量。 如果返回 ``0``， 
   ## 表示已经到达数据尾部，不会再有数据可读。 如果数据是 ``Transfer-Encoding: chunked`` 编码的，则
   ## 自动进行解码，并填充一块数据。 

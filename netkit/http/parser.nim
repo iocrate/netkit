@@ -11,7 +11,7 @@ import netkit/http/base, netkit/http/constants as http_constants
 type
   HttpParser* = object ## HTTP 包解析器。 
     secondaryBuffer: string
-    currentLineLen: int
+    currentLineLen: Natural
     currentFieldName: string
     state: HttpParseState
     
@@ -24,7 +24,7 @@ type
 proc initHttpParser*(): HttpParser =
   discard
 
-proc popToken(p: var HttpParser, buf: var MarkableCircularBuffer, size: uint16 = 0): string = 
+proc popToken(p: var HttpParser, buf: var MarkableCircularBuffer, size: Natural = 0): string = 
   if p.secondaryBuffer.len > 0:
     p.secondaryBuffer.add(buf.popMarks(size))
     result = p.secondaryBuffer
@@ -194,6 +194,7 @@ proc parseChunkHeader(line: string): ChunkHeader =
     i.inc()
 
 proc parseChunkHeader*(p: var HttpParser, buf: var MarkableCircularBuffer): (bool, ChunkHeader) = 
+  ## 解析 HTTP 请求体中 ``Transfer-Encoding: chunked`` 编码的数据头部。 
   let succ = p.markChar(buf, LF)
   if p.currentLineLen.int > LimitChunkedSizeLen:
     raise newException(OverflowError, "chunked-size-line too long")
