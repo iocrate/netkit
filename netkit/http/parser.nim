@@ -172,7 +172,7 @@ proc parseRequest*(p: var HttpParser, req: var RequestHeader, buf: var MarkableC
     of HttpParseState.BODY:
       return true
 
-proc parseChunkHeader(line: string): ChunkHeader = 
+proc parseChunkSizer(line: string): ChunkSizer = 
   result.size = 0
   var i = 0
   while true:
@@ -186,15 +186,14 @@ proc parseChunkHeader(line: string): ChunkHeader =
     of '\0': # TODO: what'is this
       break
     of ';':
-      # TODO: chunk-extensions
       result.extensions = line[i..^1]
       break
     else:
       raise newException(ValueError, "Invalid Chunk Encoded")
     i.inc()
 
-proc parseChunkHeader*(p: var HttpParser, buf: var MarkableCircularBuffer): (bool, ChunkHeader) = 
-  ## 解析 HTTP 请求体中 ``Transfer-Encoding: chunked`` 编码的数据头部。 
+proc parseChunkSizer*(p: var HttpParser, buf: var MarkableCircularBuffer): (bool, ChunkSizer) = 
+  ## 解析 HTTP 请求体中 ``Transfer-Encoding: chunked`` 编码的尺寸部分。 
   let succ = p.markChar(buf, LF)
   if p.currentLineLen.int > LimitChunkedSizeLen:
     raise newException(OverflowError, "chunked-size-line too long")
@@ -204,7 +203,7 @@ proc parseChunkHeader*(p: var HttpParser, buf: var MarkableCircularBuffer): (boo
     if lastIdx > 0 and line[lastIdx] == CR:
       line.setLen(lastIdx)
     p.currentLineLen = 0
-    result = (true, line.parseChunkHeader())
+    result = (true, line.parseChunkSizer())
   else:
     p.popMarksToSecondaryIfFull(buf)
-    result = (false, ChunkHeader())
+    result = (false, ChunkSizer())

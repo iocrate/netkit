@@ -55,6 +55,11 @@ type
     socket: AsyncFD
     address: string
     closed: bool
+    readEnded: bool
+
+  ReadQueue = object
+    data: Deque[proc () {.closure, gcsafe.}] 
+    reading: bool
 
   Request* = ref object ## 表示一次 HTTP 请求。 这个对象不由用户代码直接构造。 
     conn: HttpConnection
@@ -67,40 +72,38 @@ type
     
   RequestHandler* = proc (req: Request): Future[void] {.closure, gcsafe.}
 
-  ReadQueue = object
-    data: Deque[proc ()] 
-    reading: bool
-
 proc initReadQueue(): ReadQueue = 
-  result.data = initDeque[proc ()]()
+  result.data = initDeque[proc () {.closure, gcsafe.}]()
   result.reading = false
 
 template addOrCall[T](Q: var ReadQueue, retFuture: Future[T], wrapFuture: Future[T]) =
-  ## 如果 ``Q`` 正在读状态，则将 ``wrapFuture`` 放入队列；否则，立刻调用 ``wrapFuture`` 。 
-  template cbBody = 
-    try:
-      let fut: Future[T] = wrapFuture
-      fut.callback = proc (fut: Future[T]) =
-        if Q.data.len > 0:
-          Q.data.popFirst()()
-        else:
-          Q.reading = false
-        if fut.failed:
-          retFuture.fail(fut.readError())
-        else:
-          retFuture.complete(fut.read())
-    finally:
+  ## 如果 ``Q`` 正在读状态，则将 ``wrapFuture`` 放入队列；否则，立刻调用 ``wrapFuture`` 。
+  template nextIfNotEmpty = 
+    if Q.data.len > 0:
+      Q.data.popFirst()()
+    else:
       Q.reading = false
-      if Q.data.len > 0:
-        Q.data.clear()
 
-  proc cb() = cbBody
+  template call =
+    var fut: Future[T] 
+    try:
+      fut = wrapFuture
+    except:
+      nextIfNotEmpty()
+      retFuture.fail(getCurrentException())
+      return
+    fut.callback = proc (fut: Future[T]) =
+      nextIfNotEmpty()
+      if fut.failed:
+        retFuture.fail(fut.readError())
+      else:
+        retFuture.complete(fut.read())
 
   if Q.reading:
-    Q.data.addLast(cb)
+    Q.data.addLast(proc () = call)
   else:
     Q.reading = true
-    cbBody
+    call
 
 proc newHttpConnection*(socket: AsyncFD, address: string, handler: RequestHandler): HttpConnection = 
   new(result)
@@ -115,11 +118,11 @@ proc newRequest*(conn: HttpConnection): Request =
   new(result)
   result.conn = conn
   result.header = initRequestHeader()
+  result.readQueue = initReadQueue()
   result.contentLen = 0
   result.chunked = false
   result.readEnded = false
   result.writeEnded = false
-  result.readQueue = initReadQueue()
 
 proc reqMethod*(req: Request): HttpMethod {.inline.} = 
   ## 获取请求方法。 
@@ -178,6 +181,7 @@ proc processNextRequest*(conn: HttpConnection): Future[void] {.async.} =
       let recvLen = await conn.socket.recvInto(region[0], region[1].int)
       if recvLen == 0:
         conn.socket.closeSocket()
+        conn.readEnded = true
         conn.closed = true
         return 
       discard conn.buffer.pack(recvLen.uint32)
@@ -194,7 +198,8 @@ proc processNextRequest*(conn: HttpConnection): Future[void] {.async.} =
 proc read(conn: HttpConnection, buf: pointer, size: Natural): Future[Natural] {.async.} = 
   ## 读取最多 ``size`` 字节， 读取的数据填充在 ``buf``， 返回实际读取的数量。 如果返回 ``0``， 说明连接
   ## 已经关闭。 
-  assert conn.closed == false
+  assert not conn.closed
+  assert not conn.readEnded
   result = conn.buffer.len.int
   if result >= size:
     discard conn.buffer.get(buf, size.uint32)
@@ -207,8 +212,7 @@ proc read(conn: HttpConnection, buf: pointer, size: Natural): Future[Natural] {.
     let remainingLen = size - result
     let recvLen = await conn.socket.recvInto(buf.offset(result), remainingLen)
     if recvLen == 0:
-      conn.socket.closeSocket()
-      conn.closed = true
+      conn.readEnded = true
     else: 
       if remainingLen > recvLen:
         discard conn.buffer.get(buf.offset(result), recvLen.uint32)
@@ -222,7 +226,8 @@ proc read(conn: HttpConnection, buf: pointer, size: Natural): Future[Natural] {.
 proc readUntil(conn: HttpConnection, buf: pointer, size: Natural): Future[Natural] {.async.} =  
   ## 读取直到 ``size`` 字节， 读取的数据填充在 ``buf``， 返回实际读取的数量。 如果返回值不等于 ``size``， 说明
   ## 连接已经关闭。如果连接关闭， 则返回；否则，一直读取，直到 ``size`` 字节。
-  assert conn.closed == false
+  assert not conn.closed
+  assert not conn.readEnded
   result = conn.buffer.len.int
   if result >= size:
     discard conn.buffer.get(buf, size.uint32)
@@ -236,8 +241,7 @@ proc readUntil(conn: HttpConnection, buf: pointer, size: Natural): Future[Natura
     while true:
       let recvLen = await conn.socket.recvInto(buf.offset(result), remainingLen)
       if recvLen == 0:
-        conn.socket.closeSocket()
-        conn.closed = true
+        conn.readEnded = true
         return 
       if remainingLen > recvLen:
         discard conn.buffer.get(buf.offset(result), recvLen.uint32)
@@ -254,77 +258,68 @@ proc readUnsafe(req: Request, buf: pointer, size: Natural): Future[Natural] {.as
   ## 读取最多 ``size`` 个数据， 读取的数据填充在 ``buf`` ， 返回实际读取的数量。 如果返回 ``0``， 
   ## 表示已经到达数据尾部，不会再有数据可读。 
   assert not req.readEnded
-  assert req.chunked
+  assert not req.chunked
+  assert req.contentLen > 0
   result = await req.conn.read(buf, min(req.contentLen, size))
   req.contentLen.dec(result)  
-  if req.conn.closed:
+  if req.contentLen == 0:
     req.readEnded = true
-  elif req.contentLen == 0:
-    req.readEnded = true
-    if req.writeEnded:
+    if not req.conn.readEnded and req.writeEnded:
       asyncCheck req.conn.processNextRequest()
 
 proc readUnsafe(req: Request): Future[string] {.async.} =
   ## 读取最多 ``size`` 个数据， 读取的数据填充在 ``buf`` ， 返回实际读取的数量。 如果返回 ``0``， 
   ## 表示已经到达数据尾部，不会再有数据可读。 
   assert not req.readEnded
+  assert not req.chunked
   assert req.contentLen > 0
   let size = min(req.contentLen, BufferSize.int)
   result = newString(size)
-  let readLen = await req.conn.read(result.cstring, size)
-  result.setLen(readLen)
+  let readLen = await req.conn.read(result.cstring, size) # should need Gc_ref(result) ?
+  result.setLen(readLen)                                  # still ref result 
   req.contentLen.dec(readLen)  
-  if req.conn.closed:
+  if req.conn.readEnded:
     req.readEnded = true
   elif req.contentLen == 0:
     req.readEnded = true
     if req.writeEnded:
       asyncCheck req.conn.processNextRequest()
 
-proc read*(req: Request, buf: pointer, size: Natural): Future[Natural] =
-  ## 读取最多 ``size`` 个数据， 读取的数据填充在 ``buf``， 返回实际读取的数量。 如果返回 ``0``， 
-  ## 表示已经到达数据尾部，不会再有数据可读。 
-  # TODO: 考虑 chunked
-  result = newFuture[Natural]("read")
-  req.readQueue.addOrCall(result): req.readUnsafe(buf, size)
-
-template readChunkHeaderUnsafe(req: Request, chunkHeader: ChunkHeader) = 
+template readChunkSizerUnsafe(req: Request, chunkSizer: ChunkSizer): bool = 
   let conn = req.conn
   var succ: bool
-
   while true:
-    (succ, chunkHeader) = conn.parser.parseChunkHeader(conn.buffer)
+    (succ, chunkSizer) = conn.parser.parseChunkSizer(conn.buffer)
     if succ:
       break
     let (regionPtr, regionLen) = conn.buffer.next()
     let recvFuture = conn.socket.recvInto(regionPtr, regionLen.int)
     yield recvFuture
-    if recvFuture.failed:
-      raise recvFuture.readError()
-    else:
-      let recvLen = recvFuture.read()
-      if recvLen == 0:
-        req.readEnded = true
-        conn.socket.closeSocket()
-        conn.closed = true
-        return 
-      discard conn.buffer.pack(recvLen.uint32)  
+    assert not recvFuture.failed # recvInto 一定不会抛出异常？  
+    # if recvFuture.failed:
+    #   raise recvFuture.readError()
+    # else:
+    let recvLen = recvFuture.read()
+    if recvLen == 0:
+      conn.readEnded = true
+      break 
+    discard conn.buffer.pack(recvLen.uint32)  
+  succ
 
-proc readChunkUnsafe(req: Request, buf: pointer, size: range[LimitChunkedDataLen.int..high(int)]): Future[Natural] {.async.} =
+proc readChunkUnsafe(req: Request, buf: pointer, size: range[int(LimitChunkedDataLen)..high(int)]): Future[Natural] {.async.} =
   ## 读取一块 chunked 数据， 读取的数据填充在 ``buf`` 。 ``size`` 最少是 ``LimitChunkedDataLen``，以防止块数据过长导致
   ## 溢出。 如果返回 ``0``， 表示已经到达数据尾部，不会再有数据可读。
-  var chunkHeader: ChunkHeader
-  readChunkHeaderUnsafe(req, chunkHeader)
-  if chunkHeader.size == 0:
-    req.readEnded = true
-    if req.writeEnded:
-      asyncCheck req.conn.processNextRequest()
-  else:
-    assert chunkHeader.size <= size
-    result = await req.conn.readUntil(buf, chunkHeader.size)
-    if req.conn.closed:
-      result = 0
+  var chunkSizer: ChunkSizer
+  if readChunkSizerUnsafe(req, chunkSizer):
+    if chunkSizer.size == 0:
       req.readEnded = true
+      if req.writeEnded:
+        asyncCheck req.conn.processNextRequest()
+    else:
+      assert chunkSizer.size <= size
+      result = await req.conn.readUntil(buf, chunkSizer.size)
+      if req.conn.readEnded:
+        result = 0
 
 proc readChunkUnsafe(req: Request): Future[string] {.async.} =
   ## 读取一块 chunked 数据。 HTTP 请求头中 ``Transfer-Encoding`` 必须包含 ``chunked`` 编码，否则
@@ -332,32 +327,26 @@ proc readChunkUnsafe(req: Request): Future[string] {.async.} =
   ## 表示已经到达数据尾部，不会再有数据可读。 
   # TODO: 合并 read
   # chunked size 必须小于 BufferSize；chunkedSizeLen 必须小于 BufferSize
-  var chunkHeader: ChunkHeader
-  readChunkHeaderUnsafe(req, chunkHeader)
-  if chunkHeader.size == 0:
-    req.readEnded = true
-    if req.writeEnded:
-      asyncCheck req.conn.processNextRequest()
-  else:
-    result = newString(chunkHeader.size)
-    # TODO: 考虑 result.cstring 的 gc_ref gc_unref
-    discard await req.conn.readUntil(result.cstring, chunkHeader.size)
-    if req.conn.closed:
-      result = ""
+  var chunkSizer: ChunkSizer
+  if readChunkSizerUnsafe(req, chunkSizer):
+    if chunkSizer.size == 0:
       req.readEnded = true
+      if req.writeEnded:
+        asyncCheck req.conn.processNextRequest()
+    else:
+      result = newString(chunkSizer.size)
+      discard await req.conn.readUntil(result.cstring, chunkSizer.size) # should need Gc_ref(result) ?
+      if req.conn.closed:
+        result = ""                                                     # still ref result
 
-proc readChunk*(req: Request): Future[string] =
-  result = newFuture[string]("readChunk")
-  req.readQueue.addOrCall(result): req.readChunkUnsafe()
-
-proc read*(req: Request, buf: pointer, size: range[LimitChunkedDataLen.int..high(int)]): Future[Natural] =
+proc read*(req: Request, buf: pointer, size: range[int(LimitChunkedDataLen)..high(int)]): Future[Natural] =
   ## 读取最多 ``size`` 个数据， 读取的数据填充在 ``buf``， 返回实际读取的数量。 如果返回 ``0``， 
   ## 表示已经到达数据尾部，不会再有数据可读。 如果数据是 ``Transfer-Encoding: chunked`` 编码的，则
   ## 自动进行解码，并填充一块数据。 
   ## 
   ## ``size`` 最少是 ``LimitChunkedDataLen``。 
   result = newFuture[Natural]("read")
-  if req.readEnded:
+  if req.conn.readEnded or req.readEnded:
     result.complete(0)
   else:
     if req.chunked:
@@ -372,13 +361,27 @@ proc read*(req: Request): Future[string] =
   ## 
   ## ``size`` 最少是 ``LimitChunkedDataLen``。 
   result = newFuture[string]("read")
-  if req.readEnded:
+  if req.conn.readEnded or req.readEnded:
     result.complete("")
   else:
     if req.chunked:
       req.readQueue.addOrCall(result): req.readChunkUnsafe()
     else:
       req.readQueue.addOrCall(result): req.readUnsafe()
+
+proc readAll*(req: Request): Future[string] {.async.} =
+  ## 读取所有数据， 直到数据尾部， 即不再有数据可读。 返回所有读到的数据。 
+  while true:
+    let data = await req.read()
+    if data.len > 0:
+      result.add(data)
+    else:
+      break
+
+proc isEOF*(req: Request): bool =
+  ## 判断 ``req`` 的读是否已经到达数据尾部，不再有数据可读。 到达尾部，有可能是客户端已经发送完所有必要的数据； 
+  ## 也有可能客户端提前关闭了发送端，使得读操作提前完成。 
+  req.conn.readEnded or req.readEnded
 
 proc write*(req: Request, buf: pointer, size: Natural): Future[void] {.async.} =
   ## 对 HTTP 请求 ``req`` 写入响应数据。 

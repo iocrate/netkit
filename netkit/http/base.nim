@@ -76,7 +76,7 @@ type
 
   HeaderFields* = distinct Table[string, seq[string]] ## 表示 HTTP 头字段集合。 
 
-  ChunkHeader* = object ## 表示 HTTP ``Transfer-Encoding: chunked`` 编码数据的头部。
+  ChunkSizer* = object ## 表示 HTTP ``Transfer-Encoding: chunked`` 编码数据的尺寸部分。
     size*: Natural
     extensions*: string
 
