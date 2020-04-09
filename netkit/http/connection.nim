@@ -40,15 +40,6 @@
 #
 # 6. 同一个连接，同一个响应，不同次序的写，一定不存在竞争问题。因为不对写数据进行内部处理，而是直接交给底层 socket。
 
-# TODO: 优化写操作。
-# TODO: 添加客户端 API 和客户端连接池。
-
-# TODO: 考虑 socket recv 异常 （虽然不可能出现）如何处理，是否 close connection 
-# TODO：考虑 markable object 处理器替代 markable buffer， 使 buffer 成为一个可替换的插件 
-# TODO: 使用 {.noInit.} 优化 procs
-# TODO: 优化 chunk 编码
-# TODO: 考虑统一抽象编码解码相关的内容，比如 chunk 解码、编码；HTTP version、method HTTP header 编码解码；
-
 import asyncdispatch, nativesockets, strutils, deques
 import netkit/misc, netkit/buffer/constants as buffer_constants, netkit/buffer/circular
 import netkit/http/base, netkit/http/constants as http_constants, netkit/http/parser
