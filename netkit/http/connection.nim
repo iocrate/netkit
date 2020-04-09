@@ -43,6 +43,12 @@
 # TODO: 优化写操作。
 # TODO: 添加客户端 API 和客户端连接池。
 
+# TODO: 考虑 socket recv 异常 （虽然不可能出现）如何处理，是否 close connection 
+# TODO：考虑 markable object 处理器替代 markable buffer， 使 buffer 成为一个可替换的插件 
+# TODO: 使用 {.noInit.} 优化 procs
+# TODO: 优化 chunk 编码
+# TODO: 考虑统一抽象编码解码相关的内容，比如 chunk 解码、编码；HTTP version、method HTTP header 编码解码；
+
 import asyncdispatch, nativesockets, strutils, deques
 import netkit/misc, netkit/buffer/constants as buffer_constants, netkit/buffer/circular
 import netkit/http/base, netkit/http/constants as http_constants, netkit/http/parser
@@ -387,17 +393,61 @@ proc isEOF*(req: Request): bool =
 
 proc write*(req: Request, buf: pointer, size: Natural): Future[void] {.async.} =
   ## 对 HTTP 请求 ``req`` 写入响应数据。 
-  # TODO: 考虑 chunked
   if req.writeEnded:
-    # TODO: 打印警告信息或者抛出异常
-    # raise newException(IOError, "write after ended")
-    return 
-
+    # TODO: 设计异常类型
+    raise newException(IOError, "write after ended")
   await req.conn.socket.send(buf, size)
+
+proc toChunkSize(x: BiggestInt): string {.noInit.} = 
+  const HexChars = "0123456789ABCDEF"
+  var n = x
+  var m = 0
+  var s = newString(5) # sizeof(BiggestInt) * 10 / 16
+  for j in countdown(4, 0):
+    s[j] = HexChars[n and 0xF]
+    n = n shr 4
+    m.inc()
+    if n == 0: 
+      break
+  result = newStringOfCap(m)
+  for i in 5-m..<5:
+    result.add(s[i])
+
+proc encodeToChunk*(source: pointer, sourceSize: Natural, dist: pointer, distSize: Natural) =
+  ## 将 ``source`` 编码为 chunked 数据， 编码后的数据保存在 ``dist`` 。 ``dist`` 的长度 ``distSize`` 至少比 ``source``
+  ## 的长度 ``sourceSize`` 大 10， 否则， 将抛出错误。
+  ## TODO: 优化 
+  if distSize - sourceSize < 10:
+    raise newException(OverflowError, "dist size must be large than souce")
+  let chunksize = sourceSize.toChunkSize()  
+  assert chunkSize.len <= 5
+  copyMem(dist, chunksize.cstring, chunksize.len)
+  cast[ptr char](dist.offset(chunksize.len))[] = CR
+  cast[ptr char](dist.offset(chunksize.len + 1))[] = LF
+  copyMem(dist.offset(chunksize.len + 2), source, sourceSize)
+  cast[ptr char](dist.offset(chunksize.len + 2 + sourceSize))[] = CR
+  cast[ptr char](dist.offset(chunksize.len + 2 + sourceSize + 1))[] = LF
+
+proc encodeToChunk*(source: pointer, sourceSize: Natural, dist: pointer, distSize: Natural, extensions: string) =
+  ## 将 ``source`` 编码为 chunked 数据， 编码后的数据保存在 ``dist`` 。 ``dist`` 的长度 ``distSize`` 至少比 ``source``
+  ## 的长度 ``sourceSize`` 大 10 + extensions.len， 否则， 将抛出错误。
+  ## TODO: 优化 
+  if distSize - sourceSize - extensions.len < 10:
+    raise newException(OverflowError, "dist size must be large than souce")
+  let chunksize = sourceSize.toChunkSize()  
+  assert chunkSize.len <= 5
+  copyMem(dist, chunksize.cstring, chunksize.len)
+  copyMem(dist.offset(chunksize.len), extensions.cstring, extensions.len)
+  cast[ptr char](dist.offset(chunksize.len + extensions.len))[] = CR
+  cast[ptr char](dist.offset(chunksize.len + 1 + extensions.len))[] = LF
+  copyMem(dist.offset(chunksize.len + 2 + extensions.len), source, sourceSize)
+  cast[ptr char](dist.offset(chunksize.len + 2 + sourceSize + extensions.len))[] = CR
+  cast[ptr char](dist.offset(chunksize.len + 2 + sourceSize + 1 + extensions.len))[] = LF
 
 proc write*(req: Request, data: string): Future[void] =
   ## 对 HTTP 请求 ``req`` 写入响应数据。 
   # TODO: 考虑 chunked
+  # TODO: 考虑 GC_ref data
   return req.write(data.cstring, data.len)
 
 proc write*(
@@ -416,17 +466,20 @@ proc write*(
   ## 对 HTTP 请求 ``req`` 写入响应数据。 等价于 ``write($initResponseHeader(statusCode, fields))`` 。 
   return req.write($initResponseHeader(statusCode, fields))
 
-proc writeEnd*(req: Request): Future[void] {.async.} =
-  ## 对 HTTP 请求 ``req`` 写入结尾信号。 
-  # TODO: 考虑 chunked
-  if req.writeEnded:
-    return
-
-  req.writeEnded = true
-  if req.readEnded:
-    asyncCheck req.conn.processNextRequest()
+proc writeEnd*(req: Request) =
+  ## 对 HTTP 请求 ``req`` 写入结尾信号。 之后， 不能向 ``req`` 写入数据， 否则将抛出异常。 
+  if not req.writeEnded:
+    req.writeEnded = true
+    if req.conn.readEnded:
+      if not req.conn.closed:
+        req.conn.socket.closeSocket()
+        req.conn.closed = true
+    else:
+      if req.readEnded:
+        asyncCheck req.conn.processNextRequest()
 
 
  
+
 
 

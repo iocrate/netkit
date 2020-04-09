@@ -19,7 +19,7 @@ proc handler(req: Request) {.async.} =
   await req.write("Hello")
   await req.write(" ")
   await req.write("World")
-  await req.writeEnd()
+  req.writeEnd()
 
 waitFor server.serve(8001.Port, handler)
 
