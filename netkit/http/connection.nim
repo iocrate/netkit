@@ -345,14 +345,15 @@ proc read*(req: Request, buf: pointer, size: range[int(LimitChunkedDataLen)..hig
   ## 自动进行解码，并填充一块数据。 
   ## 
   ## ``size`` 最少是 ``LimitChunkedDataLen``。 
-  result = newFuture[Natural]("read")
+  let retFuture = newFuture[Natural]("read")
+  result = retFuture
   if req.conn.readEnded or req.readEnded:
-    result.complete(0)
+    retFuture.complete(0)
   else:
     if req.chunked:
-      req.readQueue.addOrCall(result): req.readChunkUnsafe(buf, size)
+      req.readQueue.addOrCall(retFuture): req.readChunkUnsafe(buf, size)
     else:
-      req.readQueue.addOrCall(result): req.readUnsafe(buf, size)
+      req.readQueue.addOrCall(retFuture): req.readUnsafe(buf, size)
 
 proc read*(req: Request): Future[string] =
   ## 读取最多 ``size`` 个数据， 读取的数据填充在 ``buf``， 返回实际读取的数量。 如果返回 ``0``， 
@@ -360,14 +361,15 @@ proc read*(req: Request): Future[string] =
   ## 自动进行解码，并填充一块数据。 
   ## 
   ## ``size`` 最少是 ``LimitChunkedDataLen``。 
-  result = newFuture[string]("read")
+  let retFuture = newFuture[string]("read")
+  result = retFuture
   if req.conn.readEnded or req.readEnded:
-    result.complete("")
+    retFuture.complete("")
   else:
     if req.chunked:
-      req.readQueue.addOrCall(result): req.readChunkUnsafe()
+      req.readQueue.addOrCall(retFuture): req.readChunkUnsafe()
     else:
-      req.readQueue.addOrCall(result): req.readUnsafe()
+      req.readQueue.addOrCall(retFuture): req.readUnsafe()
 
 proc readAll*(req: Request): Future[string] {.async.} =
   ## 读取所有数据， 直到数据尾部， 即不再有数据可读。 返回所有读到的数据。 

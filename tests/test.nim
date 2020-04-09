@@ -30,3 +30,21 @@ import unittest, netkit/http/base, asyncdispatch
 
 # var a = -100
 # f1(a)
+
+type
+  Opt = ref object
+    d: int
+
+template f1(x: Opt) =
+  proc cb() = 
+    let o = x
+    o.d = 100
+
+  cb()
+
+proc f(): Opt =
+  let a = new(Opt)  
+  f1(a)
+  return a
+
+echo repr f()
