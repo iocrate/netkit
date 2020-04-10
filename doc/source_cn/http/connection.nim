@@ -40,9 +40,16 @@
 #
 # 6. 同一个连接，同一个响应，不同次序的写，一定不存在竞争问题。因为不对写数据进行内部处理，而是直接交给底层 socket。
 
-import asyncdispatch, nativesockets, strutils, deques
-import netkit/misc, netkit/buffer/constants as buffer_constants, netkit/buffer/circular
-import netkit/http/base, netkit/http/constants as http_constants, netkit/http/parser
+import strutils
+import deques
+import asyncdispatch
+import nativesockets
+import netkit/misc
+import netkit/buffer/constants as buffer_constants
+import netkit/buffer/circular
+import netkit/http/base 
+import netkit/http/constants as http_constants
+import netkit/http/parser
 
 type
   HttpConnection* = ref object ## 表示客户端与服务器之间的一个活跃的通信连接。 这个对象不由用户代码直接构造。 

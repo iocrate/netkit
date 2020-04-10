@@ -6,7 +6,8 @@
 
 ## 这个模块提供 HTTP 相关的基础工具。
 
-import tables, strutils
+import tables
+import strutils
 
 type
   HttpCode* = enum ## HTTP 响应状态码。 

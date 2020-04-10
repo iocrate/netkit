@@ -7,7 +7,6 @@
 - [x] 修订 netkit/buffer/circular 模块，使得 MarkableCircularBuffer API 更加完善和稳定
 - [x] 移动各源码文件的中文注释到中文文档目录 doc/source_cn
 - [ ] 使用 {.noInit.} 优化已经写的 procs iterators vars lets
-- [ ] 使用 {.noInit.} 优化已经写的 procs iterators vars lets
 - [ ] 优化 HTTP chunked 解码和编码
 - [x] 考虑统一抽象编码解码相关的内容，比如 chunked 解码、编码；HTTP version、method HTTP header 
       编码解码；等等

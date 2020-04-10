@@ -4,7 +4,9 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-import unittest, netkit/http/base, asyncdispatch
+import unittest
+import asyncdispatch
+import netkit/http/base
 
 # template f(t: untyped) =
 #   proc cb() = 
@@ -28,19 +30,3 @@ import unittest, netkit/http/base, asyncdispatch
 # proc f1(a: uint) =
 #   discard
 
-# var a = -100
-# f1(a)
-
-type
-  Server = ref object
-    onRequest: proc (): Future[void]
-
-var server = new(Server)
-
-server.onRequest = proc () {.async.} =
-  await sleepAsync(1000)
-  echo "handler ......"
-
-asyncCheck server.onRequest()
-
-runForever()

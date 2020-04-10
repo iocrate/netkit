@@ -13,7 +13,8 @@
 # Decoding        Decoder     解码    将一个经过扰码或者变换的字符序列转换成原始的字符序列
 # ==============  ==========  =====  ============================================
 
-import netkit/misc, netkit/http/base
+import netkit/misc
+import netkit/http/base
 
 proc parseChunkSizer*(s: string): ChunkSizer = discard
   ## 解析一个字符串， 该字符串通过 ``Transfer-Encoding: chunked`` 编码， 表示块数据的大小和可选的块扩展。  

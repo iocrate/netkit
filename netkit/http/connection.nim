@@ -6,9 +6,16 @@
 
 ## 
 
-import asyncdispatch, nativesockets, strutils, deques
-import netkit/misc, netkit/buffer/constants as buffer_constants, netkit/buffer/circular
-import netkit/http/base, netkit/http/constants as http_constants, netkit/http/parser
+import strutils
+import deques
+import asyncdispatch
+import nativesockets
+import netkit/misc
+import netkit/buffer/constants as buffer_constants
+import netkit/buffer/circular
+import netkit/http/base 
+import netkit/http/constants as http_constants
+import netkit/http/parser
 
 type
   HttpConnection* = ref object ## 
@@ -30,6 +37,7 @@ type
     readQueue: ReadQueue
     contentLen: Natural
     chunked: bool
+    trailer: bool
     readEnded: bool
     writeEnded: bool
     
@@ -86,6 +94,7 @@ proc newRequest*(conn: HttpConnection): Request =
   result.readQueue = initReadQueue()
   result.contentLen = 0
   result.chunked = false
+  result.trailer = false
   result.readEnded = false
   result.writeEnded = false
 
@@ -272,15 +281,43 @@ template readChunkSizerUnsafe(req: Request, chunkSizer: ChunkSizer): bool =
     discard conn.buffer.pack(recvLen.uint32)  
   succ
 
+template readChunkEnd(req: Request, trailer: string): bool = 
+  let conn = req.conn
+  var succ: bool
+  while true:
+    (succ, trailer) = conn.parser.parseChunkEnd(conn.buffer)
+    if succ:
+      break
+    let (regionPtr, regionLen) = conn.buffer.next()
+    let recvFuture = conn.socket.recvInto(regionPtr, regionLen.int)
+    yield recvFuture
+    assert not recvFuture.failed # recvInto 一定不会抛出异常？  
+    # if recvFuture.failed:
+    #   raise recvFuture.readError()
+    # else:
+    let recvLen = recvFuture.read()
+    if recvLen == 0:
+      conn.readEnded = true
+      break 
+    discard conn.buffer.pack(recvLen.uint32)  
+  succ
+
 proc readChunkUnsafe(req: Request, buf: pointer, size: range[int(LimitChunkedDataLen)..high(int)]): Future[Natural] {.async.} =
   ## 读取一块 chunked 数据， 读取的数据填充在 ``buf`` 。 ``size`` 最少是 ``LimitChunkedDataLen``，以防止块数据过长导致
   ## 溢出。 如果返回 ``0``， 表示已经到达数据尾部，不会再有数据可读。
   var chunkSizer: ChunkSizer
   if readChunkSizerUnsafe(req, chunkSizer):
     if chunkSizer.size == 0:
-      req.readEnded = true
-      if req.writeEnded:
-        asyncCheck req.conn.processNextRequest()
+      var trailer: string
+      if readChunkEnd(req, trailer): # TODO: 修订
+        if trailer.len == 0:
+          req.readEnded = true
+          if req.writeEnded:
+            asyncCheck req.conn.processNextRequest()
+        else:
+          copyMem(buf, trailer.cstring, trailer.len) # TODO: 优化， 不使用 copy 
+          req.trailer = true
+          result = trailer.len
     else:
       assert chunkSizer.size <= size
       result = await req.conn.readUntil(buf, chunkSizer.size)
@@ -296,9 +333,15 @@ proc readChunkUnsafe(req: Request): Future[string] {.async.} =
   var chunkSizer: ChunkSizer
   if readChunkSizerUnsafe(req, chunkSizer):
     if chunkSizer.size == 0:
-      req.readEnded = true
-      if req.writeEnded:
-        asyncCheck req.conn.processNextRequest()
+      var trailer: string
+      if readChunkEnd(req, trailer): # TODO: 修订
+        if trailer.len == 0:
+          req.readEnded = true
+          if req.writeEnded:
+            asyncCheck req.conn.processNextRequest()
+        else:
+          req.trailer = true
+          result = trailer # TODO: 优化
     else:
       result = newString(chunkSizer.size)
       discard await req.conn.readUntil(result.cstring, chunkSizer.size) # should need Gc_ref(result) ?
@@ -342,6 +385,10 @@ proc isEOF*(req: Request): bool =
   ## 
   req.conn.readEnded or req.readEnded
 
+proc isTrailer*(req: Request): bool =
+  ## 
+  req.trailer
+
 proc write*(req: Request, buf: pointer, size: Natural): Future[void] {.async.} =
   ## 
   if req.writeEnded:
@@ -349,53 +396,8 @@ proc write*(req: Request, buf: pointer, size: Natural): Future[void] {.async.} =
     raise newException(IOError, "write after ended")
   await req.conn.socket.send(buf, size)
 
-proc toChunkSize(x: BiggestInt): string {.noInit.} = 
-  const HexChars = "0123456789ABCDEF"
-  var n = x
-  var m = 0
-  var s = newString(5) # sizeof(BiggestInt) * 10 / 16
-  for j in countdown(4, 0):
-    s[j] = HexChars[n and 0xF]
-    n = n shr 4
-    m.inc()
-    if n == 0: 
-      break
-  result = newStringOfCap(m)
-  for i in 5-m..<5:
-    result.add(s[i])
-
-proc encodeToChunk*(source: pointer, sourceSize: Natural, dist: pointer, distSize: Natural) =
-  ## 
-  ## TODO: 优化 
-  if distSize - sourceSize < 10:
-    raise newException(OverflowError, "dist size must be large than souce")
-  let chunksize = sourceSize.toChunkSize()  
-  assert chunkSize.len <= 5
-  copyMem(dist, chunksize.cstring, chunksize.len)
-  cast[ptr char](dist.offset(chunksize.len))[] = CR
-  cast[ptr char](dist.offset(chunksize.len + 1))[] = LF
-  copyMem(dist.offset(chunksize.len + 2), source, sourceSize)
-  cast[ptr char](dist.offset(chunksize.len + 2 + sourceSize))[] = CR
-  cast[ptr char](dist.offset(chunksize.len + 2 + sourceSize + 1))[] = LF
-
-proc encodeToChunk*(source: pointer, sourceSize: Natural, dist: pointer, distSize: Natural, extensions: string) =
-  ## 
-  ## TODO: 优化 
-  if distSize - sourceSize - extensions.len < 10:
-    raise newException(OverflowError, "dist size must be large than souce")
-  let chunksize = sourceSize.toChunkSize()  
-  assert chunkSize.len <= 5
-  copyMem(dist, chunksize.cstring, chunksize.len)
-  copyMem(dist.offset(chunksize.len), extensions.cstring, extensions.len)
-  cast[ptr char](dist.offset(chunksize.len + extensions.len))[] = CR
-  cast[ptr char](dist.offset(chunksize.len + 1 + extensions.len))[] = LF
-  copyMem(dist.offset(chunksize.len + 2 + extensions.len), source, sourceSize)
-  cast[ptr char](dist.offset(chunksize.len + 2 + sourceSize + extensions.len))[] = CR
-  cast[ptr char](dist.offset(chunksize.len + 2 + sourceSize + 1 + extensions.len))[] = LF
-
 proc write*(req: Request, data: string): Future[void] =
   ## 
-  # TODO: 考虑 chunked
   # TODO: 考虑 GC_ref data
   return req.write(data.cstring, data.len)
 

@@ -6,9 +6,12 @@
 
 ## 
 
-import uri, strutils
+import uri
+import strutils
 import netkit/buffer/circular
-import netkit/http/base, netkit/http/constants as http_constants
+import netkit/http/base
+import netkit/http/constants as http_constants
+import netkit/http/chunk
 
 type
   HttpParser* = object ## HTTP packet parser.
@@ -175,28 +178,9 @@ proc parseRequest*(p: var HttpParser, req: var RequestHeader, buf: var MarkableC
     of HttpParseState.BODY:
       return true
 
-proc parseChunkSizer(line: string): ChunkSizer = 
-  result.size = 0
-  var i = 0
-  while true:
-    case line[i]
-    of '0'..'9':
-      result.size = result.size shl 4 or (line[i].ord() - '0'.ord())
-    of 'a'..'f':
-      result.size = result.size shl 4 or (line[i].ord() - 'a'.ord() + 10)
-    of 'A'..'F':
-      result.size = result.size shl 4 or (line[i].ord() - 'A'.ord() + 10)
-    of '\0': # TODO: what'is this
-      break
-    of ';':
-      result.extensions = line[i..^1]
-      break
-    else:
-      raise newException(ValueError, "Invalid Chunk Encoded")
-    i.inc()
-
 proc parseChunkSizer*(p: var HttpParser, buf: var MarkableCircularBuffer): (bool, ChunkSizer) = 
   ## 
+  result[0] = false
   let succ = p.markChar(buf, LF)
   if p.currentLineLen.int > LimitChunkedSizeLen:
     raise newException(OverflowError, "chunked-size-line too long")
@@ -206,7 +190,23 @@ proc parseChunkSizer*(p: var HttpParser, buf: var MarkableCircularBuffer): (bool
     if lastIdx > 0 and line[lastIdx] == CR:
       line.setLen(lastIdx)
     p.currentLineLen = 0
-    result = (true, line.parseChunkSizer())
+    result[0] = true
+    result[1] = line.parseChunkSizer()
   else:
     p.popMarksToSecondaryIfFull(buf)
-    result = (false, ChunkSizer())
+    
+proc parseChunkEnd*(p: var HttpParser, buf: var MarkableCircularBuffer): (bool, string) = 
+  ## 
+  result[0] = false
+  let succ = p.markChar(buf, LF)
+  if p.currentLineLen.int > LimitHeaderFieldLen:
+    raise newException(OverflowError, "chunked-trailer-line too long")
+  if succ:
+    result[1] = p.popToken(buf, 1)
+    let lastIdx = result[1].len - 1
+    if lastIdx > 0 and result[1][lastIdx] == CR:
+      result[1].setLen(lastIdx)
+    result[0] = true
+    p.currentLineLen = 0
+  else:
+    p.popMarksToSecondaryIfFull(buf)

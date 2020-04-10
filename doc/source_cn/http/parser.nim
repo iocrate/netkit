@@ -4,9 +4,11 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-import uri, strutils
+import uri
+import strutils
 import netkit/buffer/circular
-import netkit/http/base, netkit/http/constants as http_constants
+import netkit/http/base
+import netkit/http/constants as http_constants
 
 type
   HttpParser* = object ## HTTP 包解析器。 

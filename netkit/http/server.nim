@@ -6,7 +6,9 @@
 
 # 这个文件很混乱，待整理！！！
 
-import asyncdispatch, nativesockets, os
+import asyncdispatch
+import nativesockets
+import os
 import netkit/http/connection
 
 type

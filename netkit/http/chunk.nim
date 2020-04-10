@@ -4,23 +4,24 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-import netkit/misc, netkit/http/base
+import netkit/misc
+import netkit/http/base
 
-proc decodeChunkSizer*(line: string): ChunkSizer = 
+proc parseChunkSizer*(s: string): ChunkSizer = 
   result.size = 0
   var i = 0
   while true:
-    case line[i]
+    case s[i]
     of '0'..'9':
-      result.size = result.size shl 4 or (line[i].ord() - '0'.ord())
+      result.size = result.size shl 4 or (s[i].ord() - '0'.ord())
     of 'a'..'f':
-      result.size = result.size shl 4 or (line[i].ord() - 'a'.ord() + 10)
+      result.size = result.size shl 4 or (s[i].ord() - 'a'.ord() + 10)
     of 'A'..'F':
-      result.size = result.size shl 4 or (line[i].ord() - 'A'.ord() + 10)
-    of '\0': # TODO: what'is this
-      break
+      result.size = result.size shl 4 or (s[i].ord() - 'A'.ord() + 10)
+    # of '\0': # TODO: what'is this
+    #   break
     of ';':
-      result.extensions = line[i..^1]
+      result.extensions = s[i..^1]
       break
     else:
       raise newException(ValueError, "Invalid Chunk Encoded")

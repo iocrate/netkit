@@ -8,7 +8,8 @@
 # TODO: 更多单元测试， 测试稳定性和安全性
 # TODO: Benchmark Test
 
-import netkit/misc, netkit/buffer/constants
+import netkit/misc
+import netkit/buffer/constants
 
 type 
   CircularBuffer* = object of RootObj                

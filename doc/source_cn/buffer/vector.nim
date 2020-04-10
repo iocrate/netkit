@@ -7,7 +7,8 @@
 ## 本模块实现了一个动态增长的缓冲区 ``VectorBuffer`` 。 该缓冲区可以根据您的需要成倍增长，直到某个临界值。 当到达
 ## 临界值， 继续增长将引起异常。 
 
-import netkit/misc, netkit/buffer/constants
+import netkit/misc
+import netkit/buffer/constants
 
 type 
   VectorBuffer* = object of RootObj                  ## 一个增长的缓冲区。 

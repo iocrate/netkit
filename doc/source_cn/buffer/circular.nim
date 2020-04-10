@@ -84,7 +84,8 @@
 ##        var getLen = buffer.get(dest, destLen)
 ##        var delLen = buffer.del(getLen)
 
-import netkit/misc, netkit/buffer/constants
+import netkit/misc
+import netkit/buffer/constants
 
 type 
   CircularBuffer* = object of RootObj                

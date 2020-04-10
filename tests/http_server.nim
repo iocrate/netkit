@@ -4,8 +4,11 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-import unittest, asyncdispatch
-import netkit/http/base, netkit/http/connection, netkit/http/server as httpserver
+import unittest 
+import asyncdispatch
+import netkit/http/base
+import netkit/http/connection
+import netkit/http/server as httpserver
 
 test "todo":
   discard
