@@ -4,12 +4,14 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
+## 
+
 import uri, strutils
 import netkit/buffer/circular
 import netkit/http/base, netkit/http/constants as http_constants
 
 type
-  HttpParser* = object ## HTTP 包解析器。 
+  HttpParser* = object ## HTTP packet parser.
     secondaryBuffer: string
     currentLineLen: Natural
     currentFieldName: string
@@ -22,6 +24,7 @@ type
     UNKNOWN, TOKEN, CRLF
 
 proc initHttpParser*(): HttpParser =
+  ## 
   discard
 
 proc popToken(p: var HttpParser, buf: var MarkableCircularBuffer, size: Natural = 0): string = 
@@ -74,7 +77,7 @@ proc markRequestFieldCharOrCRLF(p: var HttpParser, buf: var MarkableCircularBuff
     raise newException(OverflowError, "request-field too long")
 
 proc parseRequest*(p: var HttpParser, req: var RequestHeader, buf: var MarkableCircularBuffer): bool = 
-  ## 解析 HTTP 请求包。这个过程是增量进行的，也就是说，下一次解析会从上一次解析继续。
+  ## 
   result = false
   while true:
     case p.state
@@ -193,7 +196,7 @@ proc parseChunkSizer(line: string): ChunkSizer =
     i.inc()
 
 proc parseChunkSizer*(p: var HttpParser, buf: var MarkableCircularBuffer): (bool, ChunkSizer) = 
-  ## 解析 HTTP 请求体中 ``Transfer-Encoding: chunked`` 编码的尺寸部分。 
+  ## 
   let succ = p.markChar(buf, LF)
   if p.currentLineLen.int > LimitChunkedSizeLen:
     raise newException(OverflowError, "chunked-size-line too long")

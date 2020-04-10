@@ -4,12 +4,12 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-## 这个模块提供 HTTP 相关的基础工具。
+## This module provides basic tools related to HTTP.
 
 import tables, strutils
 
 type
-  HttpCode* = enum ## HTTP 响应状态码。 
+  HttpCode* = enum ## HTTP status code. 
     Http100 = "100 Continue"
     Http101 = "101 Switching Protocols"
     Http200 = "200 OK"
@@ -58,7 +58,7 @@ type
     Http504 = "504 Gateway Timeout"
     Http505 = "505 HTTP Version Not Supported"
 
-  HttpMethod* = enum ## HTTP 请求方法。 
+  HttpMethod* = enum ## HTTP request method. 
     HttpHead = "HEAD",        
     HttpGet = "GET",         
     HttpPost = "POST",        
@@ -69,24 +69,24 @@ type
     HttpConnect = "CONNECT", 
     HttpPatch = "PATCH" 
 
-  HttpVersion* = tuple ## 表示 HTTP 版本号。 
+  HttpVersion* = tuple ## Represents the HTTP version number.
     orig: string
     major: Natural
     minor: Natural
 
   HeaderFields* = distinct Table[string, seq[string]] ## 表示 HTTP 头字段集合。 
 
-  ChunkSizer* = object ## 表示 HTTP ``Transfer-Encoding: chunked`` 编码数据的尺寸部分。
+  ChunkSizer* = object ## Represents the size portion of the encoded data via ``Transfer-Encoding: chunked``.
     size*: Natural
     extensions*: string
 
-  RequestHeader* = object ## 表示 HTTP 请求包的头部。 每一个 HTTP 请求应该包含且只包含一个头部。
+  RequestHeader* = object ## Represents the header of a HTTP request packet. Each HTTP request should contains only one header.
     reqMethod*: HttpMethod
     url*: string
     version*: HttpVersion
     fields*: HeaderFields  
 
-  ResponseHeader* = object ## 表示 HTTP 响应包的头部。 每一个 HTTP 响应应该包含且只包含一个头部。
+  ResponseHeader* = object ## Represents the header of a HTTP response packet. Each HTTP response should contains only one header.
     statusCode*: HttpCode
     version*: HttpVersion
     fields*: HeaderFields
@@ -103,7 +103,7 @@ const
   WS* = {SP, HTAB}
 
 proc toHttpCode*(code: int): HttpCode =
-  ## 获取整数 ``code`` 对应的 HttpCode 表示。
+  ## Convert to the corresponding ``HttpCode``. 
   case code
   of 100: Http100
   of 101: Http101
@@ -155,7 +155,7 @@ proc toHttpCode*(code: int): HttpCode =
   else: raise newException(ValueError, "Not Implemented")
 
 proc toHttpMethod*(s: string): HttpMethod {.raises: [ValueError].} =
-  ## 获取字符串 ``s`` 对应的 HttpMethod 表示。
+  ## Convert to the corresponding ``HttpMethod``. 
   result =
     case s
     of "GET": HttpGet
@@ -170,8 +170,7 @@ proc toHttpMethod*(s: string): HttpMethod {.raises: [ValueError].} =
     else: raise newException(ValueError, "Not Implemented")
 
 proc toHttpVersion*(s: string): HttpVersion =
-  ## 获取字符串 ``s`` 对应的 HttpVersion 表示。 请注意， ``s`` 必须是 ``"HTTP/1.1"`` 或者是 ``"HTTP/1.0"``， 
-  ## 否则， 抛出异常。 当前， 仅支持 HTTP/1.1 和 HTTP/1.0。 
+  ## 
   if s.len != 8 or s[6] != '.':
     raise newException(ValueError, "Bad Request")
   let major = s[5].ord - 48
@@ -187,45 +186,45 @@ proc toHttpVersion*(s: string): HttpVersion =
   result = (s, major.Natural, minor.Natural)
 
 proc initHeaderFields*(): HeaderFields =
-  ## 初始化一个 HTTP 头字段集合对象。
+  ## 
   result = HeaderFields(initTable[string, seq[string]]())
 
 proc initHeaderFields*(pairs: openArray[tuple[name: string, value: seq[string]]]): HeaderFields =
-  ## 初始化一个 HTTP 头字段集合对象。 ``pairs`` 指定初始字段集合，每个字段可以有多个值。
+  ## 
   var tabPairs: seq[tuple[name: string, value: seq[string]]] = @[]
   for pair in pairs:
     tabPairs.add((pair.name.toUpperAscii(), pair.value))
   result = HeaderFields(tabPairs.toTable())
 
 proc initHeaderFields*(pairs: openArray[tuple[name: string, value: string]]): HeaderFields =
-  ## 初始化一个 HTTP 头字段集合对象。``pairs`` 指定初始字段集合，每个字段只有一个值。
+  ## 
   var tabPairs: seq[tuple[name: string, value: seq[string]]] = @[]
   for pair in pairs:
     tabPairs.add((pair.name.toUpperAscii(), @[pair.value]))
   result = HeaderFields(tabPairs.toTable())
 
 proc `$`*(fields: HeaderFields): string =
-  ## 返回对应的 HTTP 字符表示。
+  ## 
   return $(Table[string, seq[string]](fields))
 
 proc clear*(fields: var HeaderFields) =
-  ## 清空所有字段。 
+  ## 
   Table[string, seq[string]](fields).clear()
 
 proc `[]`*(fields: HeaderFields, name: string): seq[string] =
-  ## 获取名字为 ``name`` 的字段值序列，可能是零到多个。 
+  ## 
   Table[string, seq[string]](fields)[name.toUpperAscii()]
 
 proc `[]=`*(fields: var HeaderFields, name: string, value: string) =
-  ## 设置名字为 ``name`` 的字段值。 这会清除所有 ``name`` 已经设置的值。
+  ## 
   Table[string, seq[string]](fields)[name.toUpperAscii()] = @[value]
 
 proc `[]=`*(fields: var HeaderFields, name: string, value: seq[string]) =
-  ## 设置名字为 ``name`` 的字段值。 这会清除所有 ``name`` 已经设置的值。
+  ## 
   Table[string, seq[string]](fields)[name.toUpperAscii()] = value
 
 proc add*(fields: var HeaderFields, name: string, value: string) =
-  ## 为名字为 ``name`` 的字段添加一个值。 
+  ## 
   let nameUA = name.toUpperAscii
   if not Table[string, seq[string]](fields).hasKey(nameUA):
     Table[string, seq[string]](fields)[nameUA] = @[value]
@@ -233,15 +232,15 @@ proc add*(fields: var HeaderFields, name: string, value: string) =
     Table[string, seq[string]](fields)[nameUA].add(value)
 
 proc del*(fields: var HeaderFields, name: string) =
-  ## 删除名字为 ``name`` 的字段。 
+  ## 
   Table[string, seq[string]](fields).del(name.toUpperAscii())
 
 proc contains*(fields: HeaderFields, name: string): bool =
-  ## 判断是否包含 ``name`` 字段。 
+  ## 
   Table[string, seq[string]](fields).contains(name.toUpperAscii())
 
 proc len*(fields: HeaderFields): int = 
-  ## 获取字段数量。 
+  ## 
   Table[string, seq[string]](fields).len
 
 proc getOrDefault*(
@@ -249,7 +248,7 @@ proc getOrDefault*(
   name: string,
   default = @[""]
 ): seq[string] =
-  ## 获取名为 ``name`` 的字段值，如果不存在则返回 ``default``。 
+  ## 
   if fields.contains(name):
     return fields[name]
   else:
@@ -260,7 +259,7 @@ proc getOrDefault*(
   name: string,
   default = ""
 ): string =
-  ## 获取名为 ``name`` 的最后一个字段值，如果不存在则返回 ``default``。 
+  ## 
   if fields.contains(name):
     let s = fields[name]
     return s[s.len-1]
@@ -268,13 +267,13 @@ proc getOrDefault*(
     return default
 
 iterator pairs*(fields: HeaderFields): tuple[name, value: string] =
-  ## 迭代每一个字段。 
+  ##  
   for k, v in Table[string, seq[string]](fields):
     for value in v:
       yield (k, value)
 
 proc initRequestHeader*(): RequestHeader =
-  ## 初始化一个 HTTP 请求包的头部。
+  ## 
   result.fields = HeaderFields(initTable[string, seq[string]]())
 
 proc initRequestHeader*(
@@ -282,8 +281,7 @@ proc initRequestHeader*(
   url: string,
   fields: openArray[tuple[name: string, value: seq[string]]]
 ): RequestHeader =
-  ## 初始化一个 HTTP 请求包的头部。 ``reqMethod`` 指定请求方法， ``url`` 指定请求路径， 
-  ## ``fields`` 指定初始字段集合，每个字段可以有多个值。
+  ## 
   result.reqMethod = reqMethod
   result.url = url
   result.fields = initHeaderFields(fields)
@@ -293,22 +291,20 @@ proc initRequestHeader*(
   url: string,
   fields: openArray[tuple[name: string, value: string]]
 ): RequestHeader =
-  ## 初始化一个 HTTP 请求包的头部。 ``reqMethod`` 指定请求方法， ``url`` 指定请求路径， 
-  ## ``fields`` 指定初始字段集合，每个字段可以有多个值。
+  ## 
   result.reqMethod = reqMethod
   result.url = url
   result.fields = initHeaderFields(fields)
 
 proc initResponseHeader*(): ResponseHeader =
-  ## 初始化一个 HTTP 响应包的头部。
+  ## 
   result.fields = HeaderFields(initTable[string, seq[string]]())
 
 proc initResponseHeader*(
   statusCode: HttpCode,
   fields: openArray[tuple[name: string, value: seq[string]]]
 ): ResponseHeader =
-  ## 初始化一个 HTTP 响应包的头部。  ``statusCode`` 指定状态码， HTTP 版本号设定为 "HTTP/1.1"， 
-  ## ``fields`` 指定初始字段集合，每个字段可以有多个值。
+  ## 
   result.statusCode = statusCode
   result.version = ("HTTP/1.1", 1.Natural, 1.Natural)
   result.fields = initHeaderFields(fields)
@@ -317,21 +313,20 @@ proc initResponseHeader*(
   statusCode: HttpCode,
   fields: openArray[tuple[name: string, value: string]]
 ): ResponseHeader =
-  ## 初始化一个服务器端 HTTP 响应包的头部。  ``statusCode`` 指定状态码， HTTP 版本号设定为 "HTTP/1.1"， 
-  ## ``fields`` 指定初始字段集合，每个字段可以有多个值。
+  ## 
   result.statusCode = statusCode
   result.version = ("HTTP/1.1", 1.Natural, 1.Natural)
   result.fields = initHeaderFields(fields)
 
 proc `$`*(H: ResponseHeader): string = 
-  ## 获取 ``ResponseHeader`` 的 HTTP 字符序列表示。
+  ## 
   result.add(H.version.orig & SP & $H.statusCode & CRLF)
   for name, value in H.fields.pairs():
     result.add(name & ": " & value & CRLF)
   result.add(CRLF)
 
 proc `$`*(H: RequestHeader): string = 
-  ## 获取 ``RequestHeader`` 的 HTTP 字符序列表示。 
+  ## 
   # TODO: 
   discard
 
