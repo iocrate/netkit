@@ -4,11 +4,9 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-# TODO: 翻译本注释内的说明
-# TODO: 将翻译的文档以 reStructuredText 语法格式书写， 以便于 nimdoc 生成文档
-# TODO: 更多测试
+# TODO: 翻译 doc/source/buffer/circular.nim 的注释， 将英文版追加到本文件
+# TODO: 更多单元测试， 测试稳定性和安全性
 # TODO: Benchmark Test
-## 本模块实现了一个动态增长的缓冲区 ``VectorBuffer`` 。 该缓冲区可以根据您的需要成倍增长，直到某个临界值。
 
 import netkit/misc, netkit/buffer/constants
 
@@ -24,7 +22,7 @@ proc initVectorBuffer*(
   minCapacity: Natural = BufferSize,
   maxCapacity: Natural = BufferSize * 8
 ): VectorBuffer = 
-  ## 初始化缓冲区。 ``minCapacity`` 指定最小容量， ``maxCapacity`` 指定最大容量。 
+  ## Initializes an ``VectorBuffer`` object. 
   result.capacity = minCapacity
   result.minCapacity = minCapacity
   result.maxCapacity = maxCapacity
@@ -35,25 +33,25 @@ proc capacity*(b: VectorBuffer): Natural =
   b.capacity
 
 proc minCapacity*(b: VectorBuffer): Natural = 
-  ## Gets the min capacity of the buffer.
+  ## Gets the minimum capacity of the buffer.
   b.minCapacity
 
 proc maxCapacity*(b: VectorBuffer): Natural = 
-  ## Gets the max capacity of the buffer.
+  ## Gets the maximum capacity of the buffer.
   b.maxCapacity
 
 proc len*(b: VectorBuffer): Natural = 
-  ## Gets the length of the data.
+  ## Gets the length of the data currently stored in the buffer.
   b.endPos
 
 proc reset*(b: var VectorBuffer): Natural = 
-  ## 重置缓冲区，恢复到初始容量，并且清空所有数据。 
+  ## Resets the buffer to restore to the original capacity while clear all stored data.
   b.capacity = b.minCapacity
   b.endPos = 0
   b.value = newSeqOfCap[char](b.capacity)
 
-proc extend*(b: var VectorBuffer) = 
-  ## 扩展缓冲区的容量，增长一倍。 如果超过了最大容量，则抛出异常。
+proc expand*(b: var VectorBuffer) = 
+  ## Expands the capacity of the buffer. If it exceeds the maximum capacity, an exception is thrown.
   let newCapacity = b.capacity * 2
   if newCapacity > b.maxCapacity:
     raise newException(OverflowError, "capacity overflow")
@@ -63,39 +61,60 @@ proc extend*(b: var VectorBuffer) =
   b.value.shallowCopy(newValue)
 
 proc next*(b: var VectorBuffer): (pointer, Natural) = 
-  ## Gets the next secure storage area. 
-  ## Returns the address and storable length of the area. Then you can manually
-  ## store the data for that area.
+  ## Gets the next safe storage region. The return value indicates the pointer and length of the storage 
+  ## region. After that, you can use the returned pointer and length to store data manually.
   ## 
-  ## 获取下一个安全的存储区域， 返回该区域的地址和可存储长度。 之后， 您可以对该区域手动存储数据。 
+  ## ..code-block::nim
+  ##     
+  ##   var source = "Hello World"
+  ##   var (regionPtr, regionLen) = b.next()
+  ##   var length = min(regionLen, s.len)
+  ##   copyMem(regionPtr, source.cstring, length) 
   result[0] = b.value.addr.offset(b.endPos)
   result[1] = b.capacity - b.endPos
 
 proc pack*(b: var VectorBuffer, size: Natural): Natural = 
-  ## The area of ``size`` length inside the buffer is regarded as valid data and returns the actual length.
-  ## Once this operation is performed, this space will be forced to be used as valid data. In other words,
-  ## this method increases the length of the buffer's valid data.
-  #
-  ## 将缓冲区内部 ``size`` 长度的空间区域视为有效数据， 返回实际有效的长度。 一旦执行这个操作， 这部分空间将被
-  ## 强制作为有效数据使用。 换句话说， 这个方法增长了 ``buffer`` 有效数据的长度。 
+  ## Tells the buffer that packing ``size`` lengths of data. Returns the actual length packed.
+  ## 
+  ## When ``next()`` is called, Although data has been written inside the buffer, but the buffer cannot tell how 
+  ## much valid data has been written. ``pack ()`` tells the buffer how much valid data is actually written.
+  ## 
+  ## Whenever ``next()`` is called, ``pack()`` should be called immediately.
+  ## 
+  ## ..code-block::nim
+  ##     
+  ##   var source = "Hello World"
+  ##   var (regionPtr, regionLen) = b.next()
+  ##   var length = min(regionLen, s.len)
+  ##   copyMem(regionPtr, source.cstring, length) 
+  ##   var n = b.pack(length)
   result = min(size, b.capacity - b.endPos) 
   b.endPos = b.endPos + result
 
-proc put*(b: var VectorBuffer, source: pointer, size: Natural): Natural = 
-  ## Writes ``source`` of ``size`` length to the buffer and returns the actual size written.
-  ##
-  ## 从 ``source`` 写入 ``size`` 长度的数据， 返回实际写入的长度。 
+proc add*(b: var VectorBuffer, source: pointer, size: Natural): Natural = 
+  ## Copies up to `` size`` lengths of data from `` source``. Returns the actual length copied. This 
+  ## is a simplified version of the `` next () `` `` pack () `` combination call. The difference is
+  ## that an additional copy operation is made instead of writing directly to the buffer.
+  ## 
+  ## When you focus on performance, consider using ``next ()``, ``pack ()`` combination calls; 
+  ## when you focus on convenience of the invocation, use ``put ()``.
+  ## 
+  ## ..code-block::nim
+  ##     
+  ##   var source = "Hello World"
+  ##   var n = b.put(source.cstring, source.len)
   result = min(size, b.capacity - b.endPos)
   copyMem(b.value.addr.offset(b.endPos), source, result)
   b.endPos = b.endPos + result
 
 proc get*(b: var VectorBuffer, dest: pointer, size: Natural, start: Natural): Natural = 
-  ## 从 ``start`` 开始，获取最多 ``size`` 个数据， 将其复制到目标空间 ``dest`` ， 返回实际复制的数量。 
+  ## Gets up to ``size`` of the stored data from ``start`` position, copy the data to the space ``dest``. Returns the 
+  ## actual number copied.
   if start >= b.endPos or size == 0:
     return 0
   result = min(size, b.endPos - start)
   copyMem(dest, b.value.addr.offset(start), result)
 
 proc clear*(b: var VectorBuffer): Natural = 
-  ## 删除所有数据。 
+  ## Deletes all the stored data. 
   b.endPos = 0

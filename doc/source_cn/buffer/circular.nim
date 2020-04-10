@@ -205,4 +205,4 @@ proc lenMarks*(b: MarkableCircularBuffer): Natural = discard
   ## 获取已标记的数据长度。 
 
 proc popMarks*(b: var MarkableCircularBuffer, n: Natural = 0): string = discard
-  ## 获取已标记的数据， 同时在缓冲区内部删除这些数据。 
+  ## 获取已标记的数据， 同时在缓冲区内部删除这些数据。 返回的数据会在尾部向前跳过 ``n`` 个字节。

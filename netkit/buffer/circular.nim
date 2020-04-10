@@ -27,6 +27,7 @@ proc initCircularBuffer*(): CircularBuffer =
   discard
 
 proc initMarkableCircularBuffer*(): MarkableCircularBuffer =
+  ## Initializes an ``MarkableCircularBuffer`` object. 
   discard
 
 proc capacity*(b: CircularBuffer): Natural = 
@@ -34,13 +35,12 @@ proc capacity*(b: CircularBuffer): Natural =
   BufferSize
 
 proc len*(b: CircularBuffer): Natural = 
-  ## Gets the length of the data.
+  ## Gets the length of the data currently stored in the buffer.
   b.endMirrorPos - b.startPos
 
 proc next*(b: var CircularBuffer): (pointer, Natural) = 
-  ## Gets the next secure storage area. You can only get one block per operation.
-  ## Returns the address and storable length of the area. Then you can manually
-  ## store the data for that area.
+  ## Gets the next safe storage region. The return value indicates the pointer and length of the storage 
+  ## region. After that, you can use the returned pointer and length to store data manually.
   ## 
   ## ..code-block::nim
   ##     
@@ -53,9 +53,12 @@ proc next*(b: var CircularBuffer): (pointer, Natural) =
               else: b.startPos - b.endPos
 
 proc pack*(b: var CircularBuffer, size: Natural): Natural = 
-  ## The area of ``size`` length inside the buffer is regarded as valid data and returns the actual length.
-  ## Once this operation is performed, this space will be forced to be used as valid data. In other words,
-  ## this method increases the length of the buffer's valid data.
+  ## Tells the buffer that packing ``size`` lengths of data. Returns the actual length packed.
+  ## 
+  ## When ``next()`` is called, Although data has been written inside the buffer, but the buffer cannot tell how 
+  ## much valid data has been written. ``pack ()`` tells the buffer how much valid data is actually written.
+  ## 
+  ## Whenever ``next()`` is called, ``pack()`` should be called immediately.
   ## 
   ## ..code-block::nim
   ##     
@@ -74,7 +77,12 @@ proc pack*(b: var CircularBuffer, size: Natural): Natural =
     b.endPos = b.endMirrorPos mod BufferSize
 
 proc add*(b: var CircularBuffer, source: pointer, size: Natural): Natural = 
-  ## Writes ``source`` of ``size`` length to the buffer and returns the actual size written.
+  ## Copies up to `` size`` lengths of data from `` source``. Returns the actual length copied. This 
+  ## is a simplified version of the `` next () `` `` pack () `` combination call. The difference is
+  ## that an additional copy operation is made instead of writing directly to the buffer.
+  ## 
+  ## When you focus on performance, consider using ``next ()``, ``pack ()`` combination calls; 
+  ## when you focus on convenience of the invocation, use ``put ()``.
   ## 
   ## ..code-block::nim
   ##     
@@ -94,7 +102,8 @@ proc add*(b: var CircularBuffer, source: pointer, size: Natural): Natural =
     discard b.pack(d)
 
 proc add*(b: var CircularBuffer, c: char): Natural = 
-  ## Writes char ``c`` and returns the actual length written.
+  ## Writes a character ``c`` to the buffer and returns the actual number written. Returns ``0`` if the buffer
+  ## is full, or ``1``.
   let region = b.next()
   result = min(region[1], 1)
   if result > 0:
@@ -102,7 +111,7 @@ proc add*(b: var CircularBuffer, c: char): Natural =
     discard b.pack(result)
 
 proc get*(b: var CircularBuffer, dest: pointer, size: Natural): Natural = 
-  ## 
+  ## Gets up to ``size`` of the stored data, copy the data to the space ``dest``. Returns the actual number copied.
   result = min(size, b.endMirrorPos - b.startPos)
   if b.startPos + result <= BufferSize: # only right
     copyMem(dest, b.value.addr.offset(b.startPos), result)
@@ -112,17 +121,17 @@ proc get*(b: var CircularBuffer, dest: pointer, size: Natural): Natural =
     copyMem(dest.offset(majorLen), b.value.addr, result - majorLen)
   
 proc get*(b: var CircularBuffer, size: Natural): string = 
-  ## 
+  ## Gets up to ``size`` of the  stored data, returns as a string. 
   let length = min(b.endMirrorPos - b.startPos, size)
   result = newString(length)
   discard b.get(result.cstring, length)
 
 proc get*(b: var CircularBuffer): string = 
-  ## 
+  ## Gets all stored data and returns as a string.
   result = b.get(b.endMirrorPos - b.startPos)
 
 proc del*(b: var CircularBuffer, size: Natural): Natural = 
-  ## 
+  ## Deletes up to ``size`` of the stored data, and returns the actual number deleted.
   result = min(size, b.endMirrorPos - b.startPos)
   b.startPos = b.startPos + result
   if b.startPos < b.endMirrorPos:
@@ -140,14 +149,14 @@ proc del*(b: var CircularBuffer, size: Natural): Natural =
     b.endMirrorPos = 0
 
 iterator items*(b: CircularBuffer): char =
-  ## Iterates over all available data (chars). 
+  ## Iterates over the stored data. 
   var i = b.startPos
   while i < b.endMirrorPos:
     yield b.value[i mod BufferSize]
     i.inc()
       
 proc del*(b: var MarkableCircularBuffer, size: Natural): Natural = 
-  ## 
+  ## Deletes up to ``size`` of the stored data, and returns the actual number deleted.
   result = min(size, b.endMirrorPos - b.startPos)
   b.startPos = b.startPos + result
   if b.startPos < b.endMirrorPos:
@@ -176,7 +185,10 @@ proc del*(b: var MarkableCircularBuffer, size: Natural): Natural =
     b.markedPos = 0
 
 iterator marks*(b: var MarkableCircularBuffer): char =
-  ##
+  ## Iterate over the stored data and marks it.
+  ## 
+  ## Note that the marking is performed incrementally, that is, when the marking operation is called next time, it will 
+  ## continue from the position where it last ended.
   ## 
   ## ..code-block::nim
   ##     
@@ -192,7 +204,11 @@ iterator marks*(b: var MarkableCircularBuffer): char =
     yield b.value[i]
 
 proc mark*(b: var MarkableCircularBuffer, size: Natural): Natural =
+  ## Marks the stored data in the buffer immediately until it reaches ``size`` or reaches the end of the data. Returns 
+  ## the actual number marked.
   ## 
+  ## Note that the marking is performed incrementally, that is, when the marking operation is called next time, it will 
+  ## continue from the position where it last ended.
   let m = b.markedPos + size
   if m <= b.endMirrorPos:
     b.markedPos = m
@@ -202,22 +218,28 @@ proc mark*(b: var MarkableCircularBuffer, size: Natural): Natural =
     b.markedPos = b.endMirrorPos
 
 proc markUntil*(b: var MarkableCircularBuffer, c: char): bool =
+  ## Marks the stored data one by one until one byte is ``c``. False is returned if no byte is ``c``.
   ## 
+  ## Note that the marking is performed incrementally, that is, when the marking operation is called next time, it will 
+  ## continue from the position where it last ended.
   result = false
   for ch in b.marks():
     if ch == c:
       return true
 
 proc markAll*(b: var MarkableCircularBuffer) =
+  ## Marks all the stored data. 
   ## 
+  ## Note that the marking is performed incrementally, that is, when the marking operation is called next time, it will 
+  ## continue from the position where it last ended.
   b.markedPos = b.endMirrorPos
 
 proc lenMarks*(b: MarkableCircularBuffer): Natural = 
-  ## Gets the length of the data that has been makerd.
+  ## Gets the length of the stored data that has been marked.
   b.markedPos - b.startPos
 
 proc popMarks*(b: var MarkableCircularBuffer, n: Natural = 0): string = 
-  ## Gets the currently marked data, skip backward ``n`` characters and deletes all marked data.
+  ## Pops all the marked data, skip backward ``n`` characters. This operation deletes all marked data.
   if b.markedPos == b.startPos:
     return ""
 
