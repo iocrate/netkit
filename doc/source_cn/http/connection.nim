@@ -95,52 +95,59 @@ proc read*(req: Request, buf: pointer, size: range[int(LimitChunkedDataLen)..hig
   ## 表示已经到达数据尾部，不会再有数据可读。 如果数据是 ``Transfer-Encoding: chunked`` 编码的，则
   ## 自动进行解码，并填充一块数据。 
   ## 
-  ## ``size`` 最少是 ``LimitChunkedDataLen``。 
+  ## ``size`` 最少是 ``LimitChunkedDataLen``。 这是因为， 如果数据是 ``Transfer-Encoding: chunked`` 
+  ## 编码的， 则 ``buf`` 必须有足够空间存储解码后的数据。 
 
 proc read*(req: Request): Future[string] = discard
   ## 读取最多 ``size`` 个数据， 读取的数据填充在 ``buf``， 返回实际读取的数量。 如果返回 ``0``， 
   ## 表示已经到达数据尾部，不会再有数据可读。 如果数据是 ``Transfer-Encoding: chunked`` 编码的，则
   ## 自动进行解码，并填充一块数据。 
   ## 
-  ## ``size`` 最少是 ``LimitChunkedDataLen``。 
+  ## ``size`` 最少是 ``LimitChunkedDataLen``。 这是因为， 如果数据是 ``Transfer-Encoding: chunked`` 
+  ## 编码的， 则 ``buf`` 必须有足够空间存储解码后的数据。 
 
 proc readAll*(req: Request): Future[string] {.async.} = discard
   ## 读取所有数据， 直到数据尾部， 即不再有数据可读。 返回所有读到的数据。 
+
+proc readDiscard*(req: Request): Future[void] {.async.} = discard
+  ## 读取所有数据， 直到数据尾部， 即不再有数据可读。 不保存所有读到的数据。 当你对数据不感兴趣时， 这个函数
+  ## 会比较有用处。
 
 proc isEOF*(req: Request): bool = discard
   ## 判断 ``req`` 的读是否已经到达数据尾部，不再有数据可读。 到达尾部，有可能是客户端已经发送完所有必要的数据； 
   ## 也有可能客户端提前关闭了发送端，使得读操作提前完成。 
 
-proc write*(req: Request, buf: pointer, size: Natural): Future[void] {.async.} = discard
-  ## 对 HTTP 请求 ``req`` 写入响应数据。 
+proc isTrailer*(req: Request): bool = discard
+  ## 判断 ``req`` 接收的数据是不是 ``Transfer-Encoding: chunked`` 编码， 并且现在所读的数据是一个 Trailer 。  
 
-proc encodeToChunk*(source: pointer, sourceSize: Natural, dist: pointer, distSize: Natural) = discard
-  ## 将 ``source`` 编码为 chunked 数据， 编码后的数据保存在 ``dist`` 。 ``dist`` 的长度 ``distSize`` 至少比 ``source``
-  ## 的长度 ``sourceSize`` 大 10， 否则， 将抛出错误。
-
-proc encodeToChunk*(source: pointer, sourceSize: Natural, dist: pointer, distSize: Natural, extensions: string) = discard
-  ## 将 ``source`` 编码为 chunked 数据， 编码后的数据保存在 ``dist`` 。 ``dist`` 的长度 ``distSize`` 至少比 ``source``
-  ## 的长度 ``sourceSize`` 大 10 + extensions.len， 否则， 将抛出错误。
+proc write*(req: Request, buf: pointer, len: Natural): Future[void] {.async.} = discard
+  ## 写入响应数据。 ``buf`` 指定数据源， ``len`` 指定数据源的长度。 
 
 proc write*(req: Request, data: string): Future[void] = discard
-  ## 对 HTTP 请求 ``req`` 写入响应数据。 
+  ## 写入响应数据。 ``data`` 指定数据源。 
 
 proc write*(
   req: Request, 
   statusCode: HttpCode,
   fields: openArray[tuple[name: string, value: string]]
 ): Future[void]  = discard
-  ## 对 HTTP 请求 ``req`` 写入响应数据。 等价于 ``write($initResponseHeader(statusCode, fields))`` 。 
+  ## 写入响应数据。 ``statusCode`` 指定状态码， ``fields`` 指定头字段。 数据被转换为一行 HTTP 状态行， 因此， 只
+  ## 有当第一次向 ``req`` 写入数据时， 才调用这个函数， 并且只使用一次。 
+  ## 
+  ## 等价于 ``write($initResponseHeader(statusCode, fields))`` 。 
 
 proc write*(
   req: Request, 
   statusCode: HttpCode,
   fields: openArray[tuple[name: string, value: seq[string]]]
 ): Future[void] = discard
-  ## 对 HTTP 请求 ``req`` 写入响应数据。 等价于 ``write($initResponseHeader(statusCode, fields))`` 。
+  ## 写入响应数据。 ``statusCode`` 指定状态码， ``fields`` 指定头字段。 数据被转换为一行 HTTP 状态行， 因此， 只
+  ## 有当第一次向 ``req`` 写入数据时， 才调用这个函数， 并且只使用一次。 
+  ## 
+  ## 写入响应数据。 等价于 ``write($initResponseHeader(statusCode, fields))`` 。
 
 proc writeEnd*(req: Request) = discard
-  ## 对 HTTP 请求 ``req`` 写入结尾信号。 之后， 不能向 ``req`` 写入数据， 否则将抛出异常。
+  ## 写入结尾信号。 之后， 不能再向 ``req`` 写入数据， 否则将抛出异常。
 
 
 

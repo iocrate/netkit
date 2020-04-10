@@ -30,3 +30,17 @@ import unittest, netkit/http/base, asyncdispatch
 
 # var a = -100
 # f1(a)
+
+type
+  Server = ref object
+    onRequest: proc (): Future[void]
+
+var server = new(Server)
+
+server.onRequest = proc () {.async.} =
+  await sleepAsync(1000)
+  echo "handler ......"
+
+asyncCheck server.onRequest()
+
+runForever()
