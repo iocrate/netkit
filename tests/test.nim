@@ -30,3 +30,8 @@ import netkit/http/base
 # proc f1(a: uint) =
 #   discard
 
+var a: byte = 41
+
+
+echo a
+echo a.char

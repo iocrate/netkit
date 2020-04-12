@@ -1,6 +1,8 @@
-import unittest, options, strformat, times
-import ../netkit/cookie
-
+import unittest
+import options
+import strformat
+import times
+import netkit/http/cookie
 
 suite "SetCookie":
   let
