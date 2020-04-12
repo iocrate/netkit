@@ -4,7 +4,8 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-# Incoming Request on HTTP Server 的边界条件：
+# 关于 HTTP Server Request 的边界条件
+# ----------------------------------
 #
 # 1. 不同连接的请求读，一定不存在竞争问题。
 #
@@ -39,12 +40,44 @@
 #    [req1, req2]，req1.write() 总是立刻返回 EOF 。
 #
 # 6. 同一个连接，同一个响应，不同次序的写，一定不存在竞争问题。因为不对写数据进行内部处理，而是直接交给底层 socket。
+#
+# 关于 HTTP Server Request 读的结果
+# --------------------------------
+#
+# 1. NativeSocket.recv() => >0 
+#
+#    表示： 正常。
+#    方法： 处理数据。 
+#
+# 2. NativeSocket.recv() => 0 
+# 
+#    表示： 对端关闭写， 但是不知道对端是否关闭读。 
+#    方法： 根据 HTTP 协议规则， 可以知道， 收到 0 时， 只有两个情况： 本条请求未开始； 本条请求数据
+#          不完整。 因此， 应当立刻关闭本端 socket 。 
+#
+# 3. NativeSocket.recv() => Error 
+#    
+#    表示： 本端出现错误。 
+#    方法： 该连接不可以继续使用， 否则将出现未知的错误序列。 因此， 应当立刻关闭本端 socket 。 
+#
+# 关于 HTTP Server Request 写的结果
+# --------------------------------
+#
+# 1. NativeSocket.write() => Void 
+#
+#    表示： 正常。
+#    方法： 处理数据。 
+#
+# 2. NativeSocket.write() => Error 
+#    
+#    表示： 本端出现错误。 
+#    方法： 该连接不可以继续使用， 否则将出现未知的错误序列。 因此， 应当立刻关闭本端 socket 。 
 
 import strutils
-import deques
 import asyncdispatch
 import nativesockets
 import netkit/misc
+import netkit/locks 
 import netkit/buffer/constants as buffer_constants
 import netkit/buffer/circular
 import netkit/http/base 
@@ -59,22 +92,7 @@ type
     socket: AsyncFD
     address: string
     closed: bool
-    readEnded: bool
-
-  ReadQueue = object
-    data: Deque[proc () {.closure, gcsafe.}] 
-    reading: bool
-
-  Request* = ref object ## 表示一次 HTTP 请求。 这个对象不由用户代码直接构造。 
-    conn: HttpConnection
-    header: RequestHeader
-    readQueue: ReadQueue
-    contentLen: Natural
-    chunked: bool
-    readEnded: bool
-    writeEnded: bool
-    
-  RequestHandler* = proc (req: Request): Future[void] {.closure, gcsafe.}
+    closedError: ref Exception
 
 proc newHttpConnection*(socket: AsyncFD, address: string, handler: RequestHandler): HttpConnection = discard
   ## 初始化一个 ``HttpConnection`` 对象。 
@@ -92,11 +110,19 @@ proc version*(req: Request): HttpVersion {.inline.} = discard
   ## 获取请求的 HTTP 版本号码。 
 
 proc fields*(req: Request): HeaderFields {.inline.} = discard
-  ## 获取请求头对象。 每个头字段值是一个字符串序列。
+  ## 获取请求头对象。 每个头字段值是一个字符串序列。 
 
 proc processNextRequest*(conn: HttpConnection): Future[void] = discard
-  ## 处理下一条 HTTP 请求。
+  ## 处理下一条 HTTP 请求。 
 
+proc read*(conn: HttpConnection, buf: pointer, size: Natural): Future[Natural] = discard
+  ## 读取最多 ``size`` 字节， 读取的数据填充在 ``buf``， 返回实际读取的数量。 如果返回 ``0``， 说明连接
+  ## 已经关闭。 
+
+proc readUntil*(conn: HttpConnection, buf: pointer, size: Natural): Future[Natural] = discard
+  ## 读取直到 ``size`` 字节， 读取的数据填充在 ``buf``， 返回实际读取的数量。 如果返回值不等于 ``size``， 说明
+  ## 连接已经关闭。如果连接关闭， 则返回；否则，一直读取，直到 ``size`` 字节。 
+  
 proc read*(req: Request, buf: pointer, size: range[int(LimitChunkedDataLen)..high(int)]): Future[Natural] = discard
   ## 读取最多 ``size`` 个数据， 读取的数据填充在 ``buf``， 返回实际读取的数量。 如果返回 ``0``， 
   ## 表示已经到达数据尾部，不会再有数据可读。 如果数据是 ``Transfer-Encoding: chunked`` 编码的，则
@@ -120,7 +146,7 @@ proc readDiscard*(req: Request): Future[void] {.async.} = discard
   ## 读取所有数据， 直到数据尾部， 即不再有数据可读。 不保存所有读到的数据。 当你对数据不感兴趣时， 这个函数
   ## 会比较有用处。
 
-proc isEOF*(req: Request): bool = discard
+proc isEof*(req: Request): bool = discard
   ## 判断 ``req`` 的读是否已经到达数据尾部，不再有数据可读。 到达尾部，有可能是客户端已经发送完所有必要的数据； 
   ## 也有可能客户端提前关闭了发送端，使得读操作提前完成。 
 

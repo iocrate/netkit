@@ -40,7 +40,7 @@ type
     
   RequestHandler* = proc (req: Request): Future[void] {.closure, gcsafe.}
 
-proc newHttpConnection(socket: AsyncFD, address: string, handler: RequestHandler): HttpConnection = 
+proc newHttpConnection*(socket: AsyncFD, address: string, handler: RequestHandler): HttpConnection = 
   ##
   new(result)
   result.buffer = initMarkableCircularBuffer()
@@ -49,77 +49,6 @@ proc newHttpConnection(socket: AsyncFD, address: string, handler: RequestHandler
   result.socket = socket
   result.address = address
   result.closed = false
-
-template readBuffer(conn: HttpConnection, buf: pointer, size: Natural) = 
-  discard conn.buffer.get(buf, size)
-  discard conn.buffer.del(size)
-
-template readNativeSocket(conn: HttpConnection, buf: pointer, size: Natural): Natural = 
-  var recvLen = 0
-  let recvFuture = conn.socket.recvInto(buf, size)
-  yield recvFuture
-  if recvFuture.failed:
-    conn.socket.closeSocket()
-    conn.closed = true
-    conn.closedError = recvFuture.readError()
-  else:
-    recvLen = recvFuture.read()
-    if recvLen == 0:
-        conn.socket.closeSocket()
-        conn.closed = true 
-  recvLen
-
-template bufferLen(conn: HttpConnection): Natural = 
-  conn.buffer.len.int
-
-proc read(conn: HttpConnection, buf: pointer, size: Natural): Future[Natural] {.async.} = 
-  ## Reads up to ``size`` bytes from the connection, storing the results in the ``buf``. 
-  ## 
-  ## The return value is the number of bytes actually read. This might be less than ``size``.
-  ## A value of zero indicates the connection closed.
-  result = conn.bufferLen
-  if result >= size:
-    conn.readBuffer(buf, size)
-    result = size
-  else:
-    if result > 0:
-      conn.readBuffer(buf, result)
-    let remainingLen = size - result
-    let readLen = conn.readNativeSocket(buf.offset(result), remainingLen)
-    if readLen == 0:
-      return
-    if remainingLen > readLen:
-      conn.readBuffer(buf.offset(result), readLen)
-      result.inc(readLen)
-    else:
-      conn.readBuffer(buf.offset(result), remainingLen)
-      result.inc(remainingLen)
-
-proc readUntil(conn: HttpConnection, buf: pointer, size: Natural): Future[Natural] {.async.} =  
-  ## Reads up to ``size`` bytes from the connection, storing the results in the ``buf``. 
-  ## 
-  ## The return value is the number of bytes actually read. This might be less than ``size`` 
-  ## that indicates the connection closed. 
-  result = conn.bufferLen
-  if result >= size:
-    conn.readBuffer(buf, size)
-    result = size
-  else:
-    if result > 0:
-      conn.readBuffer(buf, result)
-    var remainingLen = size - result
-    while true:
-      let readLen = conn.readNativeSocket(buf.offset(result), remainingLen)
-      if readLen == 0:
-        return
-      if remainingLen > readLen:
-        conn.readBuffer(buf.offset(result), readLen)
-        result.inc(readLen)
-        remainingLen.dec(readLen)
-      else:
-        conn.readBuffer(buf.offset(result), remainingLen)
-        result.inc(remainingLen)
-        return
 
 proc newRequest*(conn: HttpConnection): Request = 
   ##
@@ -177,21 +106,96 @@ proc normalizeSpecificFields(req: Request) =
   req.normalizeContentLength()
   req.normalizeTransforEncoding()
 
-proc handleNextRequest(conn: HttpConnection): Future[void] {.async.} = 
+template readBuffer(conn: HttpConnection, buf: pointer, len: Natural) = 
+  discard conn.buffer.get(buf, len)
+  discard conn.buffer.del(len)
+
+template readNativeSocket(conn: HttpConnection, buf: pointer, len: Natural): Natural = 
+  var recvLen = 0
+  let recvFuture = conn.socket.recvInto(buf, len)
+  yield recvFuture
+  if recvFuture.failed:
+    conn.socket.closeSocket()
+    conn.closed = true
+    conn.closedError = recvFuture.readError()
+  else:
+    recvLen = recvFuture.read()
+    if recvLen == 0:
+        conn.socket.closeSocket()
+        conn.closed = true 
+  recvLen
+
+template bufferLen(conn: HttpConnection): Natural = 
+  conn.buffer.len.int
+
+proc read*(conn: HttpConnection, buf: pointer, len: Natural): Future[Natural] {.async.} = 
+  ## 
+  result = conn.bufferLen
+  if result >= len:
+    conn.readBuffer(buf, len)
+    result = len
+  else:
+    if result > 0:
+      conn.readBuffer(buf, result)
+    let remainingLen = len - result
+    let readLen = conn.readNativeSocket(buf.offset(result), remainingLen)
+    if readLen == 0:
+      return
+    if remainingLen > readLen:
+      conn.readBuffer(buf.offset(result), readLen)
+      result.inc(readLen)
+    else:
+      conn.readBuffer(buf.offset(result), remainingLen)
+      result.inc(remainingLen)
+
+proc readUntil*(conn: HttpConnection, buf: pointer, len: Natural): Future[Natural] {.async.} =  
+  ## 
+  result = conn.bufferLen
+  if result >= len:
+    conn.readBuffer(buf, len)
+    result = len
+  else:
+    if result > 0:
+      conn.readBuffer(buf, result)
+    var remainingLen = len - result
+    while true:
+      let readLen = conn.readNativeSocket(buf.offset(result), remainingLen)
+      if readLen == 0:
+        return
+      if remainingLen > readLen:
+        conn.readBuffer(buf.offset(result), readLen)
+        result.inc(readLen)
+        remainingLen.dec(readLen)
+      else:
+        conn.readBuffer(buf.offset(result), remainingLen)
+        result.inc(remainingLen)
+        return
+
+proc processNextRequest*(conn: HttpConnection): Future[void] {.async.} = 
+  ## 
   var req: Request
   var parsed = false
   
-  if conn.bufferLen > 0:
+  if conn.buffer.len.int > 0:
     req = newRequest(conn)
     parsed = conn.parser.parseRequest(req.header, conn.buffer)
   
   if not parsed:
     while true:
       let region = conn.buffer.next()
-      let readLen = conn.readNativeSocket(region[0], region[1].Natural)
-      if readLen == 0:
+      var recvLen {.noInit.}: int 
+      try:
+        recvLen = await conn.socket.recvInto(region[0], region[1].int)
+      except:
+        conn.socket.closeSocket()
+        conn.closed = true
+        conn.closedError = getCurrentException()
+        return
+      if recvLen == 0:
+        conn.socket.closeSocket()
+        conn.closed = true
         return 
-      discard conn.buffer.pack(readLen)
+      discard conn.buffer.pack(recvLen.uint32)
   
       if req == nil:
         req = newRequest(conn)
@@ -209,12 +213,14 @@ proc readUnsafe(req: Request, buf: pointer, size: Natural): Future[Natural] {.as
   assert not req.readEnded
   assert not req.chunked
   assert req.contentLen > 0
+  await req.readLock.acquire()
   result = await req.conn.read(buf, min(req.contentLen, size))
   req.contentLen.dec(result)  
   if req.contentLen == 0:
     req.readEnded = true
     if not req.conn.closed and req.writeEnded:
-      asyncCheck req.conn.handleNextRequest()
+      asyncCheck req.conn.processNextRequest()
+  req.readLock.release()
 
 proc readUnsafe(req: Request): Future[string] {.async.} =
   ## 读取最多 ``size`` 个数据， 读取的数据填充在 ``buf`` ， 返回实际读取的数量。 如果返回 ``0``， 
@@ -223,6 +229,7 @@ proc readUnsafe(req: Request): Future[string] {.async.} =
   assert not req.readEnded
   assert not req.chunked
   assert req.contentLen > 0
+  await req.readLock.acquire()
   let size = min(req.contentLen, BufferSize.int)
   result = newString(size)
   let readLen = await req.conn.read(result.cstring, size) # should need Gc_ref(result) ?
@@ -231,7 +238,8 @@ proc readUnsafe(req: Request): Future[string] {.async.} =
   if req.contentLen == 0:
     req.readEnded = true
     if not req.conn.closed and req.writeEnded:
-      asyncCheck req.conn.handleNextRequest()
+      asyncCheck req.conn.processNextRequest()
+  req.readLock.release()
 
 template readChunkSizerUnsafe(req: Request, chunkSizer: ChunkSizer): bool = 
   let conn = req.conn
@@ -251,7 +259,7 @@ template readChunkSizerUnsafe(req: Request, chunkSizer: ChunkSizer): bool =
     if recvLen == 0:
       conn.closed = true
       break 
-    discard conn.buffer.pack(recvLen)  
+    discard conn.buffer.pack(recvLen.uint32)  
   succ
 
 template readChunkEnd(req: Request, trailer: string): bool = 
@@ -272,12 +280,13 @@ template readChunkEnd(req: Request, trailer: string): bool =
     if recvLen == 0:
       conn.closed = true
       break 
-    discard conn.buffer.pack(recvLen)  
+    discard conn.buffer.pack(recvLen.uint32)  
   succ
 
 proc readChunkUnsafe(req: Request, buf: pointer, size: range[int(LimitChunkedDataLen)..high(int)]): Future[Natural] {.async.} =
   ## 读取一块 chunked 数据， 读取的数据填充在 ``buf`` 。 ``size`` 最少是 ``LimitChunkedDataLen``，以防止块数据过长导致
   ## 溢出。 如果返回 ``0``， 表示已经到达数据尾部，不会再有数据可读。
+  await req.readLock.acquire()
   var chunkSizer: ChunkSizer
   if readChunkSizerUnsafe(req, chunkSizer):
     if chunkSizer.size == 0:
@@ -286,7 +295,7 @@ proc readChunkUnsafe(req: Request, buf: pointer, size: range[int(LimitChunkedDat
         if trailer.len == 0:
           req.readEnded = true
           if req.writeEnded:
-            asyncCheck req.conn.handleNextRequest()
+            asyncCheck req.conn.processNextRequest()
         else:
           copyMem(buf, trailer.cstring, trailer.len) # TODO: 优化， 不使用 copy 
           req.trailer = true
@@ -296,6 +305,7 @@ proc readChunkUnsafe(req: Request, buf: pointer, size: range[int(LimitChunkedDat
       result = await req.conn.readUntil(buf, chunkSizer.size)
       if req.conn.closed:
         result = 0
+  req.readLock.release()
 
 proc readChunkUnsafe(req: Request): Future[string] {.async.} =
   ## 读取一块 chunked 数据。 HTTP 请求头中 ``Transfer-Encoding`` 必须包含 ``chunked`` 编码，否则
@@ -311,7 +321,7 @@ proc readChunkUnsafe(req: Request): Future[string] {.async.} =
         if trailer.len == 0:
           req.readEnded = true
           if req.writeEnded:
-            asyncCheck req.conn.handleNextRequest()
+            asyncCheck req.conn.processNextRequest()
         else:
           req.trailer = true
           result = trailer # TODO: 优化
@@ -378,7 +388,7 @@ proc readAll*(req: Request): Future[string] {.async.} =
 
 proc isEof*(req: Request): bool =
   ## 
-  req.conn.closed or req.readEnded
+  req.conn.readEnded or req.readEnded
 
 proc isTrailer*(req: Request): bool =
   ## 
@@ -419,14 +429,16 @@ proc writeEnd*(req: Request) =
   ## 
   if not req.writeEnded:
     req.writeEnded = true
-    if req.conn.closed:
+    if req.conn.readEnded:
       if not req.conn.closed:
         req.conn.socket.closeSocket()
         req.conn.closed = true
     else:
       if req.readEnded:
-        asyncCheck req.conn.handleNextRequest()
+        asyncCheck req.conn.processNextRequest()
 
-proc handleHttpConnection*(socket: AsyncFD, address: string, handler: RequestHandler) = 
-  ##
-  asyncCheck newHttpConnection(socket, address, handler).handleNextRequest() 
+
+ 
+
+
+
