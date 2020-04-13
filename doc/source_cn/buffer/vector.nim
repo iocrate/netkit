@@ -12,7 +12,7 @@ import netkit/buffer/constants
 
 type 
   VectorBuffer* = object of RootObj                  ## 一个增长的缓冲区。 
-    value: seq[char]
+    value: seq[byte]
     endPos: Natural                                  
     capacity: Natural
     minCapacity: Natural

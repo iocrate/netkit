@@ -30,25 +30,33 @@ import netkit/http/base
 # proc f1(a: uint) =
 #   discard
 
-var a = "abc"
-var b = a
+# var a = "abc"
+# var b = a
 
-var x = "efg"
+# var x = "efg"
 
-template f(): string =
-  ##echo repr x
-  x.shallow()
-  x
+# template f(): string =
+#   ##echo repr x
+#   x.shallow()
+#   x
 
 
 
-a.add('d')
+# a.add('d')
 
-echo repr a
-echo repr b
+# echo repr a
+# echo repr b
 
-var m = f()
+# var m = f()
 
-x.add("1")
-echo repr x
-echo repr m
+# x.add("1")
+# echo repr x
+# echo repr m
+
+type
+  A = object of Exception
+    code: int
+
+proc newA(message: string): ref A =
+  new(result)
+  

@@ -90,7 +90,7 @@ import netkit/buffer/constants
 type 
   CircularBuffer* = object of RootObj                
     ## 一个数据结构。 它使用一个固定大小的缓冲区， 存储数据的时候两端如同是连接成环状。 
-    data: array[0..BufferSize, char]
+    data: array[0..BufferSize, byte]
     startPos: Natural                                
     endPos: Natural                                  
     endMirrorPos: Natural                            

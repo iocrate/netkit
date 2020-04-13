@@ -12,12 +12,14 @@ import netkit/buffer/circular
 import netkit/http/base
 import netkit/http/constants as http_constants
 import netkit/http/chunk
+import netkit/http/exception
 
 type
   HttpParser* = object ## HTTP packet parser.
     secondaryBuffer: string
     currentLineLen: Natural
     currentFieldName: string
+    currentFieldCount: Natural
     state: HttpParseState
     
   HttpParseState {.pure.} = enum
@@ -38,7 +40,7 @@ proc popToken(p: var HttpParser, buf: var MarkableCircularBuffer, size: Natural 
   else:
     result = buf.popMarks(size)
   if result.len == 0:
-    raise newException(ValueError, "Bad Request")
+    raise newHttpError(Http400)
 
 proc popMarksToSecondaryIfFull(p: var HttpParser, buf: var MarkableCircularBuffer) = 
   if buf.len == buf.capacity:
@@ -59,7 +61,7 @@ proc markCharOrCRLF(p: var HttpParser, buf: var MarkableCircularBuffer, c: char)
       return
     elif ch == LF:
       if p.popToken(buf) != CRLF:
-        raise newException(EOFError, "无效的 CRLF")
+        raise newHttpError(Http400)
       result = MarkProcessKind.CRLF
       p.currentLineLen = 0
       return
@@ -67,17 +69,17 @@ proc markCharOrCRLF(p: var HttpParser, buf: var MarkableCircularBuffer, c: char)
 proc markRequestLineChar(p: var HttpParser, buf: var MarkableCircularBuffer, c: char): bool = 
   result = p.markChar(buf, c)
   if p.currentLineLen.int > LimitStartLineLen:
-    raise newException(OverflowError, "request-line too long")
+    raise newHttpError(Http400, "Request Line Too Long")
 
 proc markRequestLineCharOrCRLF(p: var HttpParser, buf: var MarkableCircularBuffer, c: char): MarkProcessKind = 
   result = p.markCharOrCRLF(buf, c)
   if p.currentLineLen.int > LimitStartLineLen:
-    raise newException(IndexError, "request-line too long")
+    raise newHttpError(Http400, "Request Line Too Long")
 
 proc markRequestFieldCharOrCRLF(p: var HttpParser, buf: var MarkableCircularBuffer, c: char): MarkProcessKind = 
   result = p.markCharOrCRLF(buf, c)
   if p.currentLineLen.int > LimitHeaderFieldLen:
-    raise newException(OverflowError, "request-field too long")
+    raise newHttpError(Http400, "Header Field Too Long")
 
 proc parseRequest*(p: var HttpParser, req: var RequestHeader, buf: var MarkableCircularBuffer): bool = 
   ## 
@@ -128,12 +130,12 @@ proc parseRequest*(p: var HttpParser, req: var RequestHeader, buf: var MarkableC
         # header field MUST either reject the message as invalid or consume each 
         # whitespace-preceded line without further processing of it.
         if p.currentFieldName[0] in WS:
-          raise newException(ValueError, "Bad Request")
+          raise newHttpError(Http400, "Invalid Header Field")
         # [RFC7230-3.2.4](https://tools.ietf.org/html/rfc7230#section-3.2.4) 
         # A server MUST reject any received request message that contains whitespace 
         # between a header field-name and colon with a response code of 400.
         if p.currentFieldName[^1] in WS:
-          raise newException(ValueError, "Bad Request")
+          raise newHttpError(Http400, "Invalid Header Field")
         p.state = HttpParseState.FIELD_VALUE
       of MarkProcessKind.CRLF:
         p.currentFieldName = ""
@@ -155,7 +157,7 @@ proc parseRequest*(p: var HttpParser, req: var RequestHeader, buf: var MarkableC
           fieldValue.removePrefix(WS)
           fieldValue.removeSuffix(WS)
           if fieldValue.len == 0:
-            raise newException(ValueError, "Bad Request")
+            raise newHttpError(Http400, "Invalid Header Field")
           req.fields.add(p.currentFieldName, fieldValue)
         elif c == LF:
           var fieldValue = p.popToken(buf, 1)
@@ -165,15 +167,18 @@ proc parseRequest*(p: var HttpParser, req: var RequestHeader, buf: var MarkableC
           fieldValue.removePrefix(WS)
           fieldValue.removeSuffix(WS)
           if fieldValue.len == 0:
-            raise newException(ValueError, "Bad Request")
+            raise newHttpError(Http400, "Invalid Header Field")
           req.fields.add(p.currentFieldName, fieldValue)
           p.state = HttpParseState.FIELD_NAME
           break  
       if p.state == HttpParseState.FIELD_VALUE:
         p.popMarksToSecondaryIfFull(buf)
       else:
-        if p.currentLineLen.int > LimitHeaderFieldLen:
-          raise newException(OverflowError, "request-field too long")
+        p.currentFieldCount.inc()
+        if p.currentFieldCount > LimitHeaderFieldCount:
+          raise newHttpError(Http431)
+        if p.currentLineLen > LimitHeaderFieldLen:
+          raise newHttpError(Http400, "Header Field Too Long")
         p.currentLineLen = 0
     of HttpParseState.BODY:
       return true
@@ -183,7 +188,7 @@ proc parseChunkSizer*(p: var HttpParser, buf: var MarkableCircularBuffer): (bool
   result[0] = false
   let succ = p.markChar(buf, LF)
   if p.currentLineLen.int > LimitChunkedSizeLen:
-    raise newException(OverflowError, "chunked-size-line too long")
+    raise newHttpError(Http400, "Chunked Size Too Long")
   if succ:
     var line = p.popToken(buf, 1)
     let lastIdx = line.len - 1
@@ -199,8 +204,8 @@ proc parseChunkEnd*(p: var HttpParser, buf: var MarkableCircularBuffer): (bool, 
   ## 
   result[0] = false
   let succ = p.markChar(buf, LF)
-  if p.currentLineLen.int > LimitHeaderFieldLen:
-    raise newException(OverflowError, "chunked-trailer-line too long")
+  if p.currentLineLen.int > LimitChunkedDataLen:
+    raise newHttpError(Http400, "Chunked Trailer Too Long")
   if succ:
     result[1] = p.popToken(buf, 1)
     let lastIdx = result[1].len - 1

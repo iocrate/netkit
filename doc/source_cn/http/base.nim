@@ -106,7 +106,7 @@ const
 proc toHttpCode*(code: int): HttpCode = discard
   ## 获取整数 ``code`` 对应的 HttpCode 表示。
 
-proc toHttpMethod*(s: string): HttpMethod {.raises: [ValueError].} = discard
+proc toHttpMethod*(s: string): HttpMethod = discard
   ## 获取字符串 ``s`` 对应的 HttpMethod 表示。
 
 proc toHttpVersion*(s: string): HttpVersion = discard

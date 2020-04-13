@@ -14,7 +14,7 @@ import netkit/buffer/constants
 type 
   CircularBuffer* = object of RootObj                
     ## A data structure that uses a single, fixed-size buffer as if it were connected end-to-end. 
-    value: array[0..BufferSize, char]
+    value: array[0..BufferSize, byte]
     startPos: Natural                                #  0..n-1 
     endPos: Natural                                  #  0..n-1 
     endMirrorPos: Natural                            #  0..2n-1 
@@ -153,7 +153,7 @@ iterator items*(b: CircularBuffer): char =
   ## Iterates over the stored data. 
   var i = b.startPos
   while i < b.endMirrorPos:
-    yield b.value[i mod BufferSize]
+    yield b.value[i mod BufferSize].chr
     i.inc()
       
 proc del*(b: var MarkableCircularBuffer, size: Natural): Natural = 
@@ -202,7 +202,7 @@ iterator marks*(b: var MarkableCircularBuffer): char =
   while b.markedPos < b.endMirrorPos:
     let i = b.markedPos mod BufferSize
     b.markedPos.inc()
-    yield b.value[i]
+    yield b.value[i].chr
 
 proc mark*(b: var MarkableCircularBuffer, size: Natural): Natural =
   ## Marks the stored data in the buffer immediately until it reaches ``size`` or reaches the end of the data. Returns 

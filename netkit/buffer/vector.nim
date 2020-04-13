@@ -13,7 +13,7 @@ import netkit/buffer/constants
 
 type 
   VectorBuffer* = object of RootObj                  ## A growable buffer.
-    value: seq[char]
+    value: seq[byte]
     endPos: Natural                                  #  0..n-1 
     capacity: Natural
     minCapacity: Natural
@@ -27,7 +27,7 @@ proc initVectorBuffer*(
   result.capacity = minCapacity
   result.minCapacity = minCapacity
   result.maxCapacity = maxCapacity
-  result.value = newSeqOfCap[char](minCapacity)
+  result.value = newSeqOfCap[byte](minCapacity)
 
 proc capacity*(b: VectorBuffer): Natural = 
   ## Gets the capacity of the buffer.
@@ -49,14 +49,14 @@ proc reset*(b: var VectorBuffer): Natural =
   ## Resets the buffer to restore to the original capacity while clear all stored data.
   b.capacity = b.minCapacity
   b.endPos = 0
-  b.value = newSeqOfCap[char](b.capacity)
+  b.value = newSeqOfCap[byte](b.capacity)
 
 proc expand*(b: var VectorBuffer) = 
   ## Expands the capacity of the buffer. If it exceeds the maximum capacity, an exception is thrown.
   let newCapacity = b.capacity * 2
   if newCapacity > b.maxCapacity:
     raise newException(OverflowError, "capacity overflow")
-  var newValue = newSeqOfCap[char](newCapacity)
+  var newValue = newSeqOfCap[byte](newCapacity)
   copyMem(newValue.addr, b.value.addr, b.endPos)
   b.capacity = newCapacity
   b.value.shallowCopy(newValue)
