@@ -61,7 +61,7 @@ template readNativeSocket(conn: HttpConnection, buf: pointer, size: Natural): Na
   if recvFuture.failed:
     conn.socket.closeSocket()
     conn.closed = true
-    conn.closedError = recvFuture.readError()
+    raise recvFuture.readError()
   else:
     recvLen = recvFuture.read()
     if recvLen == 0:
@@ -150,6 +150,14 @@ proc fields*(req: Request): HeaderFields {.inline.} =
   ## 
   req.header.fields
 
+proc eof*(req: Request): bool =
+  ## 
+  req.conn.closed or req.readEnded
+
+proc atTrailer*(req: Request): bool =
+  ## 
+  req.trailer
+
 proc normalizeTransforEncoding(req: Request) =
   if req.fields.contains("Transfer-Encoding"):
     let encodings = req.fields["Transfer-Encoding"]
@@ -178,6 +186,7 @@ proc normalizeSpecificFields(req: Request) =
   req.normalizeTransforEncoding()
 
 proc handleNextRequest(conn: HttpConnection): Future[void] {.async.} = 
+  # TODO: 考虑 parse 过程的错误处理， 以及 readNativeSocket 的错误处理
   var req: Request
   var parsed = false
   
@@ -202,187 +211,205 @@ proc handleNextRequest(conn: HttpConnection): Future[void] {.async.} =
   req.normalizeSpecificFields()
   await conn.requestHandler(req)
 
-proc readUnsafe(req: Request, buf: pointer, size: Natural): Future[Natural] {.async.} =
-  ## 读取最多 ``size`` 个数据， 读取的数据填充在 ``buf`` ， 返回实际读取的数量。 如果返回 ``0``， 
-  ## 表示已经到达数据尾部，不会再有数据可读。 
+template readContent(req: Request, buf: pointer, size: Natural): Natural = 
   assert not req.conn.closed
   assert not req.readEnded
   assert not req.chunked
-  assert req.contentLen > 0
-  result = await req.conn.read(buf, min(req.contentLen, size))
-  req.contentLen.dec(result)  
+  assert req.contentLen >= size
+  let readFuture = req.conn.read(buf, min(req.contentLen, size))
+  yield readFuture
+  if readFuture.failed:
+    raise readFuture.readError()
+  let readLen = readFuture.read()
+  if readLen == 0:
+    raise newException(ValueError, "BAD REQUEST")
+  req.contentLen.dec(readLen)  
   if req.contentLen == 0:
     req.readEnded = true
-    if not req.conn.closed and req.writeEnded:
+    if req.writeEnded:
       asyncCheck req.conn.handleNextRequest()
+  readLen
 
-proc readUnsafe(req: Request): Future[string] {.async.} =
-  ## 读取最多 ``size`` 个数据， 读取的数据填充在 ``buf`` ， 返回实际读取的数量。 如果返回 ``0``， 
-  ## 表示已经到达数据尾部，不会再有数据可读。 
+template readContent(req: Request): string = 
   assert not req.conn.closed
   assert not req.readEnded
   assert not req.chunked
   assert req.contentLen > 0
   let size = min(req.contentLen, BufferSize.int)
-  result = newString(size)
-  let readLen = await req.conn.read(result.cstring, size) # should need Gc_ref(result) ?
-  result.setLen(readLen)                                  # still ref result 
+  var buffer = newString(size)
+  let readFuture = req.conn.read(buffer.cstring, size) # should need Gc_ref(result) ?
+  yield readFuture
+  if readFuture.failed:
+    raise readFuture.readError()
+  let readLen = readFuture.read()
+  if readLen == 0:
+    raise newException(ValueError, "BAD REQUEST")
+  buffer.setLen(readLen)                               # still ref result 
+  buffer.shallow()
+  if readLen == 0:
+    raise newException(ValueError, "BAD REQUEST")
   req.contentLen.dec(readLen)  
   if req.contentLen == 0:
     req.readEnded = true
     if not req.conn.closed and req.writeEnded:
       asyncCheck req.conn.handleNextRequest()
+  buffer
 
-template readChunkSizerUnsafe(req: Request, chunkSizer: ChunkSizer): bool = 
+template readChunkSizer(req: Request, chunkSizer: ChunkSizer) = 
   let conn = req.conn
-  var succ: bool
+  var succ = false
   while true:
     (succ, chunkSizer) = conn.parser.parseChunkSizer(conn.buffer)
     if succ:
       break
     let (regionPtr, regionLen) = conn.buffer.next()
-    let recvFuture = conn.socket.recvInto(regionPtr, regionLen.int)
-    yield recvFuture
-    assert not recvFuture.failed # recvInto 一定不会抛出异常？  
-    # if recvFuture.failed:
-    #   raise recvFuture.readError()
-    # else:
-    let recvLen = recvFuture.read()
-    if recvLen == 0:
-      conn.closed = true
-      break 
-    discard conn.buffer.pack(recvLen)  
-  succ
+    let readLen = conn.readNativeSocket(regionPtr, regionLen)
+    if readLen == 0:
+      raise newException(ValueError, "BAD REQUEST")
+    discard conn.buffer.pack(readLen) 
 
-template readChunkEnd(req: Request, trailer: string): bool = 
+template readChunkEnd(req: Request, trailer: string) = 
   let conn = req.conn
-  var succ: bool
+  var succ = false
   while true:
     (succ, trailer) = conn.parser.parseChunkEnd(conn.buffer)
     if succ:
       break
     let (regionPtr, regionLen) = conn.buffer.next()
-    let recvFuture = conn.socket.recvInto(regionPtr, regionLen.int)
-    yield recvFuture
-    assert not recvFuture.failed # recvInto 一定不会抛出异常？  
-    # if recvFuture.failed:
-    #   raise recvFuture.readError()
-    # else:
-    let recvLen = recvFuture.read()
-    if recvLen == 0:
-      conn.closed = true
-      break 
-    discard conn.buffer.pack(recvLen)  
-  succ
+    let readLen = conn.readNativeSocket(regionPtr, regionLen)
+    if readLen == 0:
+      raise newException(ValueError, "BAD REQUEST")
+    discard conn.buffer.pack(readLen) 
 
-proc readChunkUnsafe(req: Request, buf: pointer, size: range[int(LimitChunkedDataLen)..high(int)]): Future[Natural] {.async.} =
-  ## 读取一块 chunked 数据， 读取的数据填充在 ``buf`` 。 ``size`` 最少是 ``LimitChunkedDataLen``，以防止块数据过长导致
-  ## 溢出。 如果返回 ``0``， 表示已经到达数据尾部，不会再有数据可读。
-  var chunkSizer: ChunkSizer
-  if readChunkSizerUnsafe(req, chunkSizer):
-    if chunkSizer.size == 0:
-      var trailer: string
-      if readChunkEnd(req, trailer): # TODO: 修订
-        if trailer.len == 0:
-          req.readEnded = true
-          if req.writeEnded:
-            asyncCheck req.conn.handleNextRequest()
-        else:
-          copyMem(buf, trailer.cstring, trailer.len) # TODO: 优化， 不使用 copy 
-          req.trailer = true
-          result = trailer.len
+template readChunk(req: Request, buf: pointer, size: int): Natural =
+  assert not req.conn.closed
+  assert not req.readEnded
+  assert req.chunked
+  
+  var readLen = 0
+
+  template handleEnd = 
+    var trailer: string
+    readChunkEnd(req, trailer)
+    if trailer.len == 0:
+      req.trailer = false
+      req.readEnded = true
+      if req.writeEnded:
+        asyncCheck req.conn.handleNextRequest()
     else:
-      assert chunkSizer.size <= size
-      result = await req.conn.readUntil(buf, chunkSizer.size)
-      if req.conn.closed:
-        result = 0
+      copyMem(buf, trailer.cstring, trailer.len) 
+      req.trailer = true
+      readLen = trailer.len
 
-proc readChunkUnsafe(req: Request): Future[string] {.async.} =
-  ## 读取一块 chunked 数据。 HTTP 请求头中 ``Transfer-Encoding`` 必须包含 ``chunked`` 编码，否则
-  ## 立刻返回 ``""``。此外，当 ``Transfer-Encoding`` 必须包含 ``chunked`` 编码时，如果返回 ``""``， 
-  ## 表示已经到达数据尾部，不会再有数据可读。 
+  if req.trailer:
+    handleEnd()
+  else:
+    var chunkSizer: ChunkSizer
+    req.readChunkSizer(chunkSizer)
+    if chunkSizer[0] == 0:
+      handleEnd()
+    else:
+      assert chunkSizer[0] <= size
+      let readFuture = req.conn.readUntil(buf, chunkSizer[0])
+      yield readFuture
+      if readFuture.failed:
+        raise readFuture.readError()
+      readLen = readFuture.read()
+      if readLen == 0:
+        raise newException(ValueError, "BAD REQUEST")
+  readLen
+
+template readChunk(req: Request): string = 
   # TODO: 合并 read
   # chunked size 必须小于 BufferSize；chunkedSizeLen 必须小于 BufferSize
-  var chunkSizer: ChunkSizer
-  if readChunkSizerUnsafe(req, chunkSizer):
-    if chunkSizer.size == 0:
-      var trailer: string
-      if readChunkEnd(req, trailer): # TODO: 修订
-        if trailer.len == 0:
-          req.readEnded = true
-          if req.writeEnded:
-            asyncCheck req.conn.handleNextRequest()
-        else:
-          req.trailer = true
-          result = trailer # TODO: 优化
+  assert not req.conn.closed
+  assert not req.readEnded
+  assert req.chunked
+  
+  var readData = ""
+
+  template handleEnd = 
+    readChunkEnd(req, readData)
+    if readData.len == 0:
+      req.trailer = false
+      req.readEnded = true
+      if req.writeEnded:
+        asyncCheck req.conn.handleNextRequest()
     else:
-      result = newString(chunkSizer.size)
-      discard await req.conn.readUntil(result.cstring, chunkSizer.size) # should need Gc_ref(result) ?
-      if req.conn.closed:
-        result = ""                                                     # still ref result
+      readData.shallow()
+      req.trailer = true
 
-proc read*(req: Request, buf: pointer, size: range[int(LimitChunkedDataLen)..high(int)]): Future[Natural] =
-  ## 
-  let retFuture = newFuture[Natural]("read")
-  result = retFuture
-  if req.conn.closed or req.readEnded:
-    retFuture.complete(0)
+  if req.trailer:
+    handleEnd()
   else:
-    req.readLock.acquire().callback = proc () =
-      if req.chunked:
-        req.readChunkUnsafe(buf, size).callback = proc (fut: Future[Natural]) =
-          req.readLock.release()
-          if fut.failed:
-            retFuture.fail(fut.readError())
-          else:
-            retFuture.complete(fut.read())
-      else:
-        req.readUnsafe(buf, size).callback = proc (fut: Future[Natural]) =
-          req.readLock.release()
-          if fut.failed:
-            retFuture.fail(fut.readError())
-          else:
-            retFuture.complete(fut.read())
+    var chunkSizer: ChunkSizer
+    req.readChunkSizer(chunkSizer)
+    if chunkSizer.size == 0:
+      handleEnd()
+    else:
+      readData = newString(chunkSizer.size)
+      let readFuture = req.conn.readUntil(readData.cstring, chunkSizer.size)
+      yield readFuture
+      if readFuture.failed:
+        raise readFuture.readError()
+      let readLen = readFuture.read()
+      if readLen == chunkSizer.size:
+        raise newException(ValueError, "BAD REQUEST")
+      readData.shallow()
+  readData
 
-proc read*(req: Request): Future[string] =
+proc read*(req: Request, buf: pointer, size: range[int(LimitChunkedDataLen)..high(int)]): Future[Natural] {.async.} =
   ## 
-  let retFuture = newFuture[string]("read")
-  result = retFuture
-  if req.conn.closed or req.readEnded:
-    retFuture.complete("")
-  else:
-    req.readLock.acquire().callback = proc () =
+  await req.readLock.acquire()
+  try:
+    if not req.conn.closed and req.readEnded:
       if req.chunked:
-        req.readChunkUnsafe().callback = proc (fut: Future[string]) =
-          req.readLock.release()
-          if fut.failed:
-            retFuture.fail(fut.readError())
-          else:
-            retFuture.complete(fut.read())
+        result = req.readChunk(buf, size)
       else:
-        req.readUnsafe().callback = proc (fut: Future[string]) =
-          req.readLock.release()
-          if fut.failed:
-            retFuture.fail(fut.readError())
-          else:
-            retFuture.complete(fut.read())
+        result = req.readContent(buf, size)
+  finally:
+    req.readLock.release()
+
+proc read*(req: Request): Future[string] {.async.} =
+  ## 
+  await req.readLock.acquire()
+  try:
+    if not req.conn.closed and req.readEnded:
+      if req.chunked:
+        result = req.readChunk()
+      else:
+        result = req.readContent()
+  finally:
+    req.readLock.release()
 
 proc readAll*(req: Request): Future[string] {.async.} =
   ## 
-  while true:
-    let data = await req.read()
-    if data.len > 0:
-      result.add(data)
-    else:
-      break
+  await req.readLock.acquire()
+  try:
+    if not req.chunked:
+      result = newString(req.contentLen)
+    while not req.eof:
+      if req.chunked:
+        result.add(req.readChunk())
+      else:
+        result.add(req.readContent())
+  finally:
+    req.readLock.release()
 
-proc isEof*(req: Request): bool =
+proc readDiscard*(req: Request): Future[void] {.async.} =
   ## 
-  req.conn.closed or req.readEnded
-
-proc isTrailer*(req: Request): bool =
-  ## 
-  req.trailer
+  await req.readLock.acquire()
+  let buffer = newString(LimitChunkedDataLen)
+  GC_ref(buffer)
+  try:
+    while not req.eof:
+      if req.chunked:
+        discard req.readChunk(buffer.cstring, LimitChunkedDataLen)
+      else:
+        discard req.readContent(buffer.cstring, LimitChunkedDataLen)
+  finally:
+    GC_unref(buffer)
+    req.readLock.release()
 
 proc write*(req: Request, buf: pointer, size: Natural): Future[void] {.async.} =
   ## 

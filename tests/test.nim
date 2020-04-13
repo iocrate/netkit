@@ -30,8 +30,25 @@ import netkit/http/base
 # proc f1(a: uint) =
 #   discard
 
-var a: byte = 41
+var a = "abc"
+var b = a
+
+var x = "efg"
+
+template f(): string =
+  ##echo repr x
+  x.shallow()
+  x
 
 
-echo a
-echo a.char
+
+a.add('d')
+
+echo repr a
+echo repr b
+
+var m = f()
+
+x.add("1")
+echo repr x
+echo repr m
