@@ -9,3 +9,6 @@ license       = "MIT"
 # Dependencies
 
 requires "nim >= 1.0.6"
+
+task test, "Run all tests":
+  exec "testament cat /"
