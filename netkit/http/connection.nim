@@ -14,6 +14,7 @@ import netkit/locks
 import netkit/buffer/constants as buffer_constants
 import netkit/buffer/circular
 import netkit/http/base 
+import netkit/http/chunk 
 import netkit/http/constants as http_constants
 import netkit/http/parser
 import netkit/http/exception
@@ -299,12 +300,12 @@ template readContent(req: Request): string =
       asyncCheck req.conn.handleNextRequest()
   buffer
 
-template readChunkSizer(req: Request, chunkSizer: ChunkSizer) = 
+template readChunkHeader(req: Request, chunkSizer: ChunkHeader) = 
   let conn = req.conn
   var succ = false
   while true:
     try:
-      (succ, chunkSizer) = conn.parser.parseChunkSizer(conn.buffer)
+      (succ, chunkSizer) = conn.parser.parseChunkHeader(conn.buffer)
     except:
       raise newException(ReadAbortedError, "Bad chunked transmission")
     if succ:
@@ -354,8 +355,8 @@ template readChunk(req: Request, buf: pointer, size: int): Natural =
   if req.trailer:
     handleEnd()
   else:
-    var chunkSizer: ChunkSizer
-    req.readChunkSizer(chunkSizer)
+    var chunkSizer: ChunkHeader
+    req.readChunkHeader(chunkSizer)
     if chunkSizer[0] == 0:
       handleEnd()
     else:
@@ -392,8 +393,8 @@ template readChunk(req: Request): string =
   if req.trailer:
     handleEnd()
   else:
-    var chunkSizer: ChunkSizer
-    req.readChunkSizer(chunkSizer)
+    var chunkSizer: ChunkHeader
+    req.readChunkHeader(chunkSizer)
     if chunkSizer.size == 0:
       handleEnd()
     else:
@@ -408,7 +409,7 @@ template readChunk(req: Request): string =
       readData.shallow()
   readData
 
-proc read*(req: Request, buf: pointer, size: range[int(LimitChunkedDataLen)..high(int)]): Future[Natural] {.async.} =
+proc read*(req: Request, buf: pointer, size: range[int(LimitChunkDataLen)..high(int)]): Future[Natural] {.async.} =
   ## Reads up to ``size`` bytes from the request, storing the results in the ``buf``. 
   ## 
   ## The return value is the number of bytes actually read. This might be less than ``size``.
@@ -462,14 +463,14 @@ proc readDiscard*(req: Request): Future[void] {.async.} =
   ## 
   ## If the return future is failed, ``OsError`` or ``ReadAbortedError`` may be raised.
   await req.readLock.acquire()
-  let buffer = newString(LimitChunkedDataLen)
+  let buffer = newString(LimitChunkDataLen)
   GC_ref(buffer)
   try:
     while not req.isReadEnded:
       if req.chunked:
-        discard req.readChunk(buffer.cstring, LimitChunkedDataLen)
+        discard req.readChunk(buffer.cstring, LimitChunkDataLen)
       else:
-        discard req.readContent(buffer.cstring, LimitChunkedDataLen)
+        discard req.readContent(buffer.cstring, LimitChunkDataLen)
   finally:
     GC_unref(buffer)
     req.readLock.release()

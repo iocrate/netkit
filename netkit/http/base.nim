@@ -77,10 +77,6 @@ type
 
   HeaderFields* = distinct Table[string, seq[string]] ## 表示 HTTP 头字段集合。 
 
-  ChunkSizer* = tuple ## Represents the size portion of the encoded data via ``Transfer-Encoding: chunked``.
-    size: Natural
-    extensions: string
-
   RequestHeader* = object ## Represents the header of a HTTP request packet. Each HTTP request should contains only one header.
     reqMethod*: HttpMethod
     url*: string

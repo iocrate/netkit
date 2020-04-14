@@ -2,12 +2,22 @@
 #        (c) Copyright 2020 Wang Tong
 #
 #    See the file "LICENSE", included in this
-#    distribution, for details about the copyright.
+#    destribution, for details about the copyright.
 
+import strutils
 import netkit/misc
 import netkit/http/base
+import netkit/http/constants as http_constants
 
-proc parseChunkSizer*(s: string): ChunkSizer = 
+type
+  ChunkHeader* = tuple ## Represents the size portion of the encoded data via ``Transfer-Encoding: chunked``.
+    size: Natural
+    extensions: string
+
+proc parseChunkHeader*(s: string): ChunkHeader = 
+  ##
+  ## ``"1C" => (28, "")``  
+  ## ``"1C; name=value" => (28, "name=value")``
   result.size = 0
   var i = 0
   while true:
@@ -18,8 +28,6 @@ proc parseChunkSizer*(s: string): ChunkSizer =
       result.size = result.size shl 4 or (s[i].ord() - 'a'.ord() + 10)
     of 'A'..'F':
       result.size = result.size shl 4 or (s[i].ord() - 'A'.ord() + 10)
-    # of '\0': # TODO: what'is this
-    #   break
     of ';':
       result.extensions = s[i..^1]
       break
@@ -27,9 +35,27 @@ proc parseChunkSizer*(s: string): ChunkSizer =
       raise newException(ValueError, "Invalid Chunk Encoded")
     i.inc()
 
-proc toChunkSize*(x: Natural): string = 
+proc parseTrailer*(s: string): tuple[name: string, value: string] = 
+  ## 
+  ## 
+  ## ``"Expires: Wed, 21 Oct 2015 07:28:00 GMT" => ("Expires", "Wed, 21 Oct 2015 07:28:00 GMT")``  
+  var i = 0
+  for c in s:
+    if c == COMMA:
+      break
+    i.inc()
+  result.name = s[0..i-1]
+  if i > 0:
+    result.value = s[i+1..^1]
+    if result.value.len > 0:
+      result.value.removePrefix(WS)
+      result.value.removeSuffix(WS)
+
+proc toHex(x: Natural): string = 
   ## 请注意， 当前 ``Natural`` 最大值是 ``high(int64)`` 。 当 ``Natural`` 最大值超过 ``high(int64)``
   ## 的时候， 该函数将不再准确。 
+  ## 
+  ## ``28 => "1C"``
   const HexChars = "0123456789ABCDEF"
   var n = x
   var m = 0
@@ -44,31 +70,79 @@ proc toChunkSize*(x: Natural): string =
   for i in 16-m..15:
     result.add(s[i])
 
-proc encodeToChunk*(source: pointer, sourceSize: Natural, dist: pointer, distSize: Natural) =
+proc toChunkExtensions*(args: varargs[tuple[name: string, value: string]]): string = 
   ## 
-  ## TODO: 优化 
-  if distSize - sourceSize < 10:
-    raise newException(OverflowError, "dist size must be large than souce")
-  let chunksize = sourceSize.toChunkSize()  
-  assert chunkSize.len <= 5
-  copyMem(dist, chunksize.cstring, chunksize.len)
-  cast[ptr char](dist.offset(chunksize.len))[] = CR
-  cast[ptr char](dist.offset(chunksize.len + 1))[] = LF
-  copyMem(dist.offset(chunksize.len + 2), source, sourceSize)
-  cast[ptr char](dist.offset(chunksize.len + 2 + sourceSize))[] = CR
-  cast[ptr char](dist.offset(chunksize.len + 2 + sourceSize + 1))[] = LF
+  ## 
+  ## ``("a1", "v1"), ("a2", "v2") => ";a1=v1;a2=v2"``  
+  ## ``("a1", ""  ), ("a2", "v2") => ";a1;a2=v2"``
+  for arg in args:
+    result.add(';')
+    if arg.value.len > 0:
+      result.add(arg.name)
+      result.add('=')
+      result.add(arg.value)
+    else:
+      result.add(arg.name)
 
-proc encodeToChunk*(source: pointer, sourceSize: Natural, dist: pointer, distSize: Natural, extensions: string) =
+template encodeChunkImpl(
+  source: pointer, 
+  ssize: Natural, 
+  dest: pointer, 
+  dsize: Natural, 
+  extensions: string, 
+  chunkSizeStr: string
+) = 
+  copyMem(dest, chunkSizeStr.cstring, chunkSizeStr.len)
+  var pos = chunkSizeStr.len
+  if extensions.len > 0:
+    copyMem(dest.offset(pos), extensions.cstring, extensions.len)
+    pos = pos + extensions.len
+  cast[ptr char](dest.offset(pos))[] = CR
+  cast[ptr char](dest.offset(pos + 1))[] = LF
+  copyMem(dest.offset(pos + 2), source, ssize)
+  pos = pos + 2 + ssize
+  cast[ptr char](dest.offset(pos))[] = CR
+  cast[ptr char](dest.offset(pos + 1))[] = LF
+
+proc encodeChunk*(source: pointer, ssize: Natural, dest: pointer, dsize: Natural, extensions = "") = 
   ## 
-  ## TODO: 优化 
-  if distSize - sourceSize - extensions.len < 10:
-    raise newException(OverflowError, "dist size must be large than souce")
-  let chunksize = sourceSize.toChunkSize()  
-  assert chunkSize.len <= 5
-  copyMem(dist, chunksize.cstring, chunksize.len)
-  copyMem(dist.offset(chunksize.len), extensions.cstring, extensions.len)
-  cast[ptr char](dist.offset(chunksize.len + extensions.len))[] = CR
-  cast[ptr char](dist.offset(chunksize.len + 1 + extensions.len))[] = LF
-  copyMem(dist.offset(chunksize.len + 2 + extensions.len), source, sourceSize)
-  cast[ptr char](dist.offset(chunksize.len + 2 + sourceSize + extensions.len))[] = CR
-  cast[ptr char](dist.offset(chunksize.len + 2 + sourceSize + 1 + extensions.len))[] = LF
+  ## 
+  ## ..code-block::bnf
+  ## 
+  ##   chunk-ext = *( ";" chunk-ext-name [ "=" chunk-ext-val ] )
+  ## 
+  ## ``"abc" => "3\r\nabc\r\n"``  
+  ## ``"abc", ";n1=v1;n2=v2" => "3;n1=v1;n2=v2\r\nabc\r\n"``
+  if dsize - ssize - extensions.len - 4 < LimitChunkSizeLen:
+    raise newException(OverflowError, "Dest size is not large enough")
+  let chunkSizeStr = ssize.toHex()  
+  assert chunkSizeStr.len <= LimitChunkSizeLen
+  encodeChunkImpl(source, ssize, dest, dsize, extensions, chunkSizeStr)
+
+proc encodeChunk*(source: string, extensions = ""): string = 
+  ## 
+  ## 
+  ## ..code-block::bnf
+  ## 
+  ##   chunk-ext = *( ";" chunk-ext-name [ "=" chunk-ext-val ] )
+  ## 
+  ## ``"abc" => "3\r\nabc\r\n"``
+  ## ``"abc", ";n1=v1;n2=v2" => "3;n1=v1;n2=v2\r\nabc\r\n"``
+  let chunkSizeStr = source.len.toHex()  
+  assert chunkSizeStr.len <= LimitChunkSizeLen
+  result = newString(chunkSizeStr.len + extensions.len + source.len + 4)
+  encodeChunkImpl(source.cstring, source.len, result.cstring, result.len, extensions, chunkSizeStr)
+
+proc encodeChunkEnd*(trailers: varargs[tuple[name: string, value: string]]): string = 
+  ## 
+  ## 
+  ## ``=> "0\r\n\r\n"``
+  ## ``("n1", "v1"), ("n2", "v2") => "0\r\nn1: v1\r\nn2: v2\r\n\r\n"``  
+  result.add("0\C\L")
+  for trailer in trailers:
+    result.add(trailer.name)
+    result.add(": ")
+    result.add(trailer.value)
+    result.add("\C\L")
+  result.add("\C\L")
+  

@@ -9,8 +9,8 @@
 import uri
 import strutils
 import netkit/buffer/circular
-import netkit/http/base
 import netkit/http/constants as http_constants
+import netkit/http/base
 import netkit/http/chunk
 import netkit/http/exception
 
@@ -183,12 +183,12 @@ proc parseRequest*(p: var HttpParser, req: var RequestHeader, buf: var MarkableC
     of HttpParseState.BODY:
       return true
 
-proc parseChunkSizer*(p: var HttpParser, buf: var MarkableCircularBuffer): (bool, ChunkSizer) = 
+proc parseChunkHeader*(p: var HttpParser, buf: var MarkableCircularBuffer): (bool, ChunkHeader) = 
   ## 
   result[0] = false
   let succ = p.markChar(buf, LF)
-  if p.currentLineLen.int > LimitChunkedSizeLen:
-    raise newHttpError(Http400, "Chunked Size Too Long")
+  if p.currentLineLen.int > LimitChunkHeaderLen:
+    raise newHttpError(Http400, "Chunk Header Too Long")
   if succ:
     var line = p.popToken(buf, 1)
     let lastIdx = line.len - 1
@@ -196,7 +196,7 @@ proc parseChunkSizer*(p: var HttpParser, buf: var MarkableCircularBuffer): (bool
       line.setLen(lastIdx)
     p.currentLineLen = 0
     result[0] = true
-    result[1] = line.parseChunkSizer()
+    result[1] = line.parseChunkHeader()
   else:
     p.popMarksToSecondaryIfFull(buf)
     
@@ -204,8 +204,8 @@ proc parseChunkEnd*(p: var HttpParser, buf: var MarkableCircularBuffer): (bool, 
   ## 
   result[0] = false
   let succ = p.markChar(buf, LF)
-  if p.currentLineLen.int > LimitChunkedDataLen:
-    raise newHttpError(Http400, "Chunked Trailer Too Long")
+  if p.currentLineLen.int > LimitChunkDataLen:
+    raise newHttpError(Http400, "Chunk Trailer Too Long")
   if succ:
     result[1] = p.popToken(buf, 1)
     let lastIdx = result[1].len - 1
