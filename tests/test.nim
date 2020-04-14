@@ -53,10 +53,38 @@ import netkit/http/base
 # echo repr x
 # echo repr m
 
-type
-  A = object of Exception
-    code: int
+proc toChunkSize(x: uint64): string {.noInit.} = 
+  # TODO: 修复 bug，最大长度是 16 = 64 / 4
+  const HexChars = "0123456789ABCDEF"
+  var n = x
+  var m = 0
+  var s = newString(16)
+  for j in countdown(15, 0):
+    s[j] = HexChars[n and 0xF]
+    n = n shr 4
+    m.inc()
+    if n == 0: 
+      break
+  result = newStringOfCap(m)
+  for i in 16-m..15:
+    result.add(s[i])
 
-proc newA(message: string): ref A =
-  new(result)
-  
+proc toChunkSize2(x: uint64): string {.noInit.} = 
+  # TODO: 修复 bug，最大长度是 16 = 64 / 4
+  const HexChars = "0123456789ABCDEF"
+  var n = x
+  var m = 0
+  var s = newString(5) # sizeof(BiggestInt) * 10 / 16
+  for j in countdown(4, 0):
+    s[j] = HexChars[n and 0xF]
+    n = n shr 4
+    m.inc()
+    if n == 0: 
+      break
+  result = newStringOfCap(m)
+  for i in 5-m..<5:
+    result.add(s[i])
+
+echo toChunkSize(uint64.high), " ", toChunkSize2(uint64.high)
+echo toChunkSize(1024000000), " ", toChunkSize2(1024000000)
+# echo repr toChunkSize(1_000_000_000_000)

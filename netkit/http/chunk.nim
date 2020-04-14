@@ -27,20 +27,21 @@ proc parseChunkSizer*(s: string): ChunkSizer =
       raise newException(ValueError, "Invalid Chunk Encoded")
     i.inc()
 
-proc toChunkSize*(x: BiggestInt): string {.noInit.} = 
-  # TODO: 修复 bug，最大长度是 16 = 64 / 4
+proc toChunkSize*(x: Natural): string = 
+  ## 请注意， 当前 ``Natural`` 最大值是 ``high(int64)`` 。 当 ``Natural`` 最大值超过 ``high(int64)``
+  ## 的时候， 该函数将不再准确。 
   const HexChars = "0123456789ABCDEF"
   var n = x
   var m = 0
-  var s = newString(5) # sizeof(BiggestInt) * 10 / 16
-  for j in countdown(4, 0):
+  var s = newString(16)
+  for j in countdown(15, 0):
     s[j] = HexChars[n and 0xF]
     n = n shr 4
     m.inc()
     if n == 0: 
       break
   result = newStringOfCap(m)
-  for i in 5-m..<5:
+  for i in 16-m..15:
     result.add(s[i])
 
 proc encodeToChunk*(source: pointer, sourceSize: Natural, dist: pointer, distSize: Natural) =
