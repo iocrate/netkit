@@ -10,7 +10,7 @@ type
   HttpError* = object of Exception
     code*: range[Http400..Http505]
     
-  ReadIncompleteError* = object of Exception
+  ReadAbortedError* = object of Exception
   WriteAbortedError* = object of Exception
 
 proc newHttpError*(
