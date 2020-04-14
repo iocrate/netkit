@@ -190,14 +190,14 @@ proc initHeaderFields*(pairs: openarray[tuple[name: string, value: seq[string]]]
   ## 
   var tabPairs: seq[tuple[name: string, value: seq[string]]] = @[]
   for pair in pairs:
-    tabPairs.add((pair.name.toUpperAscii(), pair.value))
+    tabPairs.add((pair.name.toLowerAscii(), pair.value))
   result = HeaderFields(tabPairs.toTable())
 
 proc initHeaderFields*(pairs: openarray[tuple[name: string, value: string]]): HeaderFields =
   ## 
   var tabPairs: seq[tuple[name: string, value: seq[string]]] = @[]
   for pair in pairs:
-    tabPairs.add((pair.name.toUpperAscii(), @[pair.value]))
+    tabPairs.add((pair.name.toLowerAscii(), @[pair.value]))
   result = HeaderFields(tabPairs.toTable())
 
 proc `$`*(fields: HeaderFields): string =
@@ -210,19 +210,19 @@ proc clear*(fields: var HeaderFields) =
 
 proc `[]`*(fields: HeaderFields, name: string): seq[string] =
   ## 
-  Table[string, seq[string]](fields)[name.toUpperAscii()]
+  Table[string, seq[string]](fields)[name.toLowerAscii()]
 
 proc `[]=`*(fields: var HeaderFields, name: string, value: string) =
   ## 
-  Table[string, seq[string]](fields)[name.toUpperAscii()] = @[value]
+  Table[string, seq[string]](fields)[name.toLowerAscii()] = @[value]
 
 proc `[]=`*(fields: var HeaderFields, name: string, value: seq[string]) =
   ## 
-  Table[string, seq[string]](fields)[name.toUpperAscii()] = value
+  Table[string, seq[string]](fields)[name.toLowerAscii()] = value
 
 proc add*(fields: var HeaderFields, name: string, value: string) =
   ## 
-  let nameUA = name.toUpperAscii
+  let nameUA = name.toLowerAscii()
   if not Table[string, seq[string]](fields).hasKey(nameUA):
     Table[string, seq[string]](fields)[nameUA] = @[value]
   else:
@@ -230,11 +230,11 @@ proc add*(fields: var HeaderFields, name: string, value: string) =
 
 proc del*(fields: var HeaderFields, name: string) =
   ## 
-  Table[string, seq[string]](fields).del(name.toUpperAscii())
+  Table[string, seq[string]](fields).del(name.toLowerAscii())
 
 proc contains*(fields: HeaderFields, name: string): bool =
   ## 
-  Table[string, seq[string]](fields).contains(name.toUpperAscii())
+  Table[string, seq[string]](fields).contains(name.toLowerAscii())
 
 proc len*(fields: HeaderFields): int = 
   ## 

@@ -60,7 +60,8 @@ proc markCharOrCRLF(p: var HttpParser, buf: var MarkableCircularBuffer, c: char)
       result = MarkProcessKind.TOKEN
       return
     elif ch == LF:
-      if p.popToken(buf) != CRLF:
+      let s = p.popToken(buf)
+      if s.len > 2 or (s.len == 2 and s[0] != CR):
         raise newHttpError(Http400)
       result = MarkProcessKind.CRLF
       p.currentLineLen = 0

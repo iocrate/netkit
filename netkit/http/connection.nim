@@ -226,7 +226,8 @@ proc handleNextRequest(conn: HttpConnection): Future[void] {.async.} =
     try:
       stmts
     except:
-      yield conn.write("HTTP/1.1 400 Bad Request\c\L\c\L") # discard error
+      echo "Got Parsing or NormalizeSpecificFields Error: ", getCurrentExceptionMsg()
+      yield conn.write("HTTP/1.1 400 Bad Request\r\L\r\L") # discard error
       conn.socket.closeSocket()
       conn.closed = true
       return
@@ -255,14 +256,17 @@ proc handleNextRequest(conn: HttpConnection): Future[void] {.async.} =
           break
   guard:
     req.normalizeSpecificFields()
-    
+
+  if not req.chunked and req.contentLen == 0:
+    req.readEnded = true
+  
   yield conn.requestHandler(req) # discard error
 
 template readContent(req: Request, buf: pointer, size: Natural): Natural = 
   assert not req.conn.closed
   assert not req.readEnded
   assert not req.chunked
-  assert req.contentLen >= size
+  assert req.contentLen > 0
   let readFuture = req.conn.read(buf, min(req.contentLen, size))
   yield readFuture
   if readFuture.failed:
@@ -418,7 +422,7 @@ proc read*(req: Request, buf: pointer, size: range[int(LimitChunkDataLen)..high(
   ## If the return future is failed, ``OsError`` or ``ReadAbortedError`` may be raised.
   await req.readLock.acquire()
   try:
-    if not req.conn.closed and req.readEnded:
+    if not req.isReadEnded:
       if req.chunked:
         result = req.readChunk(buf, size)
       else:
@@ -434,7 +438,7 @@ proc read*(req: Request): Future[string] {.async.} =
   ## If the return future is failed, ``OsError`` or ``ReadAbortedError`` may be raised.
   await req.readLock.acquire()
   try:
-    if not req.conn.closed and req.readEnded:
+    if not req.isReadEnded:
       if req.chunked:
         result = req.readChunk()
       else:
@@ -489,10 +493,19 @@ proc write*(req: Request, buf: pointer, size: Natural): Future[void] {.async.} =
   finally:
     req.readLock.release()
 
-proc write*(req: Request, data: string): Future[void] =
+proc write*(req: Request, data: string): Future[void] {.async.} =
   ## 
-  # TODO: 考虑 GC_ref data
-  return req.write(data.cstring, data.len)
+  await req.readLock.acquire()
+  GC_ref(data)
+  try:
+    if req.conn.closed:
+      raise newException(WriteAbortedError, "Connection has been closed")
+    if req.writeEnded:
+      raise newException(WriteAbortedError, "Write after ended")
+    await req.conn.write(data.cstring, data.len)
+  finally:
+    GC_unref(data)
+    req.readLock.release()
 
 proc write*(
   req: Request, 
@@ -521,3 +534,8 @@ proc writeEnd*(req: Request) =
 proc handleHttpConnection*(socket: AsyncFD, address: string, handler: RequestHandler) = 
   ##
   asyncCheck newHttpConnection(socket, address, handler).handleNextRequest() 
+
+
+
+
+
