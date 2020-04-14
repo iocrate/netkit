@@ -186,14 +186,14 @@ proc initHeaderFields*(): HeaderFields =
   ## 
   result = HeaderFields(initTable[string, seq[string]]())
 
-proc initHeaderFields*(pairs: openArray[tuple[name: string, value: seq[string]]]): HeaderFields =
+proc initHeaderFields*(pairs: openarray[tuple[name: string, value: seq[string]]]): HeaderFields =
   ## 
   var tabPairs: seq[tuple[name: string, value: seq[string]]] = @[]
   for pair in pairs:
     tabPairs.add((pair.name.toUpperAscii(), pair.value))
   result = HeaderFields(tabPairs.toTable())
 
-proc initHeaderFields*(pairs: openArray[tuple[name: string, value: string]]): HeaderFields =
+proc initHeaderFields*(pairs: openarray[tuple[name: string, value: string]]): HeaderFields =
   ## 
   var tabPairs: seq[tuple[name: string, value: seq[string]]] = @[]
   for pair in pairs:
@@ -276,7 +276,7 @@ proc initRequestHeader*(): RequestHeader =
 proc initRequestHeader*(
   reqMethod: HttpMethod,
   url: string,
-  fields: openArray[tuple[name: string, value: seq[string]]]
+  fields: openarray[tuple[name: string, value: seq[string]]]
 ): RequestHeader =
   ## 
   result.reqMethod = reqMethod
@@ -286,7 +286,7 @@ proc initRequestHeader*(
 proc initRequestHeader*(
   reqMethod: HttpMethod,
   url: string,
-  fields: openArray[tuple[name: string, value: string]]
+  fields: openarray[tuple[name: string, value: string]]
 ): RequestHeader =
   ## 
   result.reqMethod = reqMethod
@@ -299,7 +299,7 @@ proc initResponseHeader*(): ResponseHeader =
 
 proc initResponseHeader*(
   statusCode: HttpCode,
-  fields: openArray[tuple[name: string, value: seq[string]]]
+  fields: openarray[tuple[name: string, value: seq[string]]]
 ): ResponseHeader =
   ## 
   result.statusCode = statusCode
@@ -308,7 +308,7 @@ proc initResponseHeader*(
 
 proc initResponseHeader*(
   statusCode: HttpCode,
-  fields: openArray[tuple[name: string, value: string]]
+  fields: openarray[tuple[name: string, value: string]]
 ): ResponseHeader =
   ## 
   result.statusCode = statusCode

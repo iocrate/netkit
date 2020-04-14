@@ -70,7 +70,7 @@ proc toHex(x: Natural): string =
   for i in 16-m..15:
     result.add(s[i])
 
-proc toChunkExtensions*(args: varargs[tuple[name: string, value: string]]): string = 
+proc toChunkExtensions(args: varargs[tuple[name: string, value: string]]): string = 
   ## 
   ## 
   ## ``("a1", "v1"), ("a2", "v2") => ";a1=v1;a2=v2"``  
@@ -89,14 +89,15 @@ template encodeChunkImpl(
   ssize: Natural, 
   dest: pointer, 
   dsize: Natural, 
-  extensions: string, 
+  extensionsStr: untyped, 
   chunkSizeStr: string
 ) = 
   copyMem(dest, chunkSizeStr.cstring, chunkSizeStr.len)
   var pos = chunkSizeStr.len
-  if extensions.len > 0:
-    copyMem(dest.offset(pos), extensions.cstring, extensions.len)
-    pos = pos + extensions.len
+  when extensionsStr is string:
+    if extensionsStr.len > 0:
+      copyMem(dest.offset(pos), extensionsStr.cstring, extensionsStr.len)
+      pos = pos + extensionsStr.len
   cast[ptr char](dest.offset(pos))[] = CR
   cast[ptr char](dest.offset(pos + 1))[] = LF
   copyMem(dest.offset(pos + 2), source, ssize)
@@ -104,7 +105,12 @@ template encodeChunkImpl(
   cast[ptr char](dest.offset(pos))[] = CR
   cast[ptr char](dest.offset(pos + 1))[] = LF
 
-proc encodeChunk*(source: pointer, ssize: Natural, dest: pointer, dsize: Natural, extensions = "") = 
+proc encodeChunk*(
+  source: pointer, 
+  ssize: Natural, 
+  dest: pointer, 
+  dsize: Natural
+) = 
   ## 
   ## 
   ## ..code-block::bnf
@@ -113,13 +119,35 @@ proc encodeChunk*(source: pointer, ssize: Natural, dest: pointer, dsize: Natural
   ## 
   ## ``"abc" => "3\r\nabc\r\n"``  
   ## ``"abc", ";n1=v1;n2=v2" => "3;n1=v1;n2=v2\r\nabc\r\n"``
-  if dsize - ssize - extensions.len - 4 < LimitChunkSizeLen:
+  if dsize - ssize - 4 < LimitChunkSizeLen:
     raise newException(OverflowError, "Dest size is not large enough")
   let chunkSizeStr = ssize.toHex()  
   assert chunkSizeStr.len <= LimitChunkSizeLen
-  encodeChunkImpl(source, ssize, dest, dsize, extensions, chunkSizeStr)
+  encodeChunkImpl(source, ssize, dest, dsize, void, chunkSizeStr)
 
-proc encodeChunk*(source: string, extensions = ""): string = 
+proc encodeChunk*(
+  source: pointer, 
+  ssize: Natural, 
+  dest: pointer, 
+  dsize: Natural, 
+  extensions = openarray[tuple[name: string, value: string]]
+) = 
+  ## 
+  ## 
+  ## ..code-block::bnf
+  ## 
+  ##   chunk-ext = *( ";" chunk-ext-name [ "=" chunk-ext-val ] )
+  ## 
+  ## ``"abc" => "3\r\nabc\r\n"``  
+  ## ``"abc", ";n1=v1;n2=v2" => "3;n1=v1;n2=v2\r\nabc\r\n"``
+  let extensionsStr = extensions.toChunkExtensions()
+  if dsize - ssize - extensionsStr.len - 4 < LimitChunkSizeLen:
+    raise newException(OverflowError, "Dest size is not large enough")
+  let chunkSizeStr = ssize.toHex()  
+  assert chunkSizeStr.len <= LimitChunkSizeLen
+  encodeChunkImpl(source, ssize, dest, dsize, extensionsStr, chunkSizeStr)
+
+proc encodeChunk*(source: string): string = 
   ## 
   ## 
   ## ..code-block::bnf
@@ -130,10 +158,32 @@ proc encodeChunk*(source: string, extensions = ""): string =
   ## ``"abc", ";n1=v1;n2=v2" => "3;n1=v1;n2=v2\r\nabc\r\n"``
   let chunkSizeStr = source.len.toHex()  
   assert chunkSizeStr.len <= LimitChunkSizeLen
-  result = newString(chunkSizeStr.len + extensions.len + source.len + 4)
-  encodeChunkImpl(source.cstring, source.len, result.cstring, result.len, extensions, chunkSizeStr)
+  result = newString(chunkSizeStr.len + source.len + 4)
+  encodeChunkImpl(source.cstring, source.len, result.cstring, result.len, void, chunkSizeStr)
 
-proc encodeChunkEnd*(trailers: varargs[tuple[name: string, value: string]]): string = 
+proc encodeChunk*(source: string, extensions: openarray[tuple[name: string, value: string]]): string = 
+  ## 
+  ## 
+  ## ..code-block::bnf
+  ## 
+  ##   chunk-ext = *( ";" chunk-ext-name [ "=" chunk-ext-val ] )
+  ## 
+  ## ``"abc" => "3\r\nabc\r\n"``
+  ## ``"abc", ";n1=v1;n2=v2" => "3;n1=v1;n2=v2\r\nabc\r\n"``
+  let extensionsStr = extensions.toChunkExtensions()
+  let chunkSizeStr = source.len.toHex()  
+  assert chunkSizeStr.len <= LimitChunkSizeLen
+  result = newString(chunkSizeStr.len + extensionsStr.len + source.len + 4)
+  encodeChunkImpl(source.cstring, source.len, result.cstring, result.len, extensionsStr, chunkSizeStr)
+
+proc encodeChunkEnd*(): string = 
+  ## 
+  ## 
+  ## ``=> "0\r\n\r\n"``
+  ## ``("n1", "v1"), ("n2", "v2") => "0\r\nn1: v1\r\nn2: v2\r\n\r\n"``  
+  result = "0\C\L\C\L"
+
+proc encodeChunkEnd*(trailers: openarray[tuple[name: string, value: string]]): string = 
   ## 
   ## 
   ## ``=> "0\r\n\r\n"``

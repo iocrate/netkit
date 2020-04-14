@@ -32,13 +32,12 @@ proc parseTrailer*(s: string): tuple[name: string, value: string] =
   ## 
   ## ``"Expires: Wed, 21 Oct 2015 07:28:00 GMT" => ("Expires", "Wed, 21 Oct 2015 07:28:00 GMT")``  
 
-proc toChunkExtensions*(args: varargs[tuple[name: string, value: string]]): string = discard
-  ## 将 ``args`` 转换为块扩展字符串。 
-  ## 
-  ## ``("a1", "v1"), ("a2", "v2") => ";a1=v1;a2=v2"``  
-  ## ``("a1", ""  ), ("a2", "v2") => ";a1;a2=v2"``
-
-proc encodeChunk*(source: pointer, sourceLen: Natural, dist: pointer, distLen: Natural, extensions = "") = discard
+proc encodeChunk*(
+  source: pointer, 
+  ssize: Natural, 
+  dest: pointer, 
+  dsize: Natural
+) = discard
   ## 将 ``source`` 转换为一块经过 ``Transfer-Encoding: chunked`` 编码的数据块， 包括块大小行和数据行。 ``extensions`` 
   ## 指定块扩展。 ``sourceLen`` 指定原始数据的长度； ``dist`` 存储经过转换的数据块， ``distLen`` 指定该存储空间的长度。 
   ## 
@@ -53,7 +52,28 @@ proc encodeChunk*(source: pointer, sourceLen: Natural, dist: pointer, distLen: N
   ## ``"abc" => "3\r\nabc\r\n"``  
   ## ``"abc", ";a1=v1;a2=v2" => "3;a1=v1;a2=v2\r\nabc\r\n"``
 
-proc encodeChunk*(source: string, extensions = ""): string = discard
+proc encodeChunk*(
+  source: pointer, 
+  ssize: Natural, 
+  dest: pointer, 
+  dsize: Natural, 
+  extensions = openarray[tuple[name: string, value: string]]
+) = discard
+  ## 将 ``source`` 转换为一块经过 ``Transfer-Encoding: chunked`` 编码的数据块， 包括块大小行和数据行。 ``extensions`` 
+  ## 指定块扩展。 ``sourceLen`` 指定原始数据的长度； ``dist`` 存储经过转换的数据块， ``distLen`` 指定该存储空间的长度。 
+  ## 
+  ## 注意， ``distLen`` 的长度必须比 ``sourceLen`` 的长度至少大 20 + extensions.len， 否则， 将会引起长度溢出异常。 
+  ## 
+  ## 根据 `RFC 7230 <https://tools.ietf.org/html/rfc7230#section-4.1.1>`_ 
+  ## 
+  ## ..code-block::bnf
+  ## 
+  ##   chunk-ext = *( ";" chunk-ext-name [ "=" chunk-ext-val ] )
+  ## 
+  ## ``"abc" => "3\r\nabc\r\n"``  
+  ## ``"abc", ";a1=v1;a2=v2" => "3;a1=v1;a2=v2\r\nabc\r\n"``
+
+proc encodeChunk*(source: string): string = discard
   ## 将 ``source`` 转换为一块经过 ``Transfer-Encoding: chunked`` 编码的数据块， 包括块大小、块扩展行和数据行。 ``extensions``
   ## 指定块扩展。 
   ## 
@@ -66,6 +86,25 @@ proc encodeChunk*(source: string, extensions = ""): string = discard
   ## ``"abc" => "3\r\nabc\r\n"``
   ## ``"abc", ";a1=v1;a2=v2" => "3;a1=v1;a2=v2\r\nabc\r\n"``
 
+proc encodeChunk*(source: string, extensions: openarray[tuple[name: string, value: string]]): string = discard
+  ## 将 ``source`` 转换为一块经过 ``Transfer-Encoding: chunked`` 编码的数据块， 包括块大小、块扩展行和数据行。 ``extensions``
+  ## 指定块扩展。 
+  ## 
+  ## 根据 `RFC 7230 <https://tools.ietf.org/html/rfc7230#section-4.1.1>`_ 
+  ## 
+  ## ..code-block::bnf
+  ## 
+  ##   chunk-ext = *( ";" chunk-ext-name [ "=" chunk-ext-val ] )
+  ## 
+  ## ``"abc" => "3\r\nabc\r\n"``
+  ## ``"abc", ";a1=v1;a2=v2" => "3;a1=v1;a2=v2\r\nabc\r\n"``
+
+proc encodeChunkEnd*(): string = discard
+  ## 生成一块经过 ``Transfer-Encoding: chunked`` 编码的数据块尾部。  ``trailers`` 是可选的， 指定挂载的 Trailer
+  ## 首部。
+  ## 
+  ## ``=> "0\r\n\r\n"``
+  
 proc encodeChunkEnd*(trailers: varargs[tuple[name: string, value: string]]): string = discard
   ## 生成一块经过 ``Transfer-Encoding: chunked`` 编码的数据块尾部。  ``trailers`` 是可选的， 指定挂载的 Trailer
   ## 首部。
