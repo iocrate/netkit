@@ -75,7 +75,7 @@ type
     major: Natural
     minor: Natural
 
-  HeaderFields* = distinct Table[string, seq[string]] ## 表示 HTTP 头字段集合。 
+  HeaderFields* = distinct Table[string, seq[string]] ## 表示 HTTP 头字段集合。
 
   RequestHeader* = object ## Represents the header of a HTTP request packet. Each HTTP request should contains only one header.
     reqMethod*: HttpMethod
@@ -191,14 +191,14 @@ proc initHeaderFields*(pairs: openarray[tuple[name: string, value: seq[string]]]
   var tabPairs: seq[tuple[name: string, value: seq[string]]] = @[]
   for pair in pairs:
     tabPairs.add((pair.name.toLowerAscii(), pair.value))
-  result = HeaderFields(tabPairs.toTable())
+  result = HeaderFields(toTable[string, seq[string]](tabPairs))
 
 proc initHeaderFields*(pairs: openarray[tuple[name: string, value: string]]): HeaderFields =
   ## 
   var tabPairs: seq[tuple[name: string, value: seq[string]]] = @[]
   for pair in pairs:
     tabPairs.add((pair.name.toLowerAscii(), @[pair.value]))
-  result = HeaderFields(tabPairs.toTable())
+  result = HeaderFields(toTable[string, seq[string]](tabPairs))
 
 proc `$`*(fields: HeaderFields): string =
   ## 
@@ -271,7 +271,7 @@ iterator pairs*(fields: HeaderFields): tuple[name, value: string] =
 
 proc initRequestHeader*(): RequestHeader =
   ## 
-  result.fields = HeaderFields(initTable[string, seq[string]]())
+  result.fields = initHeaderFields()
 
 proc initRequestHeader*(
   reqMethod: HttpMethod,
@@ -295,7 +295,7 @@ proc initRequestHeader*(
 
 proc initResponseHeader*(): ResponseHeader =
   ## 
-  result.fields = HeaderFields(initTable[string, seq[string]]())
+  result.fields = initHeaderFields()
 
 proc initResponseHeader*(
   statusCode: HttpCode,

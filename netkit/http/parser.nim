@@ -184,35 +184,48 @@ proc parseRequest*(p: var HttpParser, req: var RequestHeader, buf: var MarkableC
     of HttpParseState.BODY:
       return true
 
-proc parseChunkHeader*(p: var HttpParser, buf: var MarkableCircularBuffer): (bool, ChunkHeader) = 
+proc parseChunkHeader*(
+  p: var HttpParser, 
+  buf: var MarkableCircularBuffer,
+  header: var ChunkHeader
+): bool = 
   ## 
-  result[0] = false
+  result = false
   let succ = p.markChar(buf, LF)
   if p.currentLineLen.int > LimitChunkHeaderLen:
     raise newHttpError(Http400, "Chunk Header Too Long")
   if succ:
-    var line = p.popToken(buf, 1)
-    let lastIdx = line.len - 1
-    if lastIdx > 0 and line[lastIdx] == CR:
-      line.setLen(lastIdx)
+    var token = p.popToken(buf, 1)
+    let lastIdx = token.len - 1
+    if lastIdx > 0 and token[lastIdx] == CR:
+      token.setLen(lastIdx)
     p.currentLineLen = 0
-    result[0] = true
-    result[1] = line.parseChunkHeader()
+    result = true
+    header = token.parseChunkHeader()
   else:
     p.popMarksToSecondaryIfFull(buf)
-    
-proc parseChunkEnd*(p: var HttpParser, buf: var MarkableCircularBuffer): (bool, string) = 
+
+proc parseChunkEnd*(
+  p: var HttpParser, 
+  buf: var MarkableCircularBuffer, 
+  trailer: var seq[string]
+): bool = 
   ## 
-  result[0] = false
-  let succ = p.markChar(buf, LF)
-  if p.currentLineLen.int > LimitChunkDataLen:
-    raise newHttpError(Http400, "Chunk Trailer Too Long")
-  if succ:
-    result[1] = p.popToken(buf, 1)
-    let lastIdx = result[1].len - 1
-    if lastIdx > 0 and result[1][lastIdx] == CR:
-      result[1].setLen(lastIdx)
-    result[0] = true
-    p.currentLineLen = 0
-  else:
-    p.popMarksToSecondaryIfFull(buf)
+  result = false
+  while true:
+    let succ = p.markChar(buf, LF)
+    if p.currentLineLen.int > LimitChunkTrailerLen:
+      raise newHttpError(Http400, "Chunk Trailer Too Long")
+    if succ:
+      var token = p.popToken(buf, 1)
+      let lastIdx = token.len - 1
+      if lastIdx > 0 and token[lastIdx] == CR:
+        token.setLen(lastIdx)
+      p.currentLineLen = 0
+      if token.len == 0:
+        return true
+      trailer.add(token)
+    else:
+      p.popMarksToSecondaryIfFull(buf)
+      break
+  

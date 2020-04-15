@@ -39,9 +39,3 @@ import netkit/http/base
 #   ##echo repr x
 #   x.shallow()
 #   x
-
-echo '\x0A' == '\L'
-echo '\x0A' == '\10'
-echo '\L' == '\10'
-
-echo(not true or true)

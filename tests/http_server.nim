@@ -26,8 +26,6 @@ suite "Echo":
             buf.setLen(readLen)
             data.add(buf)
 
-            # req.readableMetaData .kind == ReadableMetaKind.ChunkTrailer (ChunkExtensions) None
-            
           await req.write(Http200, {
             "Content-Length": $data.len
           })

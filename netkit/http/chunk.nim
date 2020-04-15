@@ -5,6 +5,7 @@
 #    destribution, for details about the copyright.
 
 import strutils
+import strtabs
 import netkit/misc
 import netkit/http/base
 import netkit/http/constants as http_constants
@@ -35,7 +36,7 @@ proc parseChunkHeader*(s: string): ChunkHeader =
       raise newException(ValueError, "Invalid Chunk Encoded")
     i.inc()
 
-proc parseTrailer*(s: string): tuple[name: string, value: string] = 
+proc parseChunkTrailer*(s: string): tuple[name: string, value: string] = 
   ## 
   ## 
   ## ``"Expires: Wed, 21 Oct 2015 07:28:00 GMT" => ("Expires", "Wed, 21 Oct 2015 07:28:00 GMT")``  
@@ -50,6 +51,14 @@ proc parseTrailer*(s: string): tuple[name: string, value: string] =
     if result.value.len > 0:
       result.value.removePrefix(WS)
       result.value.removeSuffix(WS)
+
+proc parseChunkExtensions*(s: string): StringTableRef = 
+  ## 
+  ## 
+  ## ``";a1=v1;a2=v2" => ("a1", "v1"), ("a2", "v2")``  
+  ## ``";a1;a2=v2" => ("a1", ""  ), ("a2", "v2")``  
+  discard
+  ## TODO: implement it
 
 proc toHex(x: Natural): string = 
   ## 请注意， 当前 ``Natural`` 最大值是 ``high(int64)`` 。 当 ``Natural`` 最大值超过 ``high(int64)``
@@ -70,7 +79,7 @@ proc toHex(x: Natural): string =
   for i in 16-m..15:
     result.add(s[i])
 
-proc toChunkExtensions(args: openarray[tuple[name: string, value: string]]): string = 
+proc toChunkExtensions(args: varargs[tuple[name: string, value: string]]): string = 
   ## 
   ## 
   ## ``("a1", "v1"), ("a2", "v2") => ";a1=v1;a2=v2"``  
