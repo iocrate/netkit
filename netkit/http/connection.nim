@@ -30,23 +30,36 @@ type
     address: string
     closed: bool
 
-  Request* = ref object ## 
+  HttpReader* = ref object of RootObj ##
     conn: HttpConnection
-    header: RequestHeader
-    readLock: AsyncLock
-    writeLock: AsyncLock
-    readableLen: Natural
-    readableMetaData: HttpMetaData
-    readableState: ReadableState
-    writableState: WritableState
+    writer: HttpWriter
+    lock: AsyncLock
+    contentLen: Natural
+    chunked: bool
+    readable: bool
+    metadata: HttpMetadata
+    header: HttpHeader
+
+  HttpWriter* = ref object of RootObj ##
+    conn: HttpConnection
+    reader: HttpReader
+    lock: AsyncLock
+    writable: bool
+
+  ServerRequest* = ref object of HttpReader ## 
+  ServerResponse* = ref object of HttpWriter ## 
+  ClientRequest* = ref object of HttpWriter ## 
+  ClientResponse* = ref object of HttpReader ## 
+
+  # Request* = ref object ## 
+  #   conn: HttpConnection
+  #   header: RequestHeader
+  #   readLock: AsyncLock
+  #   writeLock: AsyncLock
+  #   contentLen: Natural
+  #   metadata: HttpMetadata
     
-  RequestHandler* = proc (req: Request): Future[void] {.closure, gcsafe.}
-
-  ReadableState* {.pure.} = enum
-    Data, Chunk, Eof
-
-  WritableState* {.pure.} = enum
-    Ready, Eof
+  RequestHandler* = proc (req: ServerRequest, res: ServerResponse): Future[void] {.closure, gcsafe.}
 
 proc newHttpConnection(socket: AsyncFD, address: string, handler: RequestHandler): HttpConnection = 
   ##
@@ -108,73 +121,98 @@ proc write(conn: HttpConnection, data: string): Future[void] {.inline.} =
   ## If the return future is failed, ``OsError`` may be raised.
   result = conn.socket.send(data)
 
-proc newRequest*(conn: HttpConnection): Request = 
+proc init(reader: HttpReader, conn: HttpConnection) = 
+  reader.conn = conn
+  reader.writer = nil
+  reader.lock = initAsyncLock()
+  reader.contentLen = 0
+  reader.chunked = false
+  reader.readable = true
+  reader.metadata = initHttpMetadata()
+
+proc init(writer: HttpWriter, conn: HttpConnection) = 
+  writer.conn = conn
+  writer.reader = nil
+  writer.lock = initAsyncLock()
+  writer.writable = true
+
+proc newServerRequest(conn: HttpConnection): ServerRequest = 
   ##
   new(result)
-  result.conn = conn
+  result.init(conn)
   result.header = initRequestHeader()
-  result.readLock = initAsyncLock()
-  result.writeLock = initAsyncLock()
-  result.readableLen = 0
-  result.readableState = ReadableState.Data
-  result.readableMetaData = initHttpMetadata()
-  result.writableState = WritableState.Ready
 
-proc reqMethod*(req: Request): HttpMethod {.inline.} = 
+proc newServerResponse(conn: HttpConnection): ServerResponse = 
+  ##
+  new(result)
+  result.init(conn)
+
+proc newClientRequest(conn: HttpConnection): ClientRequest = 
+  ##
+  new(result)
+  result.init(conn)
+
+proc newClientResponse(conn: HttpConnection): ClientResponse = 
+  ##
+  new(result)
+  result.init(conn)
+  result.header = initResponseHeader()
+
+proc reqMethod*(req: ServerRequest): HttpMethod {.inline.} = 
   ##  
   req.header.reqMethod
 
-proc url*(req: Request): string {.inline.} = 
+proc url*(req: ServerRequest): string {.inline.} = 
   ## 
   req.header.url
 
-proc version*(req: Request): HttpVersion {.inline.} = 
+proc version*(reader: HttpReader): HttpVersion {.inline.} = 
   ## 
-  req.header.version
+  reader.header.version
 
-proc fields*(req: Request): HeaderFields {.inline.} = 
+proc fields*(reader: HttpReader): HeaderFields {.inline.} = 
   ## 
-  req.header.fields
+  reader.header.fields
 
-proc readableMetaData*(req: Request): HttpMetaData {.inline.} =
+proc metadata*(reader: HttpReader): HttpMetadata {.inline.} =
   ## 
-  req.readableMetaData
+  reader.metadata
 
-proc readableState*(req: Request): ReadableState {.inline.} =
+proc ended*(reader: HttpReader): bool {.inline.} =
   ## 
-  req.readableState
+  reader.conn.closed or not reader.readable
 
-proc writableState*(req: Request): WritableState {.inline.} =
+proc ended*(writer: HttpWriter): bool {.inline.} =
   ## 
-  req.writableState
+  writer.conn.closed or not writer.writable
 
-proc normalizeTransforEncoding(req: Request) =
-  if req.fields.contains("Transfer-Encoding"):
-    let encodings = req.fields["Transfer-Encoding"]
+proc normalizeTransforEncoding(reader: HttpReader) =
+  if reader.fields.contains("Transfer-Encoding"):
+    let encodings = reader.fields["Transfer-Encoding"]
     var i = 0
     for encoding in encodings:
       if encoding.toLowerAscii() == "chunked":
         if i != encodings.len-1:
           raise newException(ValueError, "Bad Request")
-        req.readableState = ReadableState.Chunk
-        req.readableLen = 0
+        reader.readable = false
+        reader.contentLen = 0
         return
       i.inc()
 
-proc normalizeContentLength(req: Request) =
-  if req.fields.contains("Content-Length"):
-    if req.fields["Content-Length"].len > 1:
+proc normalizeContentLength(reader: HttpReader) =
+  if reader.fields.contains("Content-Length"):
+    if reader.fields["Content-Length"].len > 1:
       raise newException(ValueError, "Bad Request")
-    req.readableLen = req.fields["Content-Length"][0].parseInt()
-    if req.readableLen < 0:
+    reader.contentLen = reader.fields["Content-Length"][0].parseInt()
+    if reader.contentLen < 0:
       raise newException(ValueError, "Bad Request")
-  if req.readableLen == 0:
-    req.readableState = ReadableState.Eof
+  if reader.contentLen == 0:
+    reader.readable = false
 
-proc normalizeSpecificFields(req: Request) =
+proc normalizeSpecificFields(reader: HttpReader) =
   # TODO: more normalized header fields
-  req.normalizeContentLength()
-  req.normalizeTransforEncoding()
+  reader.normalizeContentLength()
+  reader.normalizeTransforEncoding()
 
 proc handleNextRequest(conn: HttpConnection): Future[void] {.async.} = 
   template guard(stmts: untyped) = 
@@ -185,13 +223,14 @@ proc handleNextRequest(conn: HttpConnection): Future[void] {.async.} =
       conn.close()
       return
 
-  var req: Request
+  var req: ServerRequest
+  var res: ServerResponse
   var parsed = false
   
   if conn.buffer.len > 0:
-    req = newRequest(conn)
+    req = newServerRequest(conn)
     guard:
-      parsed = conn.parser.parseRequest(req.header, conn.buffer)
+      parsed = conn.parser.parseHttpHeader(req.header, conn.buffer)
   
   if not parsed:
     while true:
@@ -202,256 +241,263 @@ proc handleNextRequest(conn: HttpConnection): Future[void] {.async.} =
         return
   
       if req == nil:
-        req = newRequest(conn)
+        req = newServerRequest(conn)
       
       guard:
-        if conn.parser.parseRequest(req.header, conn.buffer):
+        if conn.parser.parseHttpHeader(req.header, conn.buffer):
           break
   guard:
     req.normalizeSpecificFields()
 
-  yield conn.requestHandler(req) # discard error
+  res = newServerResponse(conn)
+  req.writer = res
+  res.reader = req
 
-template readByGuard(req: Request) = 
-  let readFuture = req.conn.read()
+  yield conn.requestHandler(req, res) # discard error
+
+template readByGuard(reader: HttpReader) = 
+  let readFuture = reader.conn.read()
   yield readFuture
   if readFuture.failed or readFuture.read() == 0:
-    req.readableState = ReadableState.Eof
-    req.writableState = WritableState.Eof
-    req.conn.close()
+    reader.conn.close()
     raise newException(ReadAbortedError, "Connection closed prematurely")
 
-template readByGuard(req: Request, buf: pointer, size: Natural) = 
-  let readFuture = req.conn.read(buf, size)
+template readByGuard(reader: HttpReader, buf: pointer, size: Natural) = 
+  let readFuture = reader.conn.read(buf, size)
   yield readFuture
   if readFuture.failed:
-    req.readableState = ReadableState.Eof
-    req.writableState = WritableState.Eof
-    req.conn.close()
+    reader.conn.close()
     raise readFuture.readError()
   if readFuture.read() != size:
-    req.readableState = ReadableState.Eof
-    req.writableState = WritableState.Eof
-    req.conn.close()
+    reader.conn.close()
     raise newException(ReadAbortedError, "Connection closed prematurely")
 
-template writeByGuard(req: Request, buf: pointer, size: Natural) = 
-  if req.conn.closed:
-    raise newException(WriteAbortedError, "Connection has been closed")
-  if req.writableState == WritableState.Eof:
-    raise newException(WriteAbortedError, "Write after ended")
-  let writeFuture = req.conn.write(buf, size) 
-  if writeFuture.failed:
-    req.readableState = ReadableState.Eof
-    req.writableState = WritableState.Eof
-    req.conn.close()
-    raise writeFuture.readError()
-
-template readContent(req: Request, buf: pointer, size: Natural): Natural = 
-  assert req.readableState == ReadableState.Data
-  assert req.readableLen > 0
-  let n = min(req.readableLen, size)
-  req.readByGuard(buf, n)
-  req.readableLen.dec(n)  
-  if req.readableLen == 0:
-    req.readableState = ReadableState.Eof
-    if req.writableState == WritableState.Eof:
-      asyncCheck req.conn.handleNextRequest()
+template readContent(reader: HttpReader, buf: pointer, size: Natural): Natural = 
+  assert not reader.conn.closed
+  assert reader.readable 
+  assert reader.contentLen > 0
+  let n = min(reader.contentLen, size)
+  reader.readByGuard(buf, n)
+  reader.contentLen.dec(n)  
+  if reader.contentLen == 0:
+    reader.readable = false
+    if reader.writer.writable == false:
+      case reader.header.kind 
+      of HttpHeaderKind.Request:
+        asyncCheck reader.conn.handleNextRequest()
+      of HttpHeaderKind.Response:
+        raise newException(Exception, "Not Implemented yet")
   n
 
-template readContent(req: Request): string = 
-  assert req.readableState == ReadableState.Data
-  assert req.readableLen > 0
-  let n = min(req.readableLen, BufferSize)
+template readContent(reader: HttpReader): string = 
+  assert not reader.conn.closed
+  assert reader.readable 
+  let n = min(reader.contentLen, BufferSize)
   var buffer = newString(n)
-  req.readByGuard(buffer.cstring, n) # should need Gc_ref(result) ?
+  reader.readByGuard(buffer.cstring, n) # should need Gc_ref(result) ?
   buffer.shallow()                   # still ref result 
-  req.readableLen.dec(n)  
-  if req.readableLen == 0:
-    req.readableState = ReadableState.Eof
-    if req.writableState == WritableState.Eof:
-      asyncCheck req.conn.handleNextRequest()
+  reader.contentLen.dec(n)  
+  if reader.contentLen == 0:
+    reader.readable = false
+    if reader.writer.writable == false:
+      case reader.header.kind 
+      of HttpHeaderKind.Request:
+        asyncCheck reader.conn.handleNextRequest()
+      of HttpHeaderKind.Response:
+        raise newException(Exception, "Not Implemented yet")
   buffer
 
-template readChunkHeader(req: Request, chunkHeader: ChunkHeader) = 
+template readChunkHeader(reader: HttpReader, chunkHeader: ChunkHeader) = 
   while true:
     try:
-      if req.conn.parser.parseChunkHeader(req.conn.buffer, chunkHeader):
+      if reader.conn.parser.parseChunkHeader(reader.conn.buffer, chunkHeader):
         if chunkHeader.extensions.len > 0:
           chunkHeader.extensions.shallow()
-          req.readableMetaData = initHttpMetaData(chunkHeader.extensions)
+          reader.metadata = initHttpMetadata(chunkHeader.extensions)
         break
     except:
-      req.readableState = ReadableState.Eof
-      req.writableState = WritableState.Eof
-      req.conn.close()
+      reader.conn.close()
       raise newException(ReadAbortedError, "Bad chunked transmission")
-    req.readByGuard()
+    reader.readByGuard()
 
-template readChunkEnd(req: Request) = 
+template readChunkEnd(reader: HttpReader) = 
   var trailer: seq[string]
   while true:
     try:
-      if req.conn.parser.parseChunkEnd(req.conn.buffer, trailer):
+      if reader.conn.parser.parseChunkEnd(reader.conn.buffer, trailer):
         if trailer.len > 0:
           trailer.shallow()
-          req.readableMetaData = initHttpMetaData(trailer)
-        req.readableState = ReadableState.Eof
+          reader.metadata = initHttpMetadata(trailer)
+        reader.readable = false
         break
     except:
-      req.readableState = ReadableState.Eof
-      req.writableState = WritableState.Eof
-      req.conn.close()
+      reader.conn.close()
       raise newException(ReadAbortedError, "Bad chunked transmission")
-    req.readByGuard()
+    reader.readByGuard()
 
-template readChunk(req: Request, buf: pointer, size: int): Natural =
-  assert req.readableState == ReadableState.Chunk
+template readChunk(reader: HttpReader, buf: pointer, size: int): Natural =
+  assert reader.conn.closed
+  assert reader.readable
+  assert reader.chunked
   var chunkHeader: ChunkHeader
-  req.readChunkHeader(chunkHeader)
+  reader.readChunkHeader(chunkHeader)
   if chunkHeader[0] == 0:
-    req.readChunkEnd()
-    if req.writableState == WritableState.Eof:
-      asyncCheck req.conn.handleNextRequest()
+    reader.readChunkEnd()
+    if reader.writer.writable == false:
+      case reader.header.kind 
+      of HttpHeaderKind.Request:
+        asyncCheck reader.conn.handleNextRequest()
+      of HttpHeaderKind.Response:
+        raise newException(Exception, "Not Implemented yet")
   else:
     assert chunkHeader[0] <= size
-    req.readByGuard(buf, chunkHeader[0])
+    reader.readByGuard(buf, chunkHeader[0])
   chunkHeader[0]
 
-template readChunk(req: Request): string = 
-  assert req.readableState == ReadableState.Chunk
+template readChunk(reader: HttpReader): string = 
+  assert reader.conn.closed
+  assert reader.readable
+  assert reader.chunked
   var data = ""
   var chunkHeader: ChunkHeader
-  req.readChunkHeader(chunkHeader)
+  reader.readChunkHeader(chunkHeader)
   if chunkHeader[0] == 0:
-    req.readChunkEnd()
-    if req.writableState == WritableState.Eof:
-      asyncCheck req.conn.handleNextRequest()
+    reader.readChunkEnd()
+    if reader.writer.writable == false:
+      case reader.header.kind 
+      of HttpHeaderKind.Request:
+        asyncCheck reader.conn.handleNextRequest()
+      of HttpHeaderKind.Response:
+        raise newException(Exception, "Not Implemented yet")
   else:
     data = newString(chunkHeader[0])
-    req.readByGuard(data.cstring, chunkHeader[0])
+    reader.readByGuard(data.cstring, chunkHeader[0])
     data.shallow()
   data
 
-proc read*(req: Request, buf: pointer, size: range[int(LimitChunkDataLen)..high(int)]): Future[Natural] {.async.} =
+proc read*(reader: HttpReader, buf: pointer, size: range[int(LimitChunkDataLen)..high(int)]): Future[Natural] {.async.} =
   ## Reads up to ``size`` bytes from the request, storing the results in the ``buf``. 
   ## 
   ## The return value is the number of bytes actually read. This might be less than ``size``.
   ## A value of zero indicates ``eof``, i.e. at the end of the request.
   ## 
   ## If the return future is failed, ``OsError`` or ``ReadAbortedError`` may be raised.
-  await req.readLock.acquire()
+  await reader.lock.acquire()
   try:
-    case req.readableState:
-    of ReadableState.Eof:
-      discard
-    of ReadableState.Data:
-      result = req.readContent(buf, size)
-    of ReadableState.Chunk:
-      result = req.readChunk(buf, size)
+    if not reader.ended:
+      if reader.chunked:
+        result = reader.readChunk(buf, size)
+      else:
+        result = reader.readContent(buf, size)
   finally:
-    req.readLock.release()
+    reader.lock.release()
 
-proc read*(req: Request): Future[string] {.async.} =
+proc read*(reader: HttpReader): Future[string] {.async.} =
   ## Reads up to ``size`` bytes from the request, storing the results as a string. 
   ## 
   ## If the return value is ``""``, that indicates ``eof``, i.e. at the end of the request.
   ## 
   ## If the return future is failed, ``OsError`` or ``ReadAbortedError`` may be raised.
-  await req.readLock.acquire()
+  await reader.lock.acquire()
   try:
-    case req.readableState:
-    of ReadableState.Eof:
-      discard
-    of ReadableState.Data:
-      result = req.readContent()
-    of ReadableState.Chunk:
-      result = req.readChunk()
+    if not reader.ended:
+      if reader.chunked:
+        result = reader.readChunk()
+      else:
+        result = reader.readContent()
   finally:
-    req.readLock.release()
+    reader.lock.release()
 
-proc readAll*(req: Request): Future[string] {.async.} =
+proc readAll*(reader: HttpReader): Future[string] {.async.} =
   ## Reads all bytes from the request, storing the results as a string. 
   ## 
   ## If the return future is failed, ``OsError`` or ``ReadAbortedError`` may be raised.
-  await req.readLock.acquire()
+  await reader.lock.acquire()
   try:
-    case req.readableState:
-    of ReadableState.Eof:
-      discard
-    of ReadableState.Data:
-      result = newString(req.readableLen)
-      while req.readableState != ReadableState.Eof:
-        result.add(req.readContent())
-    of ReadableState.Chunk:
-      while req.readableState != ReadableState.Eof:
-        result.add(req.readChunk())
+    if reader.chunked:
+      while not reader.ended:
+        result.add(reader.readChunk())
+    else:
+      result = newString(reader.contentLen)
+      while not reader.ended:
+        result.add(reader.readContent())
   finally:
-    req.readLock.release()
+    reader.lock.release()
 
-proc readDiscard*(req: Request): Future[void] {.async.} =
+proc readDiscard*(reader: HttpReader): Future[void] {.async.} =
   ## Reads all bytes from the request, discarding the results. 
   ## 
   ## If the return future is failed, ``OsError`` or ``ReadAbortedError`` may be raised.
-  await req.readLock.acquire()
+  await reader.lock.acquire()
   let buffer = newString(LimitChunkDataLen)
   GC_ref(buffer)
   try:
-    case req.readableState:
-    of ReadableState.Eof:
-      discard
-    of ReadableState.Data:
-      while req.readableState != ReadableState.Eof:
-        discard req.readContent(buffer.cstring, LimitChunkDataLen)
-    of ReadableState.Chunk:
-      while req.readableState != ReadableState.Eof:
-        discard req.readChunk(buffer.cstring, LimitChunkDataLen)
+    if reader.chunked:
+      while not reader.ended:
+        discard reader.readChunk(buffer.cstring, LimitChunkDataLen)
+    else:
+      while not reader.ended:
+        discard reader.readContent(buffer.cstring, LimitChunkDataLen)
   finally:
     GC_unref(buffer)
-    req.readLock.release()
+    reader.lock.release()
 
-proc write*(req: Request, buf: pointer, size: Natural): Future[void] {.async.} =
+template writeByGuard(writer: HttpWriter, buf: pointer, size: Natural) = 
+  if writer.conn.closed:
+    raise newException(WriteAbortedError, "Connection has been closed")
+  if not writer.writable:
+    raise newException(WriteAbortedError, "Write after ended")
+  let writeFuture = writer.conn.write(buf, size) 
+  if writeFuture.failed:
+    writer.conn.close()
+    raise writeFuture.readError()
+
+proc write*(writer: HttpWriter, buf: pointer, size: Natural): Future[void] {.async.} =
   ## Writes ``size`` bytes from ``buf`` to the request ``req``.
   ## 
   ## If the return future is failed, ``OsError`` or ``WriteAbortedError`` may be raised.
-  await req.readLock.acquire()
+  await writer.lock.acquire()
   try:
-    req.writeByGuard(buf, size)
+    writer.writeByGuard(buf, size)
   finally:
-    req.readLock.release()
+    writer.lock.release()
 
-proc write*(req: Request, data: string): Future[void] {.async.} =
+proc write*(writer: HttpWriter, data: string): Future[void] {.async.} =
   ## 
-  await req.readLock.acquire()
+  await writer.lock.acquire()
   GC_ref(data)
   try:
-    req.writeByGuard(data.cstring, data.len)
+    writer.writeByGuard(data.cstring, data.len)
   finally:
     GC_unref(data)
-    req.readLock.release()
+    writer.lock.release()
 
 proc write*(
-  req: Request, 
+  writer: HttpWriter, 
   statusCode: HttpCode,
   fields: openArray[tuple[name: string, value: string]]
 ): Future[void]  =
   ## ``write($initResponseHeader(statusCode, fields))`` 。 
-  return req.write($initResponseHeader(statusCode, fields))
+  return writer.write($initResponseHeader(statusCode, fields))
 
 proc write*(
-  req: Request, 
+  writer: HttpWriter, 
   statusCode: HttpCode,
   fields: openArray[tuple[name: string, value: seq[string]]]
 ): Future[void] =
   ## ``write($initResponseHeader(statusCode, fields))`` 。 
-  return req.write($initResponseHeader(statusCode, fields))
+  return writer.write($initResponseHeader(statusCode, fields))
 
-proc writeEnd*(req: Request) =
+proc writeEnd*(writer: HttpWriter) =
   ## 
-  if req.writableState != WritableState.Eof:
-    req.writableState = WritableState.Eof
-    if not req.conn.closed and req.readableState == ReadableState.Eof:
-      asyncCheck req.conn.handleNextRequest()
+  if writer.writable:
+    writer.writable = false
+    if not writer.conn.closed and not writer.reader.readable:
+      case writer.reader.header.kind 
+      of HttpHeaderKind.Request:
+        asyncCheck writer.reader.conn.handleNextRequest()
+      of HttpHeaderKind.Response:
+        raise newException(Exception, "Not Implemented yet")
 
 proc handleHttpConnection*(socket: AsyncFD, address: string, handler: RequestHandler) = 
   ##

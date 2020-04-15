@@ -17,23 +17,23 @@ suite "Echo":
     proc serve() {.async.} = 
       let server = newAsyncHttpServer()
 
-      server.onRequest = proc (req: Request) {.async.} =
+      server.onRequest = proc (req: ServerRequest, res: ServerResponse) {.async.} =
         try:
           var buf = newString(16)
           var data = ""
-          while req.readableState != ReadableState.Eof:
+          while not req.ended:
             let readLen = await req.read(buf.cstring, 16)
             buf.setLen(readLen)
             data.add(buf)
 
-          await req.write(Http200, {
+          await res.write(Http200, {
             "Content-Length": $data.len
           })
           var i = 0
           while i < data.len:
-            await req.write(data[i..min(i+7, data.len-1)])
+            await res.write(data[i..min(i+7, data.len-1)])
             i.inc(8)
-          req.writeEnd()
+          res.writeEnd()
         except ReadAbortedError:
           echo "Got ReadAbortedError: ", getCurrentExceptionMsg()
         except WriteAbortedError:

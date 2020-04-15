@@ -7,37 +7,37 @@
 ## This module provides basic tools related to HTTP.
 
 type
-  HttpMetaDataKind* {.pure.} = enum
+  HttpMetadataKind* {.pure.} = enum
     None, ChunkTrailer, ChunkExtensions
 
-  HttpMetaData* = object
-    case kind: HttpMetaDataKind
-    of HttpMetaDataKind.ChunkTrailer:
+  HttpMetadata* = object
+    case kind: HttpMetadataKind
+    of HttpMetadataKind.ChunkTrailer:
       trailer: seq[string]
-    of HttpMetaDataKind.ChunkExtensions:
+    of HttpMetadataKind.ChunkExtensions:
       extensions: string
-    of HttpMetaDataKind.None:
+    of HttpMetadataKind.None:
       discard 
 
-proc initHttpMetaData*(): HttpMetaData =
+proc initHttpMetadata*(): HttpMetadata =
   ## 
-  result.kind = HttpMetaDataKind.None
+  result.kind = HttpMetadataKind.None
 
-proc initHttpMetaData*(trailer: seq[string]): HttpMetaData =
+proc initHttpMetadata*(trailer: seq[string]): HttpMetadata =
   ## 
-  result.kind = HttpMetaDataKind.ChunkTrailer
+  result.kind = HttpMetadataKind.ChunkTrailer
   result.trailer = trailer
 
-proc initHttpMetaData*(extensions: string): HttpMetaData =
+proc initHttpMetadata*(extensions: string): HttpMetadata =
   ## 
-  result.kind = HttpMetaDataKind.ChunkExtensions
+  result.kind = HttpMetadataKind.ChunkExtensions
   result.extensions = extensions
 
-proc kind*(D: HttpMetaData): HttpMetaDataKind {.inline.} = 
+proc kind*(D: HttpMetadata): HttpMetadataKind {.inline.} = 
   D.kind
 
-proc trailer*(D: HttpMetaData): seq[string] {.inline.} = 
+proc trailer*(D: HttpMetadata): seq[string] {.inline.} = 
   D.trailer
 
-proc extensions*(D: HttpMetaData): string {.inline.} = 
+proc extensions*(D: HttpMetadata): string {.inline.} = 
   D.extensions
