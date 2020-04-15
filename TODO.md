@@ -14,6 +14,8 @@
       编码解码；等等
 - [x] 考虑 socket recv/write 异常如何处理，是否关闭连接
 - [x] 整理 HTTP Server 源码文件
+- [ ] 添加 chunk Trailer 支持
+- [ ] 添加 chunk Extensions 支持
 - [ ] 优化 HTTP chunked 解码和编码
 - [ ] 添加 HTTP 服务器单元测试，包含多种规则和不规则请求的模拟测试
 - [ ] 添加 HTTP 客户端和 HTTP 客户端连接池

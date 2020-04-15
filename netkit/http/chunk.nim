@@ -70,7 +70,7 @@ proc toHex(x: Natural): string =
   for i in 16-m..15:
     result.add(s[i])
 
-proc toChunkExtensions(args: varargs[tuple[name: string, value: string]]): string = 
+proc toChunkExtensions(args: openarray[tuple[name: string, value: string]]): string = 
   ## 
   ## 
   ## ``("a1", "v1"), ("a2", "v2") => ";a1=v1;a2=v2"``  

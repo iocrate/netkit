@@ -21,11 +21,13 @@ suite "Echo":
         try:
           var buf = newString(16)
           var data = ""
-          while not req.isReadEnded:
+          while req.readableState != ReadableState.Eof:
             let readLen = await req.read(buf.cstring, 16)
             buf.setLen(readLen)
             data.add(buf)
-          
+
+            # req.readableMetaData .kind == ReadableMetaKind.ChunkTrailer (ChunkExtensions) None
+            
           await req.write(Http200, {
             "Content-Length": $data.len
           })

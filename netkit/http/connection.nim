@@ -27,7 +27,6 @@ type
     socket: AsyncFD
     address: string
     closed: bool
-    closedError: ref Exception
 
   Request* = ref object ## 
     conn: HttpConnection
@@ -35,12 +34,29 @@ type
     readLock: AsyncLock
     writeLock: AsyncLock
     contentLen: Natural
-    chunked: bool
+    # chunked: bool
     trailer: bool
-    readEnded: bool
-    writeEnded: bool
+    # readEnded: bool
+    # writeEnded: bool
+
+    readableState: ReadableState
+    readableMetaData: ReadableMetaData
+    writableState: WritableState
     
   RequestHandler* = proc (req: Request): Future[void] {.closure, gcsafe.}
+
+  ReadableState* {.pure.} = enum
+    Data, Chunk, Eof
+
+  ReadableMetaKind* {.pure.} = enum
+    None, ChunkTrailer, ChunkExtensions
+
+  ReadableMetaData* = object
+    kind: ReadableMetaKind
+    data: seq[tuple[name: string, value: string]]
+
+  WritableState* {.pure.} = enum
+    Ready, Eof
 
 proc newHttpConnection(socket: AsyncFD, address: string, handler: RequestHandler): HttpConnection = 
   ##
@@ -52,106 +68,55 @@ proc newHttpConnection(socket: AsyncFD, address: string, handler: RequestHandler
   result.address = address
   result.closed = false
 
-template readBuffer(conn: HttpConnection, buf: pointer, size: Natural) = 
-  discard conn.buffer.get(buf, size)
-  discard conn.buffer.del(size)
+proc close(conn: HttpConnection) {.inline.} = 
+  conn.socket.closeSocket()
+  conn.closed = true
 
-template readNativeSocket(conn: HttpConnection, buf: pointer, size: Natural): Natural = 
-  var recvLen = 0
-  let recvFuture = conn.socket.recvInto(buf, size)
-  yield recvFuture
-  if recvFuture.failed:
-    conn.socket.closeSocket()
-    conn.closed = true
-    raise recvFuture.readError()
-  else:
-    recvLen = recvFuture.read()
-    if recvLen == 0:
-        conn.socket.closeSocket()
-        conn.closed = true 
-  recvLen
-
-template bufferLen(conn: HttpConnection): Natural = 
-  conn.buffer.len.int
-
-proc read(conn: HttpConnection, buf: pointer, size: Natural): Future[Natural] {.async.} = 
-  ## Reads up to ``size`` bytes from the connection, storing the results in the ``buf``. 
-  ## 
-  ## The return value is the number of bytes actually read. This might be less than ``size``.
-  ## A value of zero indicates the connection closed.
-  ## 
+proc read(conn: HttpConnection): Future[Natural] {.async.} = 
+  ##
+  ##
   ## If the return future is failed, ``OsError`` may be raised.
-  result = conn.bufferLen
-  if result >= size:
-    conn.readBuffer(buf, size)
-    result = size
-  else:
-    if result > 0:
-      conn.readBuffer(buf, result)
-    let remainingLen = size - result
-    let readLen = conn.readNativeSocket(buf.offset(result), remainingLen)
-    if readLen == 0:
-      return
-    if remainingLen > readLen:
-      conn.readBuffer(buf.offset(result), readLen)
-      result.inc(readLen)
-    else:
-      conn.readBuffer(buf.offset(result), remainingLen)
-      result.inc(remainingLen)
+  let region = conn.buffer.next()
+  result = await conn.socket.recvInto(region[0], region[1])
+  if result > 0:
+    discard conn.buffer.pack(result)
 
-proc readUntil(conn: HttpConnection, buf: pointer, size: Natural): Future[Natural] {.async.} =  
+proc read(conn: HttpConnection, buf: pointer, size: Natural): Future[Natural] {.async.} =  
   ## Reads up to ``size`` bytes from the connection, storing the results in the ``buf``. 
   ## 
   ## The return value is the number of bytes actually read. This might be less than ``size`` 
-  ## that indicates the connection closed. 
+  ## that indicates the connection is EOF. 
   ## 
   ## If the return future is failed, ``OsError`` may be raised.
-  result = conn.bufferLen
+  result = conn.buffer.len
   if result >= size:
-    conn.readBuffer(buf, size)
+    discard conn.buffer.get(buf, size)
+    discard conn.buffer.del(size)
     result = size
   else:
     if result > 0:
-      conn.readBuffer(buf, result)
+      discard conn.buffer.get(buf, result)
+      discard conn.buffer.del(result)
     var remainingLen = size - result
-    while true:
-      let readLen = conn.readNativeSocket(buf.offset(result), remainingLen)
+    while remainingLen > 0:
+      let readLen = await conn.socket.recvInto(buf.offset(result), remainingLen)
       if readLen == 0:
         return
-      if remainingLen > readLen:
-        conn.readBuffer(buf.offset(result), readLen)
-        result.inc(readLen)
-        remainingLen.dec(readLen)
-      else:
-        conn.readBuffer(buf.offset(result), remainingLen)
-        result.inc(remainingLen)
-        return
+      discard conn.buffer.get(buf.offset(result), readLen)
+      discard conn.buffer.del(readLen)
+      result.inc(readLen)
+      remainingLen.dec(readLen)  
 
-proc write(conn: HttpConnection, buf: pointer, size: Natural): Future[void] {.async.} =
+proc write(conn: HttpConnection, buf: pointer, size: Natural): Future[void] =
   ## Writes ``size`` bytes from ``buf`` to the connection ``conn``. 
   ## 
   ## If the return future is failed, ``OsError`` may be raised.
-  try:
-    await conn.socket.send(buf, size)
-  except:
-    conn.socket.closeSocket()
-    conn.closed = true
-    conn.closedError = getCurrentException()  
-    raise getCurrentException()  
+  result = conn.socket.send(buf, size)
 
-proc write(conn: HttpConnection, data: string): Future[void] {.async.} =
+proc write(conn: HttpConnection, data: string): Future[void] =
   ## 
   ## If the return future is failed, ``OsError`` may be raised.
-  GC_ref(data)
-  try:
-    await conn.socket.send(data.cstring, data.len)
-  except:
-    conn.socket.closeSocket()
-    conn.closed = true
-    conn.closedError = getCurrentException()  
-    raise getCurrentException() 
-  finally:
-    GC_unref(data)
+  result = conn.socket.send(data)
 
 proc newRequest*(conn: HttpConnection): Request = 
   ##
@@ -161,10 +126,12 @@ proc newRequest*(conn: HttpConnection): Request =
   result.readLock = initAsyncLock()
   result.writeLock = initAsyncLock()
   result.contentLen = 0
-  result.chunked = false
+  # result.chunked = false
   result.trailer = false
-  result.readEnded = false
-  result.writeEnded = false
+  # result.readEnded = false
+  result.readableState = ReadableState.Data
+  result.readableMetaData = ReadableMetaData()
+  result.writableState = WritableState.Ready
 
 proc reqMethod*(req: Request): HttpMethod {.inline.} = 
   ##  
@@ -182,17 +149,17 @@ proc fields*(req: Request): HeaderFields {.inline.} =
   ## 
   req.header.fields
 
-proc isReadEnded*(req: Request): bool =
+proc readableState*(req: Request): ReadableState =
   ## 
-  req.conn.closed or req.readEnded
+  req.readableState
 
-proc isWriteEnded*(req: Request): bool =
+proc writableState*(req: Request): WritableState =
   ## 
-  req.conn.closed or req.writeEnded
+  req.writableState
 
-proc isReadTrailer*(req: Request): bool =
-  ## 
-  req.trailer
+# proc isReadTrailer*(req: Request): bool =
+#   ## 
+#   req.trailer
 
 proc normalizeTransforEncoding(req: Request) =
   if req.fields.contains("Transfer-Encoding"):
@@ -202,7 +169,8 @@ proc normalizeTransforEncoding(req: Request) =
       if encoding.toLowerAscii() == "chunked":
         if i != encodings.len-1:
           raise newException(ValueError, "Bad Request")
-        req.chunked = true
+        req.readableState = ReadableState.Chunk
+        req.contentLen = 0
         return
       i.inc()
 
@@ -213,6 +181,8 @@ proc normalizeContentLength(req: Request) =
     req.contentLen = req.fields["Content-Length"][0].parseInt()
     if req.contentLen < 0:
       raise newException(ValueError, "Bad Request")
+  if req.contentLen == 0:
+    req.readableState = ReadableState.Eof
 
 proc normalizeSpecificFields(req: Request) =
   # 这个函数用来规范化常用的 HTTP Headers 字段
@@ -228,25 +198,24 @@ proc handleNextRequest(conn: HttpConnection): Future[void] {.async.} =
     except:
       echo "Got Parsing or NormalizeSpecificFields Error: ", getCurrentExceptionMsg()
       yield conn.write("HTTP/1.1 400 Bad Request\r\L\r\L") # discard error
-      conn.socket.closeSocket()
-      conn.closed = true
+      conn.close()
       return
 
   var req: Request
   var parsed = false
   
-  if conn.bufferLen > 0:
+  if conn.buffer.len > 0:
     req = newRequest(conn)
     guard:
       parsed = conn.parser.parseRequest(req.header, conn.buffer)
   
   if not parsed:
     while true:
-      let region = conn.buffer.next()
-      let readLen = conn.readNativeSocket(region[0], region[1].Natural)
-      if readLen == 0:
-        return 
-      discard conn.buffer.pack(readLen)
+      let readFuture = conn.read()
+      yield readFuture
+      if readFuture.failed or readFuture.read() == 0:
+        conn.close()
+        return
   
       if req == nil:
         req = newRequest(conn)
@@ -257,50 +226,49 @@ proc handleNextRequest(conn: HttpConnection): Future[void] {.async.} =
   guard:
     req.normalizeSpecificFields()
 
-  if not req.chunked and req.contentLen == 0:
-    req.readEnded = true
-  
   yield conn.requestHandler(req) # discard error
 
 template readContent(req: Request, buf: pointer, size: Natural): Natural = 
-  assert not req.conn.closed
-  assert not req.readEnded
-  assert not req.chunked
+  assert req.readableState == ReadableState.Data
   assert req.contentLen > 0
-  let readFuture = req.conn.read(buf, min(req.contentLen, size))
+  let n = min(req.contentLen, size)
+  let readFuture = req.conn.read(buf, n)
   yield readFuture
   if readFuture.failed:
+    req.readableState = ReadableState.Eof
+    req.conn.close()
     raise readFuture.readError()
-  let readLen = readFuture.read()
-  if readLen == 0:
+  if readFuture.read() != n:
+    req.readableState = ReadableState.Eof
+    req.conn.close()
     raise newException(ReadAbortedError, "Connection closed prematurely")
-  req.contentLen.dec(readLen)  
+  req.contentLen.dec(n)  
   if req.contentLen == 0:
-    req.readEnded = true
-    if req.writeEnded:
+    req.readableState = ReadableState.Eof
+    if req.writableState == WritableState.Eof:
       asyncCheck req.conn.handleNextRequest()
-  readLen
+  n
 
 template readContent(req: Request): string = 
-  assert not req.conn.closed
-  assert not req.readEnded
-  assert not req.chunked
+  assert req.readableState == ReadableState.Data
   assert req.contentLen > 0
-  let size = min(req.contentLen, BufferSize.int)
-  var buffer = newString(size)
-  let readFuture = req.conn.read(buffer.cstring, size) # should need Gc_ref(result) ?
+  let n = min(req.contentLen, BufferSize)
+  var buffer = newString(n)
+  let readFuture = req.conn.read(buffer.cstring, n) # should need Gc_ref(result) ?
   yield readFuture
   if readFuture.failed:
+    req.readableState = ReadableState.Eof
+    req.conn.close()
     raise readFuture.readError()
-  let readLen = readFuture.read()
-  if readLen == 0:
+  if readFuture.read() != n:
+    req.readableState = ReadableState.Eof
+    req.conn.close()
     raise newException(ReadAbortedError, "Connection closed prematurely")
-  buffer.setLen(readLen)                               # still ref result 
-  buffer.shallow()
-  req.contentLen.dec(readLen)  
+  buffer.shallow()                                  # still ref result 
+  req.contentLen.dec(n)  
   if req.contentLen == 0:
-    req.readEnded = true
-    if req.writeEnded:
+    req.readableState = ReadableState.Eof
+    if req.writableState == WritableState.Eof:
       asyncCheck req.conn.handleNextRequest()
   buffer
 
@@ -311,14 +279,17 @@ template readChunkHeader(req: Request, chunkSizer: ChunkHeader) =
     try:
       (succ, chunkSizer) = conn.parser.parseChunkHeader(conn.buffer)
     except:
+      req.readableState = ReadableState.Eof
+      req.conn.close()
       raise newException(ReadAbortedError, "Bad chunked transmission")
     if succ:
       break
-    let (regionPtr, regionLen) = conn.buffer.next()
-    let readLen = conn.readNativeSocket(regionPtr, regionLen)
-    if readLen == 0:
+    let readFuture = req.conn.read()
+    yield readFuture
+    if readFuture.failed or readFuture.read() == 0:
+      req.readableState = ReadableState.Eof
+      req.conn.close()
       raise newException(ReadAbortedError, "Connection closed prematurely")
-    discard conn.buffer.pack(readLen) 
 
 template readChunkEnd(req: Request, trailer: string) = 
   let conn = req.conn
@@ -327,19 +298,20 @@ template readChunkEnd(req: Request, trailer: string) =
     try:
       (succ, trailer) = conn.parser.parseChunkEnd(conn.buffer)
     except:
+      req.readableState = ReadableState.Eof
+      req.conn.close()
       raise newException(ReadAbortedError, "Bad chunked transmission")
     if succ:
       break
-    let (regionPtr, regionLen) = conn.buffer.next()
-    let readLen = conn.readNativeSocket(regionPtr, regionLen)
-    if readLen == 0:
+    let readFuture = req.conn.read()
+    yield readFuture
+    if readFuture.failed or readFuture.read() == 0:
+      req.readableState = ReadableState.Eof
+      req.conn.close()
       raise newException(ReadAbortedError, "Connection closed prematurely")
-    discard conn.buffer.pack(readLen) 
 
 template readChunk(req: Request, buf: pointer, size: int): Natural =
-  assert not req.conn.closed
-  assert not req.readEnded
-  assert req.chunked
+  assert req.readableState == ReadableState.Chunk
   
   var readLen = 0
 
@@ -348,8 +320,8 @@ template readChunk(req: Request, buf: pointer, size: int): Natural =
     readChunkEnd(req, trailer)
     if trailer.len == 0:
       req.trailer = false
-      req.readEnded = true
-      if req.writeEnded:
+      req.readableState = ReadableState.Eof
+      if req.writableState == WritableState.Eof:
         asyncCheck req.conn.handleNextRequest()
     else:
       copyMem(buf, trailer.cstring, trailer.len) 
@@ -365,21 +337,22 @@ template readChunk(req: Request, buf: pointer, size: int): Natural =
       handleEnd()
     else:
       assert chunkSizer[0] <= size
-      let readFuture = req.conn.readUntil(buf, chunkSizer[0])
+      let readFuture = req.conn.read(buf, chunkSizer[0])
       yield readFuture
       if readFuture.failed:
+        req.readableState = ReadableState.Eof
+        req.conn.close()
         raise readFuture.readError()
       readLen = readFuture.read()
-      if readLen == 0:
+      if readLen != chunkSizer[0]:
+        req.readableState = ReadableState.Eof
+        req.conn.close()
         raise newException(ReadAbortedError, "Connection closed prematurely")
   readLen
 
 template readChunk(req: Request): string = 
-  # TODO: 合并 read
   # chunked size 必须小于 BufferSize；chunkedSizeLen 必须小于 BufferSize
-  assert not req.conn.closed
-  assert not req.readEnded
-  assert req.chunked
+  assert req.readableState == ReadableState.Chunk
   
   var readData = ""
 
@@ -387,8 +360,8 @@ template readChunk(req: Request): string =
     readChunkEnd(req, readData)
     if readData.len == 0:
       req.trailer = false
-      req.readEnded = true
-      if req.writeEnded:
+      req.readableState = ReadableState.Eof
+      if req.writableState == WritableState.Eof:
         asyncCheck req.conn.handleNextRequest()
     else:
       readData.shallow()
@@ -399,16 +372,19 @@ template readChunk(req: Request): string =
   else:
     var chunkSizer: ChunkHeader
     req.readChunkHeader(chunkSizer)
-    if chunkSizer.size == 0:
+    if chunkSizer[0] == 0:
       handleEnd()
     else:
-      readData = newString(chunkSizer.size)
-      let readFuture = req.conn.readUntil(readData.cstring, chunkSizer.size)
+      readData = newString(chunkSizer[0])
+      let readFuture = req.conn.read(readData.cstring, chunkSizer[0])
       yield readFuture
       if readFuture.failed:
+        req.readableState = ReadableState.Eof
+        req.conn.close()
         raise readFuture.readError()
-      let readLen = readFuture.read()
-      if readLen < chunkSizer.size:
+      if readFuture.read() != chunkSizer[0]:
+        req.readableState = ReadableState.Eof
+        req.conn.close()
         raise newException(ReadAbortedError, "Connection closed prematurely")
       readData.shallow()
   readData
@@ -422,11 +398,13 @@ proc read*(req: Request, buf: pointer, size: range[int(LimitChunkDataLen)..high(
   ## If the return future is failed, ``OsError`` or ``ReadAbortedError`` may be raised.
   await req.readLock.acquire()
   try:
-    if not req.isReadEnded:
-      if req.chunked:
-        result = req.readChunk(buf, size)
-      else:
-        result = req.readContent(buf, size)
+    case req.readableState:
+    of ReadableState.Eof:
+      discard
+    of ReadableState.Data:
+      result = req.readContent(buf, size)
+    of ReadableState.Chunk:
+      result = req.readChunk(buf, size)
   finally:
     req.readLock.release()
 
@@ -438,11 +416,13 @@ proc read*(req: Request): Future[string] {.async.} =
   ## If the return future is failed, ``OsError`` or ``ReadAbortedError`` may be raised.
   await req.readLock.acquire()
   try:
-    if not req.isReadEnded:
-      if req.chunked:
-        result = req.readChunk()
-      else:
-        result = req.readContent()
+    case req.readableState:
+    of ReadableState.Eof:
+      discard
+    of ReadableState.Data:
+      result = req.readContent()
+    of ReadableState.Chunk:
+      result = req.readChunk()
   finally:
     req.readLock.release()
 
@@ -452,13 +432,16 @@ proc readAll*(req: Request): Future[string] {.async.} =
   ## If the return future is failed, ``OsError`` or ``ReadAbortedError`` may be raised.
   await req.readLock.acquire()
   try:
-    if not req.chunked:
+    case req.readableState:
+    of ReadableState.Eof:
+      discard
+    of ReadableState.Data:
       result = newString(req.contentLen)
-    while not req.isReadEnded:
-      if req.chunked:
-        result.add(req.readChunk())
-      else:
+      while req.readableState != ReadableState.Eof:
         result.add(req.readContent())
+    of ReadableState.Chunk:
+      while req.readableState != ReadableState.Eof:
+        result.add(req.readChunk())
   finally:
     req.readLock.release()
 
@@ -470,11 +453,15 @@ proc readDiscard*(req: Request): Future[void] {.async.} =
   let buffer = newString(LimitChunkDataLen)
   GC_ref(buffer)
   try:
-    while not req.isReadEnded:
-      if req.chunked:
-        discard req.readChunk(buffer.cstring, LimitChunkDataLen)
-      else:
+    case req.readableState:
+    of ReadableState.Eof:
+      discard
+    of ReadableState.Data:
+      while req.readableState != ReadableState.Eof:
         discard req.readContent(buffer.cstring, LimitChunkDataLen)
+    of ReadableState.Chunk:
+      while req.readableState != ReadableState.Eof:
+        discard req.readChunk(buffer.cstring, LimitChunkDataLen)
   finally:
     GC_unref(buffer)
     req.readLock.release()
@@ -487,9 +474,14 @@ proc write*(req: Request, buf: pointer, size: Natural): Future[void] {.async.} =
   try:
     if req.conn.closed:
       raise newException(WriteAbortedError, "Connection has been closed")
-    if req.writeEnded:
+    if req.writableState == WritableState.Eof:
       raise newException(WriteAbortedError, "Write after ended")
-    await req.conn.write(buf, size)
+    try:
+      await req.conn.write(buf, size)
+    except:
+      req.readableState = ReadableState.Eof
+      req.conn.close()
+      raise getCurrentException()
   finally:
     req.readLock.release()
 
@@ -500,9 +492,14 @@ proc write*(req: Request, data: string): Future[void] {.async.} =
   try:
     if req.conn.closed:
       raise newException(WriteAbortedError, "Connection has been closed")
-    if req.writeEnded:
+    if req.writableState == WritableState.Eof:
       raise newException(WriteAbortedError, "Write after ended")
-    await req.conn.write(data.cstring, data.len)
+    try:
+      await req.conn.write(data.cstring, data.len)
+    except:
+      req.readableState = ReadableState.Eof
+      req.conn.close()
+      raise getCurrentException()
   finally:
     GC_unref(data)
     req.readLock.release()
@@ -525,11 +522,10 @@ proc write*(
 
 proc writeEnd*(req: Request) =
   ## 
-  if not req.writeEnded:
-    req.writeEnded = true
-    if not req.conn.closed:
-      if req.readEnded:
-        asyncCheck req.conn.handleNextRequest()
+  if req.writableState != WritableState.Eof:
+    req.writableState = WritableState.Eof
+    if not req.conn.closed and req.readableState == ReadableState.Eof:
+      asyncCheck req.conn.handleNextRequest()
 
 proc handleHttpConnection*(socket: AsyncFD, address: string, handler: RequestHandler) = 
   ##
