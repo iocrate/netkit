@@ -201,7 +201,9 @@ proc parseChunkHeader*(
       token.setLen(lastIdx)
     p.currentLineLen = 0
     result = true
-    header = token.parseChunkHeader()
+    let res = token.parseChunkHeader()
+    header.size = res.size
+    header.extensions.shallowCopy(res.extensions)
   else:
     p.popMarksToSecondaryIfFull(buf)
 
