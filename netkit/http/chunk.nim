@@ -11,9 +11,9 @@ import netkit/http/base
 import netkit/http/constants as http_constants
 
 type
-  ChunkHeader* = tuple ## Represents the size portion of the encoded data via ``Transfer-Encoding: chunked``.
-    size: Natural
-    extensions: string
+  ChunkHeader* = object ## Represents the size portion of the encoded data via ``Transfer-Encoding: chunked``.
+    size*: Natural
+    extensions*: string
 
 proc parseChunkHeader*(s: string): ChunkHeader = 
   ##
@@ -33,24 +33,23 @@ proc parseChunkHeader*(s: string): ChunkHeader =
       result.extensions = s[i..^1]
       break
     else:
-      raise newException(ValueError, "Invalid Chunk Encoded")
+      raise newException(ValueError, "Bad chunked data")
     i.inc()
 
-proc parseChunkTrailer*(s: string): tuple[name: string, value: string] = 
+proc parseChunkTrailer*(lines: openarray[string]): HeaderFields = 
   ## 
   ## 
   ## ``"Expires: Wed, 21 Oct 2015 07:28:00 GMT" => ("Expires", "Wed, 21 Oct 2015 07:28:00 GMT")``  
-  var i = 0
-  for c in s:
-    if c == COMMA:
-      break
-    i.inc()
-  result.name = s[0..i-1]
-  if i > 0:
-    result.value = s[i+1..^1]
-    if result.value.len > 0:
-      result.value.removePrefix(WS)
-      result.value.removeSuffix(WS)
+  discard
+  result = initHeaderFields()
+  for line in lines:
+    var i = 0
+    for c in line:
+      if c == COLON:
+        break
+      i.inc()
+    if i > 0:
+      result.add(line[0..i-1], line[i+1..^1])
 
 proc parseChunkExtensions*(s: string): StringTableRef = 
   ## 
@@ -79,7 +78,7 @@ proc toHex(x: Natural): string =
   for i in 16-m..15:
     result.add(s[i])
 
-proc toChunkExtensions(args: varargs[tuple[name: string, value: string]]): string = 
+proc toChunkExtensions(args: openarray[tuple[name: string, value: string]]): string = 
   ## 
   ## 
   ## ``("a1", "v1"), ("a2", "v2") => ";a1=v1;a2=v2"``  

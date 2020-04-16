@@ -104,7 +104,6 @@ proc serve*(
           await conn.readHttpHeader(req.header.addr)
         except:
           # TODO: 考虑错误处理
-          echo "......readHttpHeader exception"
           if not conn.closed:
             conn.close()
           return

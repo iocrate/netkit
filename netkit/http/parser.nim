@@ -81,12 +81,17 @@ proc markRequestLineCharOrCRLF(p: var HttpParser, buf: var MarkableCircularBuffe
   if p.currentLineLen.int > LimitStartLineLen:
     raise newHttpError(Http400, "Request Line Too Long")
 
+proc markRequestFieldChar(p: var HttpParser, buf: var MarkableCircularBuffer, c: char): bool = 
+  result = p.markChar(buf, c)
+  if p.currentLineLen.int > LimitHeaderFieldLen:
+    raise newHttpError(Http400, "Header Field Too Long")
+
 proc markRequestFieldCharOrCRLF(p: var HttpParser, buf: var MarkableCircularBuffer, c: char): MarkProcessState = 
   result = p.markCharOrCRLF(buf, c)
   if p.currentLineLen.int > LimitHeaderFieldLen:
     raise newHttpError(Http400, "Header Field Too Long")
 
-proc parseHttpHeader*(p: var HttpParser, header: var HttpHeader, buf: var MarkableCircularBuffer): bool = 
+proc parseHttpHeader*(p: var HttpParser, buf: var MarkableCircularBuffer, header: var HttpHeader): bool = 
   ## 
   result = false
   while true:
@@ -145,13 +150,13 @@ proc parseHttpHeader*(p: var HttpParser, header: var HttpHeader, buf: var Markab
         # header field MUST either reject the message as invalid or consume each 
         # whitespace-preceded line without further processing of it.
         if p.currentFieldName[0] in WS:
-          raise newHttpError(Http400, "Invalid Header Field")
+          raise newHttpError(Http400, "Bad Header Field")
         # [RFC7230-3.2.4](https://tools.ietf.org/html/rfc7230#section-3.2.4) 
         # A server MUST reject any received request message that contains whitespace 
         # between a header field-name and colon with a response code of 400.
         if p.currentFieldName[^1] in WS:
-          raise newHttpError(Http400, "Invalid Header Field")
-        p.state = HttpParseState.FIELD_VALUE
+          raise newHttpError(Http400, "Bad Header Field")
+        p.state = HttpParseState.FieldValue
       of MarkProcessState.Crlf:
         p.currentFieldName = ""
         p.currentLineLen = 0
@@ -161,40 +166,28 @@ proc parseHttpHeader*(p: var HttpParser, header: var HttpHeader, buf: var Markab
         p.popMarksToSecondaryIfFull(buf)
         break
     of HttpParseState.FieldValue:
-      # [RFC7230-3.5](https://tools.ietf.org/html/rfc7230#section-3.5) 
-      # Although the line terminator for the start-line and header fields is the sequence 
-      # CRLF, a recipient MAY recognize a single LF as a line terminator and ignore any 
-      # preceding CR.
-      for c in buf.marks():
-        p.currentLineLen.inc()
-        if c == COMMA:
-          var fieldValue = p.popToken(buf, 1)
-          fieldValue.removePrefix(WS)
-          fieldValue.removeSuffix(WS)
-          if fieldValue.len == 0:
-            raise newHttpError(Http400, "Invalid Header Field")
-          header.fields.add(p.currentFieldName, fieldValue)
-        elif c == LF:
-          var fieldValue = p.popToken(buf, 1)
-          let lastIdx = fieldValue.len - 1
-          if fieldValue[lastIdx] == CR:
-            fieldValue.setLen(lastIdx)
-          fieldValue.removePrefix(WS)
-          fieldValue.removeSuffix(WS)
-          if fieldValue.len == 0:
-            raise newHttpError(Http400, "Invalid Header Field")
-          header.fields.add(p.currentFieldName, fieldValue)
-          p.state = HttpParseState.FieldName
-          break  
-      if p.state == HttpParseState.FieldValue:
-        p.popMarksToSecondaryIfFull(buf)
-      else:
+      if p.markRequestFieldChar(buf, LF):
+        # [RFC7230-3.5](https://tools.ietf.org/html/rfc7230#section-3.5) 
+        # Although the line terminator for the start-line and header fields is the sequence 
+        # CRLF, a recipient MAY recognize a single LF as a line terminator and ignore any 
+        # preceding CR.
+        var fieldValue = p.popToken(buf, 1)
+        let lastIdx = fieldValue.len - 1
+        if fieldValue[lastIdx] == CR:
+          fieldValue.setLen(lastIdx)
+        fieldValue.removePrefix(WS)
+        fieldValue.removeSuffix(WS)
+        if fieldValue.len == 0:
+          raise newHttpError(Http400, "Bad Header Field")
+        header.fields.add(p.currentFieldName, fieldValue)
         p.currentFieldCount.inc()
         if p.currentFieldCount > LimitHeaderFieldCount:
           raise newHttpError(Http431)
-        if p.currentLineLen > LimitHeaderFieldLen:
-          raise newHttpError(Http400, "Header Field Too Long")
         p.currentLineLen = 0
+        p.state = HttpParseState.FieldName
+      else:
+        p.popMarksToSecondaryIfFull(buf)
+        return
     of HttpParseState.Body:
       return true
 

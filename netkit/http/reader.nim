@@ -37,7 +37,7 @@ type
 proc init(reader: HttpReader, conn: HttpConnection, onEnd: proc () {.gcsafe, closure.}) = 
   reader.conn = conn
   reader.lock = initAsyncLock()
-  reader.metadata = initHttpMetadata()
+  reader.metadata = HttpMetadata(kind: HttpMetadataKind.None)
   reader.onEnd = onEnd
   reader.contentLen = 0
   reader.chunked = false
@@ -79,28 +79,41 @@ proc ended*(reader: HttpReader): bool {.inline.} =
   ## 
   reader.conn.closed or not reader.readable
 
-proc normalizeTransforEncoding(reader: HttpReader) =
-  if reader.fields.contains("Transfer-Encoding"):
-    let encodings = reader.fields["Transfer-Encoding"]
-    var i = 0
-    for encoding in encodings:
-      if encoding.toLowerAscii() == "chunked":
-        if i != encodings.len-1:
-          raise newException(ValueError, "Bad Request")
-        reader.readable = false
-        reader.contentLen = 0
-        return
-      i.inc()
-
 proc normalizeContentLength(reader: HttpReader) =
   if reader.fields.contains("Content-Length"):
     if reader.fields["Content-Length"].len > 1:
-      raise newException(ValueError, "Bad Request")
+      raise newException(ValueError, "Bad content length")
     reader.contentLen = reader.fields["Content-Length"][0].parseInt()
     if reader.contentLen < 0:
-      raise newException(ValueError, "Bad Request")
+      raise newException(ValueError, "Bad content length")
   if reader.contentLen == 0:
     reader.readable = false
+
+proc normalizeTransforEncoding(reader: HttpReader) =
+  if reader.fields.contains("Transfer-Encoding"):
+    var encodings: seq[string]
+    let items = reader.fields["Transfer-Encoding"]
+    if items.len == 1:
+      encodings = items[0].split(COMMA)
+    elif items.len > 1:
+      encodings.shallowCopy(items)
+    else:
+      return
+
+    var i = 0
+    let n = encodings.len - 1
+    for encoding in encodings.items():
+      var vencoding = encoding
+      vencoding.removePrefix(SP)
+      vencoding.removePrefix(SP)
+      if vencoding.toLowerAscii() == "chunked":
+        if i != n:
+          raise newException(ValueError, "Bad transfer encoding")
+        reader.chunked = true
+        reader.readable = true
+        reader.contentLen = 0
+        return
+      i.inc()
 
 proc normalizeSpecificFields*(reader: HttpReader) =
   # TODO: more normalized header fields
@@ -124,12 +137,6 @@ template readContent(reader: HttpReader, buf: pointer, size: Natural): Natural =
   if reader.contentLen == 0:
     reader.readable = false
     reader.onEnd()
-    # if reader.writer.writable == false:
-    #   case reader.header.kind 
-    #   of HttpHeaderKind.Request:
-    #     asyncCheck reader.conn.handleNextRequest()
-    #   of HttpHeaderKind.Response:
-    #     raise newException(Exception, "Not Implemented yet")
   n
 
 template readContent(reader: HttpReader): string = 
@@ -151,7 +158,7 @@ template readContent(reader: HttpReader): string =
     #     raise newException(Exception, "Not Implemented yet")
   buffer
 
-template readChunkHeaderByGuard(reader: HttpReader, header: var ChunkHeader) = 
+template readChunkHeaderByGuard(reader: HttpReader, header: ChunkHeader) = 
   # TODO: 考虑内存泄漏
   let readFuture = reader.conn.readChunkHeader(header.addr)
   yield readFuture
@@ -160,40 +167,34 @@ template readChunkHeaderByGuard(reader: HttpReader, header: var ChunkHeader) =
     raise readFuture.readError()
   if header.extensions.len > 0:
     header.extensions.shallow()
-    reader.metadata = initHttpMetadata(header.extensions)
+    reader.metadata = HttpMetadata(kind: HttpMetadataKind.ChunkExtensions, extensions: header.extensions)
 
-template readChunkEndByGuard(reader: HttpReader, trailer: ptr seq[string]) = 
-  let readFuture = reader.conn.readChunkEnd(trailer)
+template readChunkEndByGuard(reader: HttpReader) = 
+  var trailerVar: seq[string]
+  let readFuture = reader.conn.readChunkEnd(trailerVar.addr)
   yield readFuture
   if readFuture.failed:
     reader.conn.close()
     raise readFuture.readError()
-  if trailer[].len > 0:
-    # trailer.shallow()
-    reader.metadata = initHttpMetadata(trailer[])
+  if trailerVar.len > 0:
+    trailerVar.shallow()
+    reader.metadata = HttpMetadata(kind: HttpMetadataKind.ChunkTrailer, trailer: trailerVar)
 
-template readChunk(reader: HttpReader, buf: pointer, size: int): Natural =
+template readChunk(reader: HttpReader, buf: pointer, n: int): Natural =
   assert reader.conn.closed
   assert reader.readable
   assert reader.chunked
   var header: ChunkHeader
-  # TODO: 考虑内存泄漏
+  # TODO: 考虑内存泄漏 GC_ref GC_unref
   reader.readChunkHeaderByGuard(header)
-  if header[0] == 0:
-    var trailer: seq[string]
-    reader.readChunkEndByGuard(trailer.addr)
+  if header.size == 0:
+    reader.readChunkEndByGuard()
     reader.readable = false
     reader.onEnd()
-    # if reader.writer.writable == false:
-    #   case reader.header.kind 
-    #   of HttpHeaderKind.Request:
-    #     asyncCheck reader.conn.handleNextRequest()
-    #   of HttpHeaderKind.Response:
-    #     raise newException(Exception, "Not Implemented yet")
   else:
-    assert header[0] <= size
-    reader.readByGuard(buf, header[0])
-  header[0]
+    assert header.size <= n
+    reader.readByGuard(buf, header.size)
+  header.size
 
 template readChunk(reader: HttpReader): string = 
   assert reader.conn.closed
@@ -202,20 +203,13 @@ template readChunk(reader: HttpReader): string =
   var data = ""
   var header: ChunkHeader
   reader.readChunkHeaderByGuard(header)
-  if header[0] == 0:
-    var trailer: seq[string]
-    reader.readChunkEndByGuard(trailer.addr)
+  if header.size == 0:
+    reader.readChunkEndByGuard()
     reader.readable = false
     reader.onEnd()
-    # if reader.writer.writable == false:
-    #   case reader.header.kind 
-    #   of HttpHeaderKind.Request:
-    #     asyncCheck reader.conn.handleNextRequest()
-    #   of HttpHeaderKind.Response:
-    #     raise newException(Exception, "Not Implemented yet")
   else:
-    data = newString(header[0])
-    reader.readByGuard(data.cstring, header[0])
+    data = newString(header.size)
+    reader.readByGuard(data.cstring, header.size)
     data.shallow()
   data
 

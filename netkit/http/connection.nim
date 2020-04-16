@@ -22,7 +22,6 @@ type
     parser: HttpParser
     socket: AsyncFD
     address: string
-    eof: bool
     closed: bool
 
 proc newHttpConnection*(socket: AsyncFD, address: string): HttpConnection = 
@@ -80,12 +79,12 @@ proc readHttpHeader*(conn: HttpConnection, header: ptr HttpHeader): Future[void]
   ## 读取 HTTPHeader， 如果解析过程出现错误， 则抛出异常， 说明对端数据有错误 bad request 
   var succ = false
   if conn.buffer.len > 0:
-    succ = conn.parser.parseHttpHeader(header[], conn.buffer)
+    succ = conn.parser.parseHttpHeader(conn.buffer, header[])
   while not succ:
     let n = await conn.read()
     if n == 0:
       raise newException(ReadAbortedError, "Connection closed prematurely")
-    succ = conn.parser.parseHttpHeader(header[], conn.buffer)
+    succ = conn.parser.parseHttpHeader(conn.buffer, header[])
 
 proc readChunkHeader*(conn: HttpConnection, header: ptr ChunkHeader): Future[void] {.async.} = 
   var succ = false

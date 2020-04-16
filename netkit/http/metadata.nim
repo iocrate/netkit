@@ -11,33 +11,10 @@ type
     None, ChunkTrailer, ChunkExtensions
 
   HttpMetadata* = object
-    case kind: HttpMetadataKind
+    case kind*: HttpMetadataKind
     of HttpMetadataKind.ChunkTrailer:
-      trailer: seq[string]
+      trailer*: seq[string]
     of HttpMetadataKind.ChunkExtensions:
-      extensions: string
+      extensions*: string
     of HttpMetadataKind.None:
       discard 
-
-proc initHttpMetadata*(): HttpMetadata =
-  ## 
-  result.kind = HttpMetadataKind.None
-
-proc initHttpMetadata*(trailer: seq[string]): HttpMetadata =
-  ## 
-  result.kind = HttpMetadataKind.ChunkTrailer
-  result.trailer = trailer
-
-proc initHttpMetadata*(extensions: string): HttpMetadata =
-  ## 
-  result.kind = HttpMetadataKind.ChunkExtensions
-  result.extensions = extensions
-
-proc kind*(D: HttpMetadata): HttpMetadataKind {.inline.} = 
-  D.kind
-
-proc trailer*(D: HttpMetadata): seq[string] {.inline.} = 
-  D.trailer
-
-proc extensions*(D: HttpMetadata): string {.inline.} = 
-  D.extensions

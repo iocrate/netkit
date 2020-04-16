@@ -21,7 +21,6 @@ suite "Echo":
       server = newAsyncHttpServer()
 
       server.onRequest = proc (req: ServerRequest, res: ServerResponse) {.async.} =
-        echo "request ..."
         try:
           var buf = newString(16)
           var data = ""
@@ -30,17 +29,14 @@ suite "Echo":
             buf.setLen(readLen)
             data.add(buf)
 
-          echo "res.write before ..."
           await res.write(Http200, {
             "Content-Length": $data.len
           })
-          echo "res.write ..."
           var i = 0
           while i < data.len:
             await res.write(data[i..min(i+7, data.len-1)])
             i.inc(8)
           res.writeEnd()
-          echo "res.writeEnd() ..."
         except ReadAbortedError:
           echo "Got ReadAbortedError: ", getCurrentExceptionMsg()
         except WriteAbortedError:
@@ -67,7 +63,6 @@ suite "Echo":
         statusLine == "HTTP/1.1 200 OK"
         contentLenLine == "content-length: 0"
         crlfLine == "\r\L"
-      echo "client 1 close()"
       client.close()
 
     waitFor request()
@@ -81,7 +76,6 @@ Content-Length: 12
 
 foobarfoobar""")
       let statusLine = await client.recvLine()
-      echo "req:", repr statusLine
       # 有时候返回空行
       let contentLenLine = await client.recvLine()
       let crlfLine = await client.recvLine()
@@ -91,7 +85,6 @@ foobarfoobar""")
         contentLenLine == "content-length: 12"
         crlfLine == "\r\L"
         body == "foobarfoobar"
-      echo "client 2 close()"
       client.close()
 
     waitFor request()
