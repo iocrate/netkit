@@ -14,11 +14,11 @@ import netkit/http/server as httpserver
 import netkit/http/exception
 
 suite "Echo":
+  var server: AsyncHttpServer
+  
   setup:
     proc serve() {.async.} = 
-      let server = newAsyncHttpServer()
-
-      server.onRequest=nil
+      server = newAsyncHttpServer()
 
       server.onRequest = proc (req: ServerRequest, res: ServerResponse) {.async.} =
         echo "request ..."
@@ -51,6 +51,10 @@ suite "Echo":
       await server.serve(Port(8001), "127.0.0.1")
 
     asyncCheck serve()
+    waitFor sleepAsync(1)
+
+  teardown:
+    server.close()
 
   test "No messege body":
     proc request() {.async.} = 
@@ -63,6 +67,7 @@ suite "Echo":
         statusLine == "HTTP/1.1 200 OK"
         contentLenLine == "content-length: 0"
         crlfLine == "\r\L"
+      echo "client 1 close()"
       client.close()
 
     waitFor request()
@@ -86,6 +91,7 @@ foobarfoobar""")
         contentLenLine == "content-length: 12"
         crlfLine == "\r\L"
         body == "foobarfoobar"
+      echo "client 2 close()"
       client.close()
 
     waitFor request()

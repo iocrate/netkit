@@ -16,6 +16,7 @@ type
     socket: AsyncFD
     domain: Domain
     onRequest: RequestHandler
+    closed: bool
 
   RequestHandler* = proc (req: ServerRequest, res: ServerResponse): Future[void] {.closure, gcsafe.}
 
@@ -46,9 +47,14 @@ proc listen(fd: SocketHandle, backlog = SOMAXCONN) {.tags: [ReadIOEffect].} =
 
 proc newAsyncHttpServer*(): AsyncHttpServer = 
   new(result)
+  result.closed = false
 
 proc `onRequest=`*(server: AsyncHttpServer, handler: RequestHandler) = 
   server.onRequest = handler
+
+proc close*(server: AsyncHttpServer) = 
+  server.socket.closeSocket()
+  server.closed = true
    
 proc serve*(
   server: AsyncHttpServer, 
@@ -72,42 +78,49 @@ proc serve*(
   server.socket = fd.AsyncFD
   server.domain = domain
   
-  while true:
-    let (clientAddress, clientSocket) = await server.socket.acceptAddr()
-    clientSocket.SocketHandle.setBlocking(false)
-    let conn = newHttpConnection(clientSocket, clientAddress)
+  while not server.closed:
+    try:
+      let (clientAddress, clientSocket) = await server.socket.acceptAddr()
+      clientSocket.SocketHandle.setBlocking(false)
+      let conn = newHttpConnection(clientSocket, clientAddress)
 
-    proc handleNextRequest() {.async.} = 
-      var req: ServerRequest
-      var res: ServerResponse
+      proc handleNextRequest() {.async.} = 
+        var req: ServerRequest
+        var res: ServerResponse
 
-      proc onReadEnd() = 
-        if res.ended and not conn.closed:
-          asyncCheck handleNextRequest()
+        proc onReadEnd() = 
+          if res.ended and not conn.closed:
+            asyncCheck handleNextRequest()
 
-      proc onWriteEnd() = 
-        if req.ended and not conn.closed:
-          asyncCheck handleNextRequest()
+        proc onWriteEnd() = 
+          if req.ended and not conn.closed:
+            asyncCheck handleNextRequest()
 
-      req = newServerRequest(conn, onReadEnd)
-      res = newServerResponse(conn, onWriteEnd)
-      
-      try:
-        # TODO: 考虑内存泄露
-        await conn.readHttpHeader(req.header.addr)
-      except:
-        # TODO: 考虑错误处理
-        if not conn.closed:
+        req = newServerRequest(conn, onReadEnd)
+        res = newServerResponse(conn, onWriteEnd)
+        
+        try:
+          # TODO: 考虑内存泄露
+          await conn.readHttpHeader(req.header.addr)
+        except:
+          # TODO: 考虑错误处理
+          echo "......readHttpHeader exception"
+          if not conn.closed:
+            conn.close()
+          return
+
+        try:
+          # TODO: 考虑内存泄露
+          req.normalizeSpecificFields()
+          await server.onRequest(req, res)
+        except:
+          # TODO: 考虑错误处理
           conn.close()
-        return
 
-      try:
-        # TODO: 考虑内存泄露
-        req.normalizeSpecificFields()
-        await server.onRequest(req, res)
-      except:
-        # TODO: 考虑错误处理
-        conn.close()
+      asyncCheck handleNextRequest()
+    except:
+      # TODO: 考虑错误处理
+      discard
+    
 
-    asyncCheck handleNextRequest()
     
