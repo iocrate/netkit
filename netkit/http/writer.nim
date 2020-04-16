@@ -67,11 +67,11 @@ proc write*(writer: HttpWriter, buf: pointer, size: Natural): Future[void] {.asy
 proc write*(writer: HttpWriter, data: string): Future[void] {.async.} =
   ## 
   await writer.lock.acquire()
-  GC_ref(data)
+  # GC_ref(data)
   try:
     writer.writeByGuard(data.cstring, data.len)
   finally:
-    GC_unref(data)
+    # GC_unref(data)
     writer.lock.release()
 
 proc write*(

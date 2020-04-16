@@ -268,7 +268,7 @@ proc readDiscard*(reader: HttpReader): Future[void] {.async.} =
   ## If the return future is failed, ``OsError`` or ``ReadAbortedError`` may be raised.
   await reader.lock.acquire()
   let buffer = newString(LimitChunkDataLen)
-  GC_ref(buffer)
+  # GC_ref(buffer)
   try:
     if reader.chunked:
       while not reader.ended:
@@ -277,5 +277,5 @@ proc readDiscard*(reader: HttpReader): Future[void] {.async.} =
       while not reader.ended:
         discard reader.readContent(buffer.cstring, LimitChunkDataLen)
   finally:
-    GC_unref(buffer)
+    # GC_unref(buffer)
     reader.lock.release()
