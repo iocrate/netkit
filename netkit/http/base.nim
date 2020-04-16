@@ -70,18 +70,18 @@ type
     HttpConnect = "CONNECT", 
     HttpPatch = "PATCH" 
 
-  HttpVersion* = tuple ## Represents the HTTP version number.
+  HttpVersion* = tuple ## HTTP version number.
     orig: string
     major: Natural
     minor: Natural
 
-  HeaderFields* = distinct Table[string, seq[string]] ## 表示 HTTP 头字段集合。
+  HeaderFields* = distinct Table[string, seq[string]] ## Represents the header fields of a HTTP message.
 
   HttpHeaderKind* {.pure.} = enum
     Request, Response
 
   HttpHeader* = object 
-    ## Represents the header of a HTTP packet. Each HTTP packet should contains only one header.
+    ## Represents the header of a HTTP message. Each HTTP message should contains only one header.
     case kind*: HttpHeaderKind
     of HttpHeaderKind.Request:
       reqMethod*: HttpMethod
@@ -102,7 +102,7 @@ const
   CRLF* = "\x0D\x0A"
   WS* = {SP, HTAB}
 
-proc toHttpCode*(code: int): HttpCode =
+proc toHttpCode*(code: int): HttpCode  {.raises: [ValueError].} =
   ## Convert to the corresponding ``HttpCode``. 
   case code
   of 100: Http100
@@ -169,19 +169,19 @@ proc toHttpMethod*(s: string): HttpMethod {.raises: [ValueError].} =
     of "TRACE": HttpTrace
     else: raise newException(ValueError, "Not Implemented")
 
-proc toHttpVersion*(s: string): HttpVersion =
+proc toHttpVersion*(s: string): HttpVersion  {.raises: [ValueError].} =
   ## 
   if s.len != 8 or s[6] != '.':
-    raise newException(ValueError, "Bad Request")
+    raise newException(ValueError, "Invalid Http Version")
   let major = s[5].ord - 48
   let minor = s[7].ord - 48
   if major != 1 or minor notin {0, 1}:
-    raise newException(ValueError, "Bad Request")
+    raise newException(ValueError, "Invalid Http Version")
   const name = "HTTP/"
   var i = 0
   while i < 5:
     if name[i] != s[i]:
-      raise newException(ValueError, "Bad Request")
+      raise newException(ValueError, "Invalid Http Version")
     i.inc()
   result = (s, major.Natural, minor.Natural)
 
@@ -189,23 +189,33 @@ proc initHeaderFields*(): HeaderFields =
   ## 
   result = HeaderFields(initTable[string, seq[string]]())
 
+template addImpl(fields: var HeaderFields, name: string, value: string) = 
+  let nameUA = name.toLowerAscii()
+  if Table[string, seq[string]](fields).hasKey(nameUA):
+    Table[string, seq[string]](fields)[nameUA].add(value)
+  else:
+    Table[string, seq[string]](fields)[nameUA] = @[value]
+
 proc initHeaderFields*(pairs: openarray[tuple[name: string, value: seq[string]]]): HeaderFields =
   ## 
-  var tabPairs: seq[tuple[name: string, value: seq[string]]] = @[]
+  result = HeaderFields(initTable[string, seq[string]]())
   for pair in pairs:
-    tabPairs.add((pair.name.toLowerAscii(), pair.value))
-  result = HeaderFields(toTable[string, seq[string]](tabPairs))
+    for v in pair.value:
+      result.addImpl(pair.name, v)
 
 proc initHeaderFields*(pairs: openarray[tuple[name: string, value: string]]): HeaderFields =
   ## 
-  var tabPairs: seq[tuple[name: string, value: seq[string]]] = @[]
+  result = HeaderFields(initTable[string, seq[string]]())
   for pair in pairs:
-    tabPairs.add((pair.name.toLowerAscii(), @[pair.value]))
-  result = HeaderFields(toTable[string, seq[string]](tabPairs))
+    result.addImpl(pair.name, pair.value)
 
 proc `$`*(fields: HeaderFields): string =
   ## 
-  return $(Table[string, seq[string]](fields))
+  for key, value in Table[string, seq[string]](fields).pairs():
+    result.add(key)
+    result.add(value.join(": "))
+    result.add(value.join(", "))
+    result.add(CRLF)
 
 proc clear*(fields: var HeaderFields) =
   ## 
@@ -225,11 +235,7 @@ proc `[]=`*(fields: var HeaderFields, name: string, value: seq[string]) =
 
 proc add*(fields: var HeaderFields, name: string, value: string) =
   ## 
-  let nameUA = name.toLowerAscii()
-  if not Table[string, seq[string]](fields).hasKey(nameUA):
-    Table[string, seq[string]](fields)[nameUA] = @[value]
-  else:
-    Table[string, seq[string]](fields)[nameUA].add(value)
+  addImpl(fields, name, value)
 
 proc del*(fields: var HeaderFields, name: string) =
   ## 
@@ -272,7 +278,7 @@ iterator pairs*(fields: HeaderFields): tuple[name, value: string] =
     for value in v:
       yield (k, value)
 
-proc toResponseHeaderStr*(H: HttpHeader): string = 
+proc toResponseStr*(H: HttpHeader): string = 
   ## 
   assert H.kind == HttpHeaderKind.Response
   const Version = "HTTP/1.1"
@@ -281,7 +287,7 @@ proc toResponseHeaderStr*(H: HttpHeader): string =
     result.add(name & ": " & value & CRLF)
   result.add(CRLF)
 
-proc toRequestHeaderStr*(H: HttpHeader): string = 
+proc toRequestStr*(H: HttpHeader): string = 
   ## 
   # TODO: 
   assert H.kind == HttpHeaderKind.Request

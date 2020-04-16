@@ -84,7 +84,7 @@ proc write*(
     HttpHeader(
       kind: HttpHeaderKind.Response, 
       statusCode: statusCode,
-      fields: initHeaderFields(fields)).toResponseHeaderStr())
+      fields: initHeaderFields(fields)).toResponseStr())
 
 proc write*(
   writer: HttpWriter, 
@@ -96,7 +96,7 @@ proc write*(
     HttpHeader(
       kind: HttpHeaderKind.Response, 
       statusCode: statusCode,
-      fields: initHeaderFields(fields)).toResponseHeaderStr())
+      fields: initHeaderFields(fields)).toResponseStr())
 
 proc writeEnd*(writer: HttpWriter) =
   ## 

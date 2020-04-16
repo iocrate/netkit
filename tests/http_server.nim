@@ -18,6 +18,8 @@ suite "Echo":
     proc serve() {.async.} = 
       let server = newAsyncHttpServer()
 
+      server.onRequest=nil
+
       server.onRequest = proc (req: ServerRequest, res: ServerResponse) {.async.} =
         echo "request ..."
         try:
@@ -74,6 +76,8 @@ Content-Length: 12
 
 foobarfoobar""")
       let statusLine = await client.recvLine()
+      echo "req:", repr statusLine
+      # 有时候返回空行
       let contentLenLine = await client.recvLine()
       let crlfLine = await client.recvLine()
       let body = await client.recv(12)
