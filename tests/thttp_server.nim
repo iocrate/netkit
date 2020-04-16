@@ -1,3 +1,13 @@
+discard """
+  cmd:      "nim c -r --styleCheck:hint --panics:on $options $file"
+  matrix:   "--gc:refc"
+  targets:  "c"
+  nimout:   ""
+  action:   "run"
+  exitcode: 0
+  timeout:  60.0
+"""
+
 #            netkit 
 #        (c) Copyright 2020 Wang Tong
 #

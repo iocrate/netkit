@@ -5,8 +5,6 @@ const TEST_DIR = PROJECT_DIR / "tests"
 const BUILD_DIR = PROJECT_DIR / "build"
 const BUILD_TEST_DIR = BUILD_DIR / "tests"
 
-when (NimMajor, NimMinor) >= (1, 2):
-  switch("gc", "arc")
 
 task test, "Run my tests":
 #  run the following command:
