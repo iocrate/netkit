@@ -1,3 +1,12 @@
+discard """
+  cmd:      "nim c -r --styleCheck:hint --panics:on $options $file"
+  matrix:   "--gc:arc"
+  targets:  "c"
+  nimout:   ""
+  action:   "run"
+  exitcode: 0
+  timeout:  60.0
+"""
 import unittest
 import options
 import strformat
