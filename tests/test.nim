@@ -39,10 +39,3 @@ import netkit/http/base
 #   ##echo repr x
 #   x.shallow()
 #   x
-
-type
-    A = object
-    B[T: A] = object
-        x: int
-
-var b = B[A](x: 1)

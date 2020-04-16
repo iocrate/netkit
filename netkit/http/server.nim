@@ -8,12 +8,16 @@ import asyncdispatch
 import nativesockets
 import os
 import netkit/http/connection
+import netkit/http/reader
+import netkit/http/writer
 
 type
   AsyncHttpServer* = ref object
     socket: AsyncFD
     domain: Domain
     onRequest: RequestHandler
+
+  RequestHandler* = proc (req: ServerRequest, res: ServerResponse): Future[void] {.closure, gcsafe.}
 
 proc bindAddr(fd: SocketHandle, port: Port, address = "", domain = AF_INET) {.tags: [ReadIOEffect].} =
   ## Binds ``address``:``port`` to the socket.
@@ -71,5 +75,27 @@ proc serve*(
   while true:
     let (clientAddress, clientSocket) = await server.socket.acceptAddr()
     clientSocket.SocketHandle.setBlocking(false)
-    clientSocket.handleHttpConnection(clientAddress, server.onRequest)
+    let conn = newHttpConnection(clientSocket, clientAddress)
+
+    proc handleNextRequest() {.async.} = 
+      var req: ServerRequest
+      var res: ServerResponse
+
+      proc onReadEnd() = 
+        if res.ended and not conn.closed:
+          asyncCheck handleNextRequest()
+
+      proc onWriteEnd() = 
+        if req.ended and not conn.closed:
+          asyncCheck handleNextRequest()
+
+      req = newServerRequest(conn, onReadEnd)
+      res = newServerResponse(conn, onWriteEnd)
+      
+      try:
+        # TODO: 考虑内存泄露
+        await conn.readHttpHeader(req.header.addr)
+      except:
+        # TODO: 考虑错误处理
+        conn.close()
     

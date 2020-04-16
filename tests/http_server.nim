@@ -8,7 +8,8 @@ import unittest
 import asyncnet
 import asyncdispatch
 import netkit/http/base
-import netkit/http/connection
+import netkit/http/reader
+import netkit/http/writer
 import netkit/http/server as httpserver
 import netkit/http/exception
 
