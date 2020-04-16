@@ -80,22 +80,16 @@ type
   HttpHeaderKind* {.pure.} = enum
     Request, Response
 
-  HttpHeader* = object of RootObj
-    fields*: HeaderFields 
-    version*: HttpVersion 
-    case kind: HttpHeaderKind
+  HttpHeader* = object 
+    ## Represents the header of a HTTP packet. Each HTTP packet should contains only one header.
+    case kind*: HttpHeaderKind
     of HttpHeaderKind.Request:
       reqMethod*: HttpMethod
       url*: string
     of HttpHeaderKind.Response:
       statusCode*: HttpCode
-
-  # RequestHeader* = object of HttpHeader ## Represents the header of a HTTP request packet. Each HTTP request should contains only one header.
-  #   reqMethod*: HttpMethod
-  #   url*: string
-
-  # ResponseHeader* = object of HttpHeader ## Represents the header of a HTTP response packet. Each HTTP response should contains only one header.
-  #   statusCode*: HttpCode
+    version*: HttpVersion 
+    fields*: HeaderFields 
 
 const 
   # [RFC5234](https://tools.ietf.org/html/rfc5234#appendix-B.1)
@@ -278,66 +272,11 @@ iterator pairs*(fields: HeaderFields): tuple[name, value: string] =
     for value in v:
       yield (k, value)
 
-proc initRequestHeader*(): HttpHeader =
-  ## 
-  result.kind = HttpHeaderKind.Request
-  result.fields = initHeaderFields()
-
-proc initRequestHeader*(
-  reqMethod: HttpMethod,
-  url: string,
-  fields: openarray[tuple[name: string, value: seq[string]]]
-): HttpHeader =
-  ## 
-  result.kind = HttpHeaderKind.Request
-  result.reqMethod = reqMethod
-  result.url = url
-  result.fields = initHeaderFields(fields)
-
-proc initRequestHeader*(
-  reqMethod: HttpMethod,
-  url: string,
-  fields: openarray[tuple[name: string, value: string]]
-): HttpHeader =
-  ## 
-  result.kind = HttpHeaderKind.Request
-  result.reqMethod = reqMethod
-  result.url = url
-  result.fields = initHeaderFields(fields)
-
-proc initResponseHeader*(): HttpHeader =
-  ## 
-  result.kind = HttpHeaderKind.Response
-  result.fields = initHeaderFields()
-
-proc initResponseHeader*(
-  statusCode: HttpCode,
-  fields: openarray[tuple[name: string, value: seq[string]]]
-): HttpHeader =
-  ## 
-  result.kind = HttpHeaderKind.Response
-  result.statusCode = statusCode
-  result.version = ("HTTP/1.1", 1.Natural, 1.Natural)
-  result.fields = initHeaderFields(fields)
-
-proc initResponseHeader*(
-  statusCode: HttpCode,
-  fields: openarray[tuple[name: string, value: string]]
-): HttpHeader =
-  ## 
-  result.kind = HttpHeaderKind.Response
-  result.statusCode = statusCode
-  result.version = ("HTTP/1.1", 1.Natural, 1.Natural)
-  result.fields = initHeaderFields(fields)
-
-proc kind*(H: HttpHeader): HttpHeaderKind =
-  ## 
-  H.kind
-
 proc toResponseHeaderStr*(H: HttpHeader): string = 
   ## 
   assert H.kind == HttpHeaderKind.Response
-  result.add(H.version.orig & SP & $H.statusCode & CRLF)
+  const Version = "HTTP/1.1"
+  result.add(Version & SP & $H.statusCode & CRLF)
   for name, value in H.fields.pairs():
     result.add(name & ": " & value & CRLF)
   result.add(CRLF)

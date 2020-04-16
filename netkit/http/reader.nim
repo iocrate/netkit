@@ -47,13 +47,13 @@ proc newServerRequest*(conn: HttpConnection, onEnd: proc () {.gcsafe, closure.})
   ##
   new(result)
   result.init(conn, onEnd)
-  result.header = initRequestHeader()
+  result.header = HttpHeader(kind: HttpHeaderKind.Request)
 
 proc newClientResponse*(conn: HttpConnection, onEnd: proc () {.gcsafe, closure.}): ClientResponse = 
   ##
   new(result)
   result.init(conn, onEnd)
-  result.header = initResponseHeader()
+  result.header = HttpHeader(kind: HttpHeaderKind.Response)
 
 proc reqMethod*(req: ServerRequest): HttpMethod {.inline.} = 
   ##  

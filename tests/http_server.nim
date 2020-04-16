@@ -19,6 +19,7 @@ suite "Echo":
       let server = newAsyncHttpServer()
 
       server.onRequest = proc (req: ServerRequest, res: ServerResponse) {.async.} =
+        echo "request ..."
         try:
           var buf = newString(16)
           var data = ""
@@ -27,14 +28,17 @@ suite "Echo":
             buf.setLen(readLen)
             data.add(buf)
 
+          echo "res.write before ..."
           await res.write(Http200, {
             "Content-Length": $data.len
           })
+          echo "res.write ..."
           var i = 0
           while i < data.len:
             await res.write(data[i..min(i+7, data.len-1)])
             i.inc(8)
           res.writeEnd()
+          echo "res.writeEnd() ..."
         except ReadAbortedError:
           echo "Got ReadAbortedError: ", getCurrentExceptionMsg()
         except WriteAbortedError:

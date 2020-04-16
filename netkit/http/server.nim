@@ -97,5 +97,17 @@ proc serve*(
         await conn.readHttpHeader(req.header.addr)
       except:
         # TODO: 考虑错误处理
+        if not conn.closed:
+          conn.close()
+        return
+
+      try:
+        # TODO: 考虑内存泄露
+        req.normalizeSpecificFields()
+        await server.onRequest(req, res)
+      except:
+        # TODO: 考虑错误处理
         conn.close()
+
+    asyncCheck handleNextRequest()
     

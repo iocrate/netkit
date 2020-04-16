@@ -39,3 +39,26 @@ import netkit/http/base
 #   ##echo repr x
 #   x.shallow()
 #   x
+
+type
+  Opt = enum
+    M, N
+
+  B = object 
+    case kind: Opt
+    of M:
+      a*: string
+    of N:
+      b*: string
+
+proc initResponseHeader(): B =
+  echo "...1"
+  result.kind = N
+  echo "...2"
+
+# proc f()  = 
+#   var a = initResponseHeader()
+#   echo "..."
+
+var a = initResponseHeader()
+echo "...3"

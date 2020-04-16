@@ -79,16 +79,24 @@ proc write*(
   statusCode: HttpCode,
   fields: openArray[tuple[name: string, value: string]]
 ): Future[void]  =
-  ## ``write($initResponseHeader(statusCode, fields))`` 。 
-  return writer.write($initResponseHeader(statusCode, fields))
+  ## 
+  return writer.write(
+    HttpHeader(
+      kind: HttpHeaderKind.Response, 
+      statusCode: statusCode,
+      fields: initHeaderFields(fields)).toResponseHeaderStr())
 
 proc write*(
   writer: HttpWriter, 
   statusCode: HttpCode,
   fields: openArray[tuple[name: string, value: seq[string]]]
 ): Future[void] =
-  ## ``write($initResponseHeader(statusCode, fields))`` 。 
-  return writer.write($initResponseHeader(statusCode, fields))
+  ## 
+  return writer.write(
+    HttpHeader(
+      kind: HttpHeaderKind.Response, 
+      statusCode: statusCode,
+      fields: initHeaderFields(fields)).toResponseHeaderStr())
 
 proc writeEnd*(writer: HttpWriter) =
   ## 
