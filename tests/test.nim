@@ -53,7 +53,7 @@ type
 
 proc initResponseHeader(): B =
   echo "...1"
-  result.kind = N
+  result = B(kind: N)
   echo "...2"
 
 # proc f()  = 
