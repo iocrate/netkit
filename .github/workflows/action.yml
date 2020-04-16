@@ -1,4 +1,4 @@
-name: Test netkit
+name: Test Netkit
 
 on:
   push:
@@ -6,36 +6,23 @@ on:
       - master
 
 jobs:
-  test:
-    runs-on: ${{ matrix.os }}
+  test_windows:
+    runs-on: windows-latest
     strategy:
       matrix:
-        os:
-          - ubuntu-latest
-          - windows-latest
-
+        version:
+          - stable
     steps:
     - uses: actions/checkout@v1
-    - name: Cache choosenim
-      id: cache-choosenim
-      uses: actions/cache@v1
+    - uses: jiro4989/setup-nim-action@v1.0.1
       with:
-        path: ~/.choosenim
-        key: ${{ runner.os }}-choosenim-stable
-    - name: Cache nimble
-      id: cache-nimble
-      uses: actions/cache@v1
-      with:
-        path: ~/.nimble
-        key: ${{ runner.os }}-nimble-stable
-    - uses: jiro4989/setup-nim-action@master
-    - name: Install netkit
+        nim-version: ${{ matrix.version }}
+    - name: Install Packages
       run: nimble install -y
     - name: Test command
       run: nimble test
 
-
-  test_version:
+  test_ubuntu:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -48,5 +35,5 @@ jobs:
         nim-version: ${{ matrix.version }}
     - name: Install Packages
       run: nimble install -y
-    - name: Test netkit
+    - name: Test command
       run: nimble test
