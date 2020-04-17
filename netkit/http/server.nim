@@ -89,8 +89,7 @@ proc handleNextRequest(server: AsyncHttpServer, conn: HttpConnection) {.async.} 
     conn.close()
     return
   except:
-    # TODO: 考虑错误处理
-    yield conn.write("HTTP/1.1 " & $Http400)
+    yield conn.write("HTTP/1.1 " & $Http400 & CRLF)
     conn.close()
     return
   
