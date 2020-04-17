@@ -7,6 +7,8 @@
 import asyncdispatch
 import nativesockets
 import os
+import netkit/http/base
+import netkit/http/exception
 import netkit/http/connection
 import netkit/http/reader
 import netkit/http/writer
@@ -55,6 +57,42 @@ proc `onRequest=`*(server: AsyncHttpServer, handler: RequestHandler) =
 proc close*(server: AsyncHttpServer) = 
   server.socket.closeSocket()
   server.closed = true
+
+proc handleNextRequest(server: AsyncHttpServer, conn: HttpConnection) {.async.} = 
+  var req: ServerRequest
+  var res: ServerResponse
+
+  proc onReadEnd() = 
+    assert not conn.closed
+    if res.ended:
+      req = nil
+      res = nil
+      asyncCheck server.handleNextRequest(conn)
+
+  proc onWriteEnd() = 
+    assert not conn.closed
+    if req.ended:
+      req = nil
+      res = nil
+      asyncCheck server.handleNextRequest(conn)
+
+  req = newServerRequest(conn, onReadEnd)
+  
+  try:
+    await conn.readHttpHeader(req.header.addr)
+    req.normalizeSpecificFields()
+  except HttpError as ex:
+    yield conn.write("HTTP/1.1 " & $ex.code & CRLF)
+    conn.close()
+    return
+  except:
+    # TODO: 考虑错误处理
+    yield conn.write("HTTP/1.1 " & $Http400)
+    conn.close()
+    return
+  
+  res = newServerResponse(conn, onWriteEnd)
+  await server.onRequest(req, res)
    
 proc serve*(
   server: AsyncHttpServer, 
@@ -74,52 +112,19 @@ proc serve*(
   fd.bindAddr(port, address, domain)
   fd.listen()
   fd.setBlocking(false)
-  fd.AsyncFD.register()
-  server.socket = fd.AsyncFD
+  AsyncFD(fd).register()
+  server.socket = AsyncFD(fd)
   server.domain = domain
   
   while not server.closed:
+    var peer: tuple[address: string, client: AsyncFD]
     try:
-      let (clientAddress, clientSocket) = await server.socket.acceptAddr()
-      clientSocket.SocketHandle.setBlocking(false)
-      let conn = newHttpConnection(clientSocket, clientAddress)
-
-      proc handleNextRequest() {.async.} = 
-        var req: ServerRequest
-        var res: ServerResponse
-
-        proc onReadEnd() = 
-          if res.ended and not conn.closed:
-            asyncCheck handleNextRequest()
-
-        proc onWriteEnd() = 
-          if req.ended and not conn.closed:
-            asyncCheck handleNextRequest()
-
-        req = newServerRequest(conn, onReadEnd)
-        res = newServerResponse(conn, onWriteEnd)
-        
-        try:
-          # TODO: 考虑内存泄露
-          await conn.readHttpHeader(req.header.addr)
-        except:
-          # TODO: 考虑错误处理
-          if not conn.closed:
-            conn.close()
-          return
-
-        try:
-          # TODO: 考虑内存泄露
-          req.normalizeSpecificFields()
-          await server.onRequest(req, res)
-        except:
-          # TODO: 考虑错误处理
-          conn.close()
-
-      asyncCheck handleNextRequest()
+      peer = await server.socket.acceptAddr()
     except:
-      # TODO: 考虑错误处理
-      discard
-    
-
-    
+      if server.closed and osLastError() == OSErrorCode(9):
+        # equal to ``EBADF`` in both posix and windows environment 
+        # to deal with "Bad file descriptor" error
+        break
+      raise getCurrentException()
+    SocketHandle(peer.client).setBlocking(false)
+    asyncCheck server.handleNextRequest(newHttpConnection(peer.client, peer.address))

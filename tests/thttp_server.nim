@@ -57,7 +57,7 @@ suite "Echo":
       await server.serve(Port(8001), "127.0.0.1")
 
     asyncCheck serve()
-    waitFor sleepAsync(1)
+    waitFor sleepAsync(10)
 
   teardown:
     server.close()

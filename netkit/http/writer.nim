@@ -104,8 +104,3 @@ proc writeEnd*(writer: HttpWriter) =
     writer.writable = false
     if not writer.conn.closed:
       writer.onEnd()
-      # case writer.reader.header.kind 
-      # of HttpHeaderKind.Request:
-      #   asyncCheck writer.reader.conn.handleNextRequest()
-      # of HttpHeaderKind.Response:
-      #   raise newException(Exception, "Not Implemented yet")
