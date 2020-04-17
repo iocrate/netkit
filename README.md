@@ -14,3 +14,91 @@ Test
 ---------
 
 Run test: there is an automatic test script. Check config.nims for details. ``$ nim test <file_name> `` tests the specified file, for example, ``$ nim test tbuffer`` tests the file **tests/tbuffer.nim**. ``$ nimble test `` tests all test files in the **tests** directory.
+
+A little demonstration
+-----------------------
+
+Streaming all your IO!
+
+```nim
+var server: AsyncHttpServer
+
+proc serve() {.async.} = 
+  server = newAsyncHttpServer()
+
+  server.onRequest = proc (req: ServerRequest, res: ServerResponse) {.async.} =
+    try:
+      var data = ""
+
+      let r1 = req.read()
+      let r2 = req.read()
+      let r3 = req.read()
+      let r4 = req.read()
+
+      let s4 = await r4
+      let s3 = await r3
+      let s1 = await r1
+      let s2 = await r2
+
+      check:
+        # thttp_server.nim.cfg should include:
+        #
+        #   --define:BufferSize=16
+        s1.len == 16
+        s2.len == 16
+        s3.len == 16
+        s4.len == 16
+
+        s1 == "foobar01foobar02"
+        s2 == "foobar03foobar04"
+        s3 == "foobar05foobar06"
+        s4 == "foobar07foobar08"
+
+      data.add(s1)
+      data.add(s2)
+      data.add(s3)
+      data.add(s4)
+      
+      await res.write(Http200, {
+        "Content-Length": $data.len
+      })
+      var i = 0
+      while i < data.len:
+        await res.write(data[i..min(i+7, data.len-1)])
+        i.inc(8)
+      res.writeEnd()
+    except ReadAbortedError:
+      echo "Got ReadAbortedError: ", getCurrentExceptionMsg()
+    except WriteAbortedError:
+      echo "Got WriteAbortedError: ", getCurrentExceptionMsg()
+    except Exception:
+      echo "Got Exception: ", getCurrentExceptionMsg()
+
+  await server.serve(Port(8001), "127.0.0.1")
+
+
+proc request() {.async.} = 
+  let client = await asyncnet.dial("127.0.0.1", Port(8001))
+  await client.send("""
+GET /iocrate/netkit HTTP/1.1
+Host: iocrate.com
+Content-Length: 64
+
+foobar01foobar02foobar03foobar04foobar05foobar06foobar07foobar08""")
+  let statusLine = await client.recvLine()
+  let contentLenLine = await client.recvLine()
+  let crlfLine = await client.recvLine()
+  let body = await client.recv(64)
+  check:
+    statusLine == "HTTP/1.1 200 OK"
+    contentLenLine == "content-length: 64"
+    crlfLine == "\r\L"
+    body == "foobar01foobar02foobar03foobar04foobar05foobar06foobar07foobar08"
+  client.close()
+
+
+asyncCheck serve()
+waitFor sleepAsync(10)
+waitFor request()
+server.close()
+```
