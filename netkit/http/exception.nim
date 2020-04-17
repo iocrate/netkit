@@ -7,7 +7,7 @@
 import netkit/http/base
 
 type
-  HttpError* = ref object of CatchableError
+  HttpError* = object of CatchableError
     code*: range[Http400..Http505]
     
   ReadAbortedError* = object of CatchableError
@@ -16,12 +16,12 @@ type
 proc newHttpError*(
   code: range[Http400..Http505], 
   parentException: ref Exception = nil
-): HttpError = 
-  result = HttpError(msg: $code, code: code, parent: parentException)
+): ref HttpError = 
+  result = (ref HttpError)(msg: $code, code: code, parent: parentException)
 
 proc newHttpError*(
   code: range[Http400..Http505], 
   msg: string, 
   parentException: ref Exception = nil
-): HttpError = 
-  result = HttpError(msg: msg, code: code, parent: parentException)
+): ref HttpError = 
+  result = (ref HttpError)(msg: msg, code: code, parent: parentException)
