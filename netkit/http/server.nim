@@ -13,6 +13,9 @@ import netkit/http/connection
 import netkit/http/reader
 import netkit/http/writer
 
+when defined(posix):
+  from posix import EBADF
+
 type
   AsyncHttpServer* = ref object
     socket: AsyncFD
@@ -121,10 +124,12 @@ proc serve*(
     try:
       peer = await server.socket.acceptAddr()
     except:
-      if server.closed and osLastError() == OSErrorCode(9):
-        # equal to ``EBADF`` in both posix and windows environment 
-        # to deal with "Bad file descriptor" error
-        break
+      if server.closed:
+        when defined(posix):
+          if osLastError() == OSErrorCode(EBADF):
+            break
+        else:
+          break
       raise getCurrentException()
     SocketHandle(peer.client).setBlocking(false)
     asyncCheck server.handleNextRequest(newHttpConnection(peer.client, peer.address))
