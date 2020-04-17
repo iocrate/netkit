@@ -36,6 +36,15 @@ proc initHttpParser*(): HttpParser =
   ## 
   discard
 
+proc clear*(p: var HttpParser) = 
+  ## 
+  p.secondaryBuffer = ""
+  p.currentLineLen = 0
+  p.currentFieldName = ""
+  p.currentFieldCount = 0
+  p.state = HttpParseState.StartLine
+  p.startLineState = StartLineState.Method
+
 proc popToken(p: var HttpParser, buf: var MarkableCircularBuffer, size: Natural = 0): string = 
   if p.secondaryBuffer.len > 0:
     p.secondaryBuffer.add(buf.popMarks(size))

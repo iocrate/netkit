@@ -78,6 +78,7 @@ proc readData*(conn: HttpConnection, buf: pointer, size: Natural): Future[Natura
 proc readHttpHeader*(conn: HttpConnection, header: ptr HttpHeader): Future[void] {.async.} = 
   ## 读取 HTTPHeader， 如果解析过程出现错误， 则抛出异常， 说明对端数据有错误 bad request 
   var succ = false
+  conn.parser.clear()
   if conn.buffer.len > 0:
     succ = conn.parser.parseHttpHeader(conn.buffer, header[])
   while not succ:

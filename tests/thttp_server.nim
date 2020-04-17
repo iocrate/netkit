@@ -23,7 +23,7 @@ import netkit/http/writer
 import netkit/http/server as httpserver
 import netkit/http/exception
 
-suite "Echo":
+suite "In-order IO":
   var server: AsyncHttpServer
   
   setup:
@@ -38,7 +38,6 @@ suite "Echo":
             let readLen = await req.read(buf.cstring, 16)
             buf.setLen(readLen)
             data.add(buf)
-
           await res.write(Http200, {
             "Content-Length": $data.len
           })
@@ -87,7 +86,6 @@ Content-Length: 12
 
 foobarfoobar""")
       let statusLine = await client.recvLine()
-      # 有时候返回空行
       let contentLenLine = await client.recvLine()
       let crlfLine = await client.recvLine()
       let body = await client.recv(12)
@@ -100,3 +98,202 @@ foobarfoobar""")
 
     waitFor request()
   
+  test "Multiple messeges":
+    proc request() {.async.} = 
+      let client = await asyncnet.dial("127.0.0.1", Port(8001))
+      await client.send("""
+GET /iocrate/netkit HTTP/1.1
+Host: iocrate.com
+Content-Length: 36
+
+foobarfoobarfoobarfoobarfoobarfoobar""")
+      await sleepAsync(100)
+      await client.send("""
+GET /iocrate/netkit HTTP/1.1
+Host: iocrate.com
+Content-Length: 6
+
+foobar
+
+GET /iocrate/netkit HTTP/1.1
+Host: iocrate.com
+Content-Length: 12
+
+foobarfoobar""")
+      block response1:
+        let statusLine = await client.recvLine()
+        let contentLenLine = await client.recvLine()
+        let crlfLine = await client.recvLine()
+        let body = await client.recv(36)
+        check:
+          statusLine == "HTTP/1.1 200 OK"
+          contentLenLine == "content-length: 36"
+          crlfLine == "\r\L"
+          body == "foobarfoobarfoobarfoobarfoobarfoobar"
+      block response2:
+        let statusLine = await client.recvLine()
+        let contentLenLine = await client.recvLine()
+        let crlfLine = await client.recvLine()
+        let body = await client.recv(6)
+        check:
+          statusLine == "HTTP/1.1 200 OK"
+          contentLenLine == "content-length: 6"
+          crlfLine == "\r\L"
+          body == "foobar"
+      block response3:
+        let statusLine = await client.recvLine()
+        let contentLenLine = await client.recvLine()
+        let crlfLine = await client.recvLine()
+        let body = await client.recv(12)
+        check:
+          statusLine == "HTTP/1.1 200 OK"
+          contentLenLine == "content-length: 12"
+          crlfLine == "\r\L"
+          body == "foobarfoobar"
+      client.close()
+
+    waitFor request()
+    
+suite "Out-of-order IO":
+  test "read":
+    var server: AsyncHttpServer
+
+    proc serve() {.async.} = 
+      server = newAsyncHttpServer()
+
+      server.onRequest = proc (req: ServerRequest, res: ServerResponse) {.async.} =
+        try:
+          var data = ""
+
+          let r1 = req.read()
+          let r2 = req.read()
+          let r3 = req.read()
+          let r4 = req.read()
+
+          let s4 = await r4
+          let s3 = await r3
+          let s1 = await r1
+          let s2 = await r2
+
+          check:
+            # thttp_server.nim.cfg should include:
+            #
+            #   --define:BufferSize=16
+            s1.len == 16
+            s2.len == 16
+            s3.len == 16
+            s4.len == 16
+
+            s1 == "foobar01foobar02"
+            s2 == "foobar03foobar04"
+            s3 == "foobar05foobar06"
+            s4 == "foobar07foobar08"
+
+          data.add(s1)
+          data.add(s2)
+          data.add(s3)
+          data.add(s4)
+          
+          await res.write(Http200, {
+            "Content-Length": $data.len
+          })
+          var i = 0
+          while i < data.len:
+            await res.write(data[i..min(i+7, data.len-1)])
+            i.inc(8)
+          res.writeEnd()
+        except ReadAbortedError:
+          echo "Got ReadAbortedError: ", getCurrentExceptionMsg()
+        except WriteAbortedError:
+          echo "Got WriteAbortedError: ", getCurrentExceptionMsg()
+        except Exception:
+          echo "Got Exception: ", getCurrentExceptionMsg()
+
+      await server.serve(Port(8001), "127.0.0.1")
+    
+    proc request() {.async.} = 
+      let client = await asyncnet.dial("127.0.0.1", Port(8001))
+      await client.send("""
+GET /iocrate/netkit HTTP/1.1
+Host: iocrate.com
+Content-Length: 64
+
+foobar01foobar02foobar03foobar04foobar05foobar06foobar07foobar08""")
+      let statusLine = await client.recvLine()
+      let contentLenLine = await client.recvLine()
+      let crlfLine = await client.recvLine()
+      let body = await client.recv(64)
+      check:
+        statusLine == "HTTP/1.1 200 OK"
+        contentLenLine == "content-length: 64"
+        crlfLine == "\r\L"
+        body == "foobar01foobar02foobar03foobar04foobar05foobar06foobar07foobar08"
+      client.close()
+
+    asyncCheck serve()
+    waitFor sleepAsync(10)
+    waitFor request()
+    server.close()
+
+  test "write":
+    var server: AsyncHttpServer
+
+    proc serve() {.async.} = 
+      server = newAsyncHttpServer()
+
+      server.onRequest = proc (req: ServerRequest, res: ServerResponse) {.async.} =
+        try:
+          var buf = newString(16)
+          var data = ""
+          while not req.ended:
+            let readLen = await req.read(buf.cstring, 16)
+            buf.setLen(readLen)
+            data.add(buf)
+          
+          await res.write(Http200, {
+            "Content-Length": $data.len
+          })
+
+          var w1 = res.write(data[0..15])
+          var w2 = res.write(data[16..31])
+          var w3 = res.write(data[32..47])
+          var w4 = res.write(data[48..63])
+
+          await w4
+          await w3
+          await w1
+          await w2
+
+          res.writeEnd()
+        except ReadAbortedError:
+          echo "Got ReadAbortedError: ", getCurrentExceptionMsg()
+        except WriteAbortedError:
+          echo "Got WriteAbortedError: ", getCurrentExceptionMsg()
+        except Exception:
+          echo "Got Exception: ", getCurrentExceptionMsg()
+
+      await server.serve(Port(8001), "127.0.0.1")
+    
+    proc request() {.async.} = 
+      let client = await asyncnet.dial("127.0.0.1", Port(8001))
+      await client.send("""
+GET /iocrate/netkit HTTP/1.1
+Host: iocrate.com
+Content-Length: 64
+
+foobar01foobar02foobar03foobar04foobar05foobar06foobar07foobar08""")
+      let statusLine = await client.recvLine()
+      let contentLenLine = await client.recvLine()
+      let crlfLine = await client.recvLine()
+      let body = await client.recv(64)
+      check:
+        statusLine == "HTTP/1.1 200 OK"
+        contentLenLine == "content-length: 64"
+        crlfLine == "\r\L"
+        body == "foobar01foobar02foobar03foobar04foobar05foobar06foobar07foobar08"
+      client.close()
+
+    asyncCheck serve()
+    waitFor sleepAsync(10)
+    waitFor request()
+    server.close()
