@@ -1,13 +1,16 @@
-Netkit [![Build Status](https://travis-ci.org/iocrate/netkit.svg?branch=master)](https://travis-ci.org/iocrate/netkit)
+Netkit 
 ==========
 
+[![Build Status](https://travis-ci.org/iocrate/netkit.svg?branch=master)](https://travis-ci.org/iocrate/netkit)
+[![Build Status](https://dev.azure.com/iocrate/netkit/_apis/build/status/iocrate.netkit?branchName=master)](https://dev.azure.com/iocrate/netkit/_build/latest?definitionId=1&branchName=master)
 
-As a versatile network development infrastructure, Netkit hopes to provide common tools for network programming. Netkit is out of the box, stable and safe. It includes most of the available network programming tools such as the basic client and server of TCP, UDP, HTTP, WebSocket, MQTT and some related tools.
-Netkit is not intended to be a high-level productivity development tool, but as a reliable and efficient network infrastructure. Netkit consists of several sub modules, each of which provides some network tools.
+Netkit hopes to serve as a versatile network development kit, providing tools commonly used in network programming. Netkit should be out of the box, stable and secure. Netkit contains a number of commonly used network programming tools, such as TCP, UDP, TLS, HTTP, HTTPS, WebSocket and related utilities.
 
-**Now, Netkit is currently under active development.**
+Netkit is not intended to be a high-level productivity development tool, ut rather a reliable and efficient network infrastructure. Netkit consists of several submodules, each of which provides some network tools.
+
+**Now, Netkit is under active development.**
 
 Test
 ---------
 
-Run test: the package provides an automatic test script. Check config.nims for details. ``$Nim test < test file name > `` can test the specified file, such as ``$Nim test tbuffer`` will test the tests / tbuffer.nim file. ``$nimble test `` will test all test files in the tests directory.
+Run test: there is an automatic test script. Check config.nims for details. ``$ nim test <file_name> `` tests the specified file, for example, ``$ nim test tbuffer`` tests the file **tests/tbuffer.nim**. ``$ nimble test `` tests all test files in the **tests** directory.
