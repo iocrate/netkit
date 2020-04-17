@@ -80,7 +80,8 @@ suite "Echo":
   test "With messege body":
     proc request() {.async.} = 
       let client = await asyncnet.dial("127.0.0.1", Port(8001))
-      await client.send("""GET /iocrate/netkit HTTP/1.1
+      await client.send("""
+GET /iocrate/netkit HTTP/1.1
 Host: iocrate.com
 Content-Length: 12
 
