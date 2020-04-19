@@ -7,6 +7,7 @@
 ## This module provides basic tools related to HTTP.
 
 import tables
+import strtabs
 import strutils
 
 type
@@ -98,6 +99,7 @@ const
   LF* = '\x0A'
   COLON* = ':'
   COMMA* = ','
+  SEMICOLON* = ';'
   HTAB* = '\x09'
   CRLF* = "\x0D\x0A"
   WS* = {SP, HTAB}
@@ -249,6 +251,12 @@ proc len*(fields: HeaderFields): int =
   ## 
   Table[string, seq[string]](fields).len
 
+iterator pairs*(fields: HeaderFields): tuple[name, value: string] =
+  ##  
+  for k, v in Table[string, seq[string]](fields):
+    for value in v:
+      yield (k, value)
+
 proc getOrDefault*(
   fields: HeaderFields, 
   name: string,
@@ -268,15 +276,9 @@ proc getOrDefault*(
   ## 
   if fields.contains(name):
     let s = fields[name]
-    return s[s.len-1]
+    return s[0]
   else:
     return default
-
-iterator pairs*(fields: HeaderFields): tuple[name, value: string] =
-  ##  
-  for k, v in Table[string, seq[string]](fields):
-    for value in v:
-      yield (k, value)
 
 proc toResponseStr*(H: HttpHeader): string = 
   ## 
