@@ -59,7 +59,7 @@ proc toPair(s: string, sep: char): HeaderFieldParam =
     result.name = s[0..i-1]
     result.value = s[i+1..s.len-1]
 
-proc initHeaderFieldValue*(fields: HeaderFields, name: string, kind: HeaderFieldValueKind): HeaderFieldValue =
+proc toHeaderFieldValue*(value: seq[string], kind: HeaderFieldValueKind): HeaderFieldValue =
   template parseParams(s: string, value: string, params: seq[tuple[name: string, value: string]]) = 
     var tokened = false
     for item in s.tokens(SEMICOLON):
@@ -76,7 +76,6 @@ proc initHeaderFieldValue*(fields: HeaderFields, name: string, kind: HeaderField
           break
 
   result = HeaderFieldValue(kind: kind)
-  let value = fields[name]
   if value.len > 0:
     case kind
     of HeaderFieldValueKind.Single:

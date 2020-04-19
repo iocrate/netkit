@@ -18,6 +18,7 @@ import netkit/http/chunk
 import netkit/http/metadata 
 import netkit/http/connection
 import netkit/http/constants as http_constants
+import netkit/http/exception
 
 type
   HttpReader* = ref object of RootObj ##
@@ -82,10 +83,10 @@ proc ended*(reader: HttpReader): bool {.inline.} =
 proc normalizeContentLength(reader: HttpReader) =
   if reader.fields.contains("Content-Length"):
     if reader.fields["Content-Length"].len > 1:
-      raise newException(ValueError, "Bad content length")
+      raise newHttpError(Http400, "Bad content length")
     reader.contentLen = reader.fields["Content-Length"][0].parseInt()
     if reader.contentLen < 0:
-      raise newException(ValueError, "Bad content length")
+      raise newHttpError(Http400, "Bad content length")
   if reader.contentLen == 0:
     reader.readable = false
 
@@ -108,7 +109,7 @@ proc normalizeTransforEncoding(reader: HttpReader) =
       vencoding.removePrefix(SP)
       if vencoding.toLowerAscii() == "chunked":
         if i != n:
-          raise newException(ValueError, "Bad transfer encoding")
+          raise newHttpError(Http400, "Bad transfer encoding")
         reader.chunked = true
         reader.readable = true
         reader.contentLen = 0
