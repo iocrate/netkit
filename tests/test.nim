@@ -70,5 +70,5 @@ proc initResponseHeader(): B =
 #   var a = initResponseHeader()
 #   echo "..."
 
-import netkit/http/headerfield
+import netkit/http/serializers/headerfield
 
