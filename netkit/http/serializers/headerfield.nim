@@ -154,7 +154,7 @@ iterator pairs*(v: HeaderFieldValue): tuple[value: string, params: seq[HeaderFie
   else:
     discard
   
-proc contans*(v: var HeaderFieldValue, value: string): bool {.
+proc contains*(v: var HeaderFieldValue, value: string): bool {.
   kindDst: ("v", {
     HeaderFieldValueKind.Single, 
     HeaderFieldValueKind.SingleUseParams,
@@ -186,7 +186,7 @@ proc add*(v: var HeaderFieldValue, value: string) {.
     HeaderFieldValueKind.MultiUseParams
   })
 .} = 
-  if not v.contans(value):
+  if not v.contains(value):
     case v.kind
     of HeaderFieldValueKind.Single:
       v.sValue = value
