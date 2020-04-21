@@ -13,8 +13,11 @@
 # Decoding        Decoder     解码    将一个经过扰码或者变换的字符序列转换成原始的字符序列
 # ==============  ==========  =====  ============================================
 
+import strutils
+import strtabs
 import netkit/misc
 import netkit/http/base
+import netkit/http/constants as http_constants
 
 type
   ChunkHeader* = tuple ## 
@@ -27,10 +30,12 @@ proc parseChunkHeader*(s: string): ChunkHeader = discard
   ## ``"64" => (100, "")``  
   ## ``"64; name=value" => (100, "name=value")``
 
-proc parseTrailer*(s: string): tuple[name: string, value: string] = 
+proc parseChunkTrailer*(lines: openarray[string]): HeaderFields = 
   ## 解析一个字符串， 该字符串通过 ``Transfer-Encoding: chunked`` 编码， 表示块数据的一个 Trailer 。 
   ## 
   ## ``"Expires: Wed, 21 Oct 2015 07:28:00 GMT" => ("Expires", "Wed, 21 Oct 2015 07:28:00 GMT")``  
+
+proc parseChunkExtensions*(s: string): StringTableRef = discard
 
 proc encodeChunk*(
   source: pointer, 
@@ -105,7 +110,7 @@ proc encodeChunkEnd*(): string = discard
   ## 
   ## ``=> "0\r\n\r\n"``
   
-proc encodeChunkEnd*(trailers: varargs[tuple[name: string, value: string]]): string = discard
+proc encodeChunkEnd*(trailers: openarray[tuple[name: string, value: string]]): string = discard
   ## 生成一块经过 ``Transfer-Encoding: chunked`` 编码的数据块尾部。  ``trailers`` 是可选的， 指定挂载的 Trailer
   ## 首部。
   ## 

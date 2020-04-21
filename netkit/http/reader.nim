@@ -14,19 +14,18 @@ import netkit/locks
 import netkit/buffer/constants as buffer_constants
 import netkit/buffer/circular
 import netkit/http/base 
-import netkit/http/chunk 
-import netkit/http/metadata 
 import netkit/http/connection
 import netkit/http/constants as http_constants
 import netkit/http/exception
+import netkit/http/codecs/chunk 
+import netkit/http/codecs/metadata 
 
 type
   HttpReader* = ref object of RootObj ##
     conn: HttpConnection
-    # writer: HttpWriter 考虑使用一个 callback 
     lock: AsyncLock
-    metadata: HttpMetadata
     header*: HttpHeader
+    metadata: HttpMetadata
     onEnd: proc () {.gcsafe, closure.}
     contentLen: Natural
     chunked: bool

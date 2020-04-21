@@ -50,25 +50,10 @@ import asyncdispatch
 #   x.shallow()
 #   x
 
-type
-  Opt = enum
-    M, N
 
-  B = object 
-    case kind: Opt
-    of M:
-      a*: string
-    of N:
-      b*: string
+import netkit/http/codecs/headerfield
 
-proc initResponseHeader(): B =
-  echo "...1"
-  result = B(kind: N)
-  echo "...2"
 
-# proc f()  = 
-#   var a = initResponseHeader()
-#   echo "..."
 
-import netkit/http/headerfield
+
 

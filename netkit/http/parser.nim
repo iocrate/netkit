@@ -11,8 +11,8 @@ import strutils
 import netkit/buffer/circular
 import netkit/http/constants as http_constants
 import netkit/http/base
-import netkit/http/chunk
 import netkit/http/exception
+import netkit/http/codecs/chunk
 
 type
   HttpParser* = object ## HTTP packet parser.
@@ -158,12 +158,12 @@ proc parseHttpHeader*(p: var HttpParser, buf: var MarkableCircularBuffer, header
         # A recipient that receives whitespace between the start-line and the first 
         # header field MUST either reject the message as invalid or consume each 
         # whitespace-preceded line without further processing of it.
-        if p.currentFieldName[0] in WS:
+        if p.currentFieldName[0] in WSP:
           raise newHttpError(Http400, "Bad Header Field")
         # [RFC7230-3.2.4](https://tools.ietf.org/html/rfc7230#section-3.2.4) 
         # A server MUST reject any received request message that contains whitespace 
         # between a header field-name and colon with a response code of 400.
-        if p.currentFieldName[^1] in WS:
+        if p.currentFieldName[^1] in WSP:
           raise newHttpError(Http400, "Bad Header Field")
         p.state = HttpParseState.FieldValue
       of MarkProcessState.Crlf:
@@ -184,8 +184,8 @@ proc parseHttpHeader*(p: var HttpParser, buf: var MarkableCircularBuffer, header
         let lastIdx = fieldValue.len - 1
         if fieldValue[lastIdx] == CR:
           fieldValue.setLen(lastIdx)
-        fieldValue.removePrefix(WS)
-        fieldValue.removeSuffix(WS)
+        fieldValue.removePrefix(WSP)
+        fieldValue.removeSuffix(WSP)
         if fieldValue.len == 0:
           raise newHttpError(Http400, "Bad Header Field")
         header.fields.add(p.currentFieldName, fieldValue)

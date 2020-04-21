@@ -9,7 +9,7 @@ import netkit/checks
 const LimitStartLineLen* {.intdefine.}: Natural = 8*1024 ##  
 const LimitHeaderFieldLen* {.intdefine.}: Natural = 8*1024 ##  
 const LimitHeaderFieldCount* {.intdefine.}: Natural = 100 ##   
-const LimitChunkSizeLen* = 16 ## ``Transfer-Encoding: chunked`` 
+const LimitChunkSizeLen*: Natural = 16 ## ``Transfer-Encoding: chunked`` 
 const LimitChunkHeaderLen* {.intdefine.}: Natural = 1*1024 ## ``Transfer-Encoding: chunked``  
 const LimitChunkDataLen* {.intdefine.}: Natural = 1*1024 ## ``Transfer-Encoding: chunked`` 
 const LimitChunkTrailerLen* {.intdefine.}: Natural = 8*1024 ##  

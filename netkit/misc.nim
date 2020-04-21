@@ -5,4 +5,5 @@
 #    distribution, for details about the copyright.
 
 template offset*(p: pointer, n: int): pointer = 
+  ## 
   cast[pointer](cast[ByteAddress](p) + n)

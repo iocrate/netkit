@@ -77,20 +77,18 @@ type
 
   HeaderFields* = distinct Table[string, seq[string]] ## 表示 HTTP 头字段集合。 
 
-  ChunkSizer* = tuple ## 表示 HTTP ``Transfer-Encoding: chunked`` 编码数据的尺寸部分。
-    size: Natural
-    extensions: string
+  HttpHeaderKind* {.pure.} = enum ## 
+    Request, Response
 
-  RequestHeader* = object ## 表示 HTTP 请求包的头部。 每一个 HTTP 请求应该包含且只包含一个头部。
-    reqMethod*: HttpMethod
-    url*: string
-    version*: HttpVersion
-    fields*: HeaderFields  
-
-  ResponseHeader* = object ## 表示 HTTP 响应包的头部。 每一个 HTTP 响应应该包含且只包含一个头部。
-    statusCode*: HttpCode
-    version*: HttpVersion
-    fields*: HeaderFields
+  HttpHeader* = object ## 
+    case kind*: HttpHeaderKind
+    of HttpHeaderKind.Request:
+      reqMethod*: HttpMethod
+      url*: string
+    of HttpHeaderKind.Response:
+      statusCode*: HttpCode
+    version*: HttpVersion 
+    fields*: HeaderFields 
 
 const 
   # [RFC5234](https://tools.ietf.org/html/rfc5234#appendix-B.1)
@@ -99,9 +97,10 @@ const
   LF* = '\x0A'
   COLON* = ':'
   COMMA* = ','
+  SEMICOLON* = ';'
   HTAB* = '\x09'
   CRLF* = "\x0D\x0A"
-  WS* = {SP, HTAB}
+  WSP* = {SP, HTAB}
 
 proc toHttpCode*(code: int): HttpCode = discard
   ## 获取整数 ``code`` 对应的 HttpCode 表示。
@@ -148,6 +147,9 @@ proc contains*(fields: HeaderFields, name: string): bool = discard
 
 proc len*(fields: HeaderFields): int = discard
   ## 获取字段数量。 
+
+iterator pairs*(fields: HeaderFields): tuple[name, value: string] = discard
+  ## 迭代每一个字段。 
   
 proc getOrDefault*(
   fields: HeaderFields, 
@@ -156,55 +158,9 @@ proc getOrDefault*(
 ): seq[string] = discard
   ## 获取名为 ``name`` 的字段值，如果不存在则返回 ``default``。 
 
-proc getOrDefault*(
-  fields: HeaderFields, 
-  name: string,
-  default = ""
-): string = discard
-  ## 获取名为 ``name`` 的最后一个字段值，如果不存在则返回 ``default``。 
-
-iterator pairs*(fields: HeaderFields): tuple[name, value: string] = discard
-  ## 迭代每一个字段。 
-
-proc initRequestHeader*(): RequestHeader = discard
-  ## 初始化一个 HTTP 请求包的头部。 
-
-proc initRequestHeader*(
-  reqMethod: HttpMethod,
-  url: string,
-  fields: openArray[tuple[name: string, value: seq[string]]]
-): RequestHeader = discard
-  ## 初始化一个 HTTP 请求包的头部。 ``reqMethod`` 指定请求方法， ``url`` 指定请求路径， 
-  ## ``fields`` 指定初始字段集合，每个字段可以有多个值。 
-
-proc initRequestHeader*(
-  reqMethod: HttpMethod,
-  url: string,
-  fields: openArray[tuple[name: string, value: string]]
-): RequestHeader = discard
-  ## 初始化一个 HTTP 请求包的头部。 ``reqMethod`` 指定请求方法， ``url`` 指定请求路径， 
-  ## ``fields`` 指定初始字段集合，每个字段可以有多个值。 
-
-proc initResponseHeader*(): ResponseHeader = discard
-  ## 初始化一个 HTTP 响应包的头部。 
-
-proc initResponseHeader*(
-  statusCode: HttpCode,
-  fields: openArray[tuple[name: string, value: seq[string]]]
-): ResponseHeader = discard
-  ## 初始化一个 HTTP 响应包的头部。  ``statusCode`` 指定状态码， HTTP 版本号设定为 "HTTP/1.1"， 
-  ## ``fields`` 指定初始字段集合，每个字段可以有多个值。 
-
-proc initResponseHeader*(
-  statusCode: HttpCode,
-  fields: openArray[tuple[name: string, value: string]]
-): ResponseHeader = discard
-  ## 初始化一个服务器端 HTTP 响应包的头部。  ``statusCode`` 指定状态码， HTTP 版本号设定为 "HTTP/1.1"， 
-  ## ``fields`` 指定初始字段集合，每个字段可以有多个值。 
-
-proc `$`*(H: ResponseHeader): string = discard
+proc toResponseStr*(H: HttpHeader): string = discard
   ## 获取 ``ResponseHeader`` 的 HTTP 字符序列表示。
   
-proc `$`*(H: RequestHeader): string = discard
+proc toRequestStr*(H: HttpHeader): string = discard
   ## 获取 ``RequestHeader`` 的 HTTP 字符序列表示。 
 

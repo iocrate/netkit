@@ -14,7 +14,7 @@
 import asyncdispatch
 
 type
-  AsyncLock* = object
+  AsyncLock* = object ## 异步锁对象。 
     locked: bool
 
 proc acquire*(L: AsyncLock): Future[void] = discard

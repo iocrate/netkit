@@ -11,7 +11,7 @@ import unittest
 import options
 import strformat
 import times
-import netkit/http/serializers/cookie
+import netkit/http/codecs/cookie
 
 suite "SetCookie":
   let

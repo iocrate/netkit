@@ -4,23 +4,45 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-## 这个模块实现了一个异步的 HTTP 服务器。 
-
 import asyncdispatch
 import nativesockets
 import os
+import netkit/http/base
+import netkit/http/exception
 import netkit/http/connection
+import netkit/http/reader
+import netkit/http/writer
+
+when defined(posix):
+  from posix import EBADF
 
 type
-  AsyncHttpServer* = ref object ## 一个服务器对象。 
+  AsyncHttpServer* = ref object
     socket: AsyncFD
- 
-proc serve*(
-  server: AsyncHttpServer, 
-  port: Port = 8001.Port,
-  address = "127.0.0.1"
-): Future[void] {.async.} = discard
-  ## 启动 HTTP 服务器， ``port`` 指定端口号， ``address`` 指定主机地址或者主机名。 
+    domain: Domain
+    onRequest: RequestHandler
+    closed: bool
+
+  RequestHandler* = proc (req: ServerRequest, res: ServerResponse): Future[void] {.closure, gcsafe.}
+
+proc newAsyncHttpServer*(): AsyncHttpServer = discard
+  ## 
 
 proc `onRequest=`*(server: AsyncHttpServer, handler: RequestHandler) = discard
-  ## 为 ``server `` 指定一个请求处理器， 当收到一个 HTTP 请求时处理该请求。 
+  ## 
+
+proc close*(server: AsyncHttpServer) = discard
+  ## 
+
+proc serve*(
+  server: AsyncHttpServer, 
+  port: Port,
+  address: string = "",
+  domain = AF_INET
+) {.async.} = discard
+  ## Starts the process of listening for incoming HTTP connections on the
+  ## specified ``address`` and ``port``.
+  
+
+
+

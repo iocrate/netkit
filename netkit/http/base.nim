@@ -102,7 +102,7 @@ const
   SEMICOLON* = ';'
   HTAB* = '\x09'
   CRLF* = "\x0D\x0A"
-  WS* = {SP, HTAB}
+  WSP* = {SP, HTAB}
 
 proc toHttpCode*(code: int): HttpCode  {.raises: [ValueError].} =
   ## Convert to the corresponding ``HttpCode``. 
@@ -265,18 +265,6 @@ proc getOrDefault*(
   ## 
   if fields.contains(name):
     return fields[name]
-  else:
-    return default
-
-proc getOrDefault*(
-  fields: HeaderFields, 
-  name: string,
-  default = ""
-): string =
-  ## 
-  if fields.contains(name):
-    let s = fields[name]
-    return s[0]
   else:
     return default
 

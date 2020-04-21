@@ -12,9 +12,9 @@ import nativesockets
 import netkit/misc
 import netkit/buffer/circular
 import netkit/http/base
-import netkit/http/chunk 
 import netkit/http/exception 
 import netkit/http/parser
+import netkit/http/codecs/chunk 
 
 type
   HttpConnection* = ref object ## 
