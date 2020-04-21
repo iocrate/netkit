@@ -9,6 +9,7 @@
 import tables
 import strtabs
 import strutils
+import uri
 
 type
   HttpCode* = enum ## HTTP status code. 
@@ -81,8 +82,7 @@ type
   HttpHeaderKind* {.pure.} = enum
     Request, Response
 
-  HttpHeader* = object 
-    ## Represents the header of a HTTP message. Each HTTP message should contains only one header.
+  HttpHeader* = object ## Represents the header of a HTTP message. Each message must contain only one header.
     case kind*: HttpHeaderKind
     of HttpHeaderKind.Request:
       reqMethod*: HttpMethod
@@ -94,14 +94,14 @@ type
 
 const 
   # [RFC5234](https://tools.ietf.org/html/rfc5234#appendix-B.1)
-  SP* = '\x20'
-  CR* = '\x0D'
-  LF* = '\x0A'
   COLON* = ':'
   COMMA* = ','
   SEMICOLON* = ';'
-  HTAB* = '\x09'
+  CR* = '\x0D'
+  LF* = '\x0A'
   CRLF* = "\x0D\x0A"
+  SP* = '\x20'
+  HTAB* = '\x09'
   WSP* = {SP, HTAB}
 
 proc toHttpCode*(code: int): HttpCode  {.raises: [ValueError].} =
@@ -172,7 +172,7 @@ proc toHttpMethod*(s: string): HttpMethod {.raises: [ValueError].} =
     else: raise newException(ValueError, "Not Implemented")
 
 proc toHttpVersion*(s: string): HttpVersion  {.raises: [ValueError].} =
-  ## 
+  ## Convert to the corresponding ``HttpVersion``.
   if s.len != 8 or s[6] != '.':
     raise newException(ValueError, "Invalid Http Version")
   let major = s[5].ord - 48
@@ -188,7 +188,7 @@ proc toHttpVersion*(s: string): HttpVersion  {.raises: [ValueError].} =
   result = (s, major.Natural, minor.Natural)
 
 proc initHeaderFields*(): HeaderFields =
-  ## 
+  ## Initializes a ``HeaderFields``.
   result = HeaderFields(initTable[string, seq[string]]())
 
 template addImpl(fields: var HeaderFields, name: string, value: string) = 
@@ -199,86 +199,104 @@ template addImpl(fields: var HeaderFields, name: string, value: string) =
     Table[string, seq[string]](fields)[nameUA] = @[value]
 
 proc initHeaderFields*(pairs: openarray[tuple[name: string, value: seq[string]]]): HeaderFields =
-  ## 
+  ## Initializes a ``HeaderFields``. ``pairs`` is a container consisting of ``(key, value)`` tuples.
   result = HeaderFields(initTable[string, seq[string]]())
   for pair in pairs:
     for v in pair.value:
       result.addImpl(pair.name, v)
 
 proc initHeaderFields*(pairs: openarray[tuple[name: string, value: string]]): HeaderFields =
-  ## 
+  ## Initializes a ``HeaderFields``. ``pairs`` is a container consisting of ``(key, value)`` tuples.
   result = HeaderFields(initTable[string, seq[string]]())
   for pair in pairs:
     result.addImpl(pair.name, pair.value)
 
-proc `$`*(fields: HeaderFields): string =
-  ## 
-  for key, value in Table[string, seq[string]](fields).pairs():
-    result.add(key)
-    result.add(value.join(": "))
-    result.add(value.join(", "))
-    result.add(CRLF)
-
-proc clear*(fields: var HeaderFields) =
-  ## 
+proc clear*(fields: var HeaderFields) = 
+  ## Resets this fields so that it is empty.
   Table[string, seq[string]](fields).clear()
 
-proc `[]`*(fields: HeaderFields, name: string): seq[string] =
-  ## 
+proc `[]`*(fields: HeaderFields, name: string): seq[string] {.raises: [KeyError].} =
+  ## Returns the value of the field associated with ``name``. If ``name`` is not in this fields, the 
+  ## ``KeyError`` exception is raised. 
   Table[string, seq[string]](fields)[name.toLowerAscii()]
 
-proc `[]=`*(fields: var HeaderFields, name: string, value: string) =
-  ## 
-  Table[string, seq[string]](fields)[name.toLowerAscii()] = @[value]
-
 proc `[]=`*(fields: var HeaderFields, name: string, value: seq[string]) =
-  ## 
+  ## Sets ``value`` to the field associated with ``name``. Replaces any existing value.
   Table[string, seq[string]](fields)[name.toLowerAscii()] = value
 
 proc add*(fields: var HeaderFields, name: string, value: string) =
-  ## 
+  ## Adds ``value`` to the field associated with ``name``. If ``name`` does not exist then create a new one.
   addImpl(fields, name, value)
 
 proc del*(fields: var HeaderFields, name: string) =
-  ## 
+  ## Deletes the field associated with ``name``. 
   Table[string, seq[string]](fields).del(name.toLowerAscii())
 
 proc contains*(fields: HeaderFields, name: string): bool =
-  ## 
+  ## Returns true if this fields contains the specified ``name``. 
   Table[string, seq[string]](fields).contains(name.toLowerAscii())
 
 proc len*(fields: HeaderFields): int = 
-  ## 
+  ## Returns the number of names in this fields.
   Table[string, seq[string]](fields).len
 
 iterator pairs*(fields: HeaderFields): tuple[name, value: string] =
-  ##  
+  ## Yields each ``(name, value)`` pair.
   for k, v in Table[string, seq[string]](fields):
     for value in v:
       yield (k, value)
+
+iterator names*(fields: HeaderFields): string =
+  ## Yields each field name.
+  for k in Table[string, seq[string]](fields).keys():
+    yield k
 
 proc getOrDefault*(
   fields: HeaderFields, 
   name: string,
   default = @[""]
 ): seq[string] =
-  ## 
+  ## Returns the value of the field associated with ``name``. If ``name`` is not in this fields, then 
+  ## ``default`` is returned.
   if fields.contains(name):
     return fields[name]
   else:
     return default
 
-proc toResponseStr*(H: HttpHeader): string = 
+template `$`(fields: HeaderFields, res: string) =
   ## 
+  for key, value in Table[string, seq[string]](fields).pairs():
+    for v in value:
+      res.add(key)
+      res.add(": ")
+      res.add(v)
+      res.add(CRLF)
+
+proc `$`*(fields: HeaderFields): string =
+  ## Converts this fields into a string that follows the HTTP Protocol.
+  `$`(fields, result)
+
+proc toResponseStr*(H: HttpHeader): string = 
+  ## Converts this response header into a string that follows the HTTP Protocol.
   assert H.kind == HttpHeaderKind.Response
   const Version = "HTTP/1.1"
-  result.add(Version & SP & $H.statusCode & CRLF)
-  for name, value in H.fields.pairs():
-    result.add(name & ": " & value & CRLF)
+  result.add(Version)
+  result.add(SP)
+  result.add($H.statusCode)
+  result.add(CRLF)
+  `$`(H.fields, result)
   result.add(CRLF)
 
 proc toRequestStr*(H: HttpHeader): string = 
-  ## 
+  ## Converts this request header into a string that follows the HTTP Protocol.
   # TODO: 
   assert H.kind == HttpHeaderKind.Request
-
+  const Version = "HTTP/1.1"
+  result.add($H.reqMethod)
+  result.add(SP)
+  result.add($H.url.encodeUrl())
+  result.add(SP)
+  result.add(Version)
+  result.add(CRLF)
+  `$`(H.fields, result)
+  result.add(CRLF)

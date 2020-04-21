@@ -20,6 +20,13 @@
 ## 比如您在调用 ``decodeSingle(fields, "Content-Type")`` 得到的结果可能是 ``@[("application/json", ""), ("charset", "utf8")]``； 在调用
 ## ``decodeSingle(fields, "Content-Length")`` 得到的结果可能是 ``@[("0", "")]``； 在调用``decodeMulti(fields, "Cookie")`` 得到的结果可能是 
 ## ``@[("a", "1"), ("b", "2")]``。 
+## 
+## 请注意 Set-Cookie 是多行值； Cookie 是单行值， 和其他不一样的是， Cookie 使用 ``;`` 作为分隔符。 
+## 
+## - 多行 , 多值， 每个 , 一个值 
+## - 多行 setcookie 特例 多值， 每个 field 一个值 (对象)
+## - 单行 ; 多个值 cookie
+## - 单行 单值 content-length 
 
 import strutils
 import netkit/http/base

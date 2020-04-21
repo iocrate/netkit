@@ -7,12 +7,25 @@
 ## This module provides basic tools related to HTTP.
 ## 
 
+# Multiple Header Fields with The Same Field Name
+# -----------------------------------------------
+#
 # `RFC 7230-3.2.2 <https://tools.ietf.org/html/rfc7230#section-3.2.2>`_
+#
+# A sender MUST NOT generate multiple header fields with the same field name in a message unless either the entire 
+# field value for that header field is defined as a comma-separated list [i.e., #(values)] or the header field is a
+# well-known exception (as noted below).
+#
 # A recipient MAY combine multiple header fields with the same field name into one "field-name: field-value" pair, 
-# without changing the semantics of the message, by appending each subsequent field value to the combined field 
-# value in order, separated by a comma. The order in which header fields with the same field name are received 
-# is therefore significant to the interpretation of the combined field value; a proxy MUST NOT change the order of 
-# these field values when forwarding a message.
+# without changing the semantics of the message, by appending each subsequent field value to the combined field value
+# in order, separated by a comma. The order in which header fields with the same field name are received is therefore 
+# significant to the interpretation of the combined field value; a proxy MUST NOT change the order of these field values 
+# when forwarding a message.
+#
+# Note: In practice, the "Set-Cookie" header field ([RFC6265]) often appears multiple times in a response message and
+#       does not use the list syntax, violating the above requirements on multiple header fields with the same name.
+#       Since it cannot be combined into a single field-value, recipients ought to handle "Set-Cookie" as a special case 
+#       while processing header fields. 
 #
 # ASCII
 # -----

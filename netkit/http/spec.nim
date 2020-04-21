@@ -4,7 +4,7 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-## 这个模块里实现一些 HTTP 规范相关的校验工具， 以验证 HTTP 消息的合法性。 请注意， 添加这些 checks， benchmark 将会随之有所下降。 
+## 
 
 # Tip
 # ---
