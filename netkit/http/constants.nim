@@ -4,6 +4,9 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
+## This module defines some constants related to HTTP operations. Some of them support redefinition 
+## through the `` --define`` instruction during compilation. 
+
 import netkit/checks
 
 const LimitStartLineLen* {.intdefine.}: Natural = 8*1024 

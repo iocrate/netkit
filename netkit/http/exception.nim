@@ -4,6 +4,8 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
+## This module defines exceptions related to HTTP operations.
+
 import netkit/http/base
 
 type

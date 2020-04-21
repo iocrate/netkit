@@ -75,12 +75,12 @@ type
     major: Natural
     minor: Natural
 
-  HeaderFields* = distinct Table[string, seq[string]] ## 表示 HTTP 头字段集合。 
+  HeaderFields* = distinct Table[string, seq[string]] ## 表示一条 HTTP 消息的头字段集合。 
 
   HttpHeaderKind* {.pure.} = enum ## 
     Request, Response
 
-  HttpHeader* = object ## 
+  HttpHeader* = object ## 表示一条 HTTP 消息的头部。 每条消息只有一个头部。 
     case kind*: HttpHeaderKind
     of HttpHeaderKind.Request:
       reqMethod*: HttpMethod
@@ -103,64 +103,137 @@ const
   WSP* = {SP, HTAB}
 
 proc toHttpCode*(code: int): HttpCode = discard
-  ## 获取整数 ``code`` 对应的 HttpCode 表示。
+  ## 获取整数 ``code`` 对应的 HttpCode 表示。 
 
 proc toHttpMethod*(s: string): HttpMethod = discard
-  ## 获取字符串 ``s`` 对应的 HttpMethod 表示。
+  ## 获取字符串 ``s`` 对应的 HttpMethod 表示。 
 
 proc toHttpVersion*(s: string): HttpVersion = discard
   ## 获取字符串 ``s`` 对应的 HttpVersion 表示。 请注意， ``s`` 必须是 ``"HTTP/1.1"`` 或者是 ``"HTTP/1.0"``， 
   ## 否则， 抛出异常。 当前， 仅支持 HTTP/1.1 和 HTTP/1.0。 
 
 proc initHeaderFields*(): HeaderFields = discard
-  ## 初始化一个 HTTP 头字段集合对象。
+  ## 初始化一个 HTTP 头字段集合对象。 
 
 proc initHeaderFields*(pairs: openArray[tuple[name: string, value: seq[string]]]): HeaderFields = discard
-  ## 初始化一个 HTTP 头字段集合对象。 ``pairs`` 指定初始字段集合，每个字段可以有多个值。
+  ## 初始化一个 HTTP 头字段集合对象。 ``pairs`` 指定初始字段集合，每个字段可以有多个值。 
+  ## 
+  ## 下面的例子说明了如何处理单一值的头字段：
+  ## 
+  ## ..code-block::nim
+  ## 
+  ##   let fields = initHeaderFields({
+  ##     "Content-Length": @["1"], 
+  ##     "Content-Type": @["text/plain"]
+  ##     "Cookie": @["SID=123; language=en"]
+  ##   })
+  ## 
+  ## 下面的例子说明了如何处理 ``Set-Cookie`` 或者使用逗号分隔的多值的头字段 (比如 ``Accept``)：
+  ## 
+  ## ..code-block::nim
+  ## 
+  ##   let fields = initHeaderFields({
+  ##     "Set-Cookie": @["SID=123; path=/", "language=en"],
+  ##     "Accept": @["audio/*; q=0.2", "audio/basic"]
+  ##   })
 
 proc initHeaderFields*(pairs: openArray[tuple[name: string, value: string]]): HeaderFields = discard
-  ## 初始化一个 HTTP 头字段集合对象。``pairs`` 指定初始字段集合，每个字段只有一个值。
-
-proc `$`*(fields: HeaderFields): string = discard
-  ## 返回对应的 HTTP 字符表示。
+  ## 初始化一个 HTTP 头字段集合对象。``pairs`` 指定初始字段集合，每个字段只有一个值。 
+  ## 
+  ## 下面的例子说明了如何处理单一值的头字段：
+  ## 
+  ## ..code-block::nim
+  ## 
+  ##   let fields = initHeaderFields({
+  ##     "Content-Length": @["1"], 
+  ##     "Content-Type": @["text/plain"]
+  ##     "Cookie": @["SID=123; language=en"]
+  ##   })
 
 proc clear*(fields: var HeaderFields) = discard
   ## 清空所有字段。 
 
 proc `[]`*(fields: HeaderFields, name: string): seq[string] = discard
-  ## 获取名字为 ``name`` 的字段值序列，可能是零到多个。
-
-proc `[]=`*(fields: var HeaderFields, name: string, value: string) = discard
-  ## 设置名字为 ``name`` 的字段值。 这会清除所有 ``name`` 已经设置的值。
+  ## 获取名字为 ``name`` 的字段值， 可能是零到多个。 
+  ## 
+  ## 例子：  
+  ## 
+  ## ..code-block::nim
+  ## 
+  ##   let fields = initHeaderFields({
+  ##     "Content-Length": "16"
+  ##   })
+  ##   assert fields["Content-Length"][0] == "16"
 
 proc `[]=`*(fields: var HeaderFields, name: string, value: seq[string]) = discard
-  ## 设置名字为 ``name`` 的字段值。 这会清除所有 ``name`` 已经设置的值。
+  ## 设置名字为 ``name`` 的字段值。 这会清除所有 ``name`` 已经设置的值。 
+  ## 
+  ## 例子： 
+  ## 
+  ## ..code-block::nim
+  ## 
+  ##   let fields = initHeaderFields({
+  ##     "Content-Length": "16"
+  ##   })
+  ##   fields["Content-Length"] == @["100"]
 
 proc add*(fields: var HeaderFields, name: string, value: string) = discard
   ## 为名字为 ``name`` 的字段添加一个值。 
+  ## 
+  ## 例子： 
+  ## 
+  ## ..code-block::nim
+  ## 
+  ##   let fields = initHeaderFields()
+  ##   fields.add("Content-Length", "16")
+  ##   fields.add("Cookie", "SID=123")
+  ##   fields.add("Cookie", "language=en")
+  ##   fields.add("Accept", "audio/*; q=0.2")
+  ##   fields.add("Accept", "audio/basic")
 
 proc del*(fields: var HeaderFields, name: string) = discard
   ## 删除名字为 ``name`` 的字段。 
+  ## 
+  ## 例子： 
+  ## 
+  ## ..code-block::nim
+  ## 
+  ##   fields.del("Content-Length")
+  ##   fields.del("Cookie")
+  ##   fields.del("Accept")
 
 proc contains*(fields: HeaderFields, name: string): bool = discard
   ## 判断是否包含 ``name`` 字段。 
+  ## 
+  ## 例子： 
+  ## 
+  ## ..code-block::nim
+  ## 
+  ##   let fields = initHeaderFields({
+  ##     "Content-Length": "16"
+  ##   })
+  ##   assert fields.contains("Content-Length") == true
+  ##   assert fields.contains("content-length") == true
+  ##   assert fields.contains("ContentLength") == false
 
 proc len*(fields: HeaderFields): int = discard
   ## 获取字段数量。 
 
 iterator pairs*(fields: HeaderFields): tuple[name, value: string] = discard
-  ## 迭代每一个字段。 
-  
-proc getOrDefault*(
-  fields: HeaderFields, 
-  name: string,
-  default = @[""]
-): seq[string] = discard
-  ## 获取名为 ``name`` 的字段值，如果不存在则返回 ``default``。 
+  ## 迭代每一个 ``(name, value)`` 对。 
+
+iterator names*(fields: HeaderFields): string = discard
+  ## 迭代每一个字段名。 
+    
+proc getOrDefault*(fields: HeaderFields, name: string, default = @[""]): seq[string] = discard
+  ## 获取名为 ``name`` 的字段值， 如果不存在则返回 ``default``。 
+
+proc `$`*(fields: HeaderFields): string = discard
+  ## 把 ``fields`` 转换为遵循 HTTP 协议规范的字符串。 
 
 proc toResponseStr*(H: HttpHeader): string = discard
-  ## 获取 ``ResponseHeader`` 的 HTTP 字符序列表示。
+  ## 把 ``H`` 转换为遵循 HTTP 协议规范的字符串。 
   
 proc toRequestStr*(H: HttpHeader): string = discard
-  ## 获取 ``RequestHeader`` 的 HTTP 字符序列表示。 
+  ## 把 ``H`` 转换为遵循 HTTP 协议规范的字符串。 
 
