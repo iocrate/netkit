@@ -4,6 +4,10 @@
 #    See the file "LICENSE", included in this
 #    destribution, for details about the copyright.
 
+## According to the HTTP protocol, a message whose header fields have ``Transfer-Encoding: chunked`` will be encoded, 
+## so that the data is sent chunk by chunk as a stream. These data chunk require to be encoded and decoded. This module 
+## provides tools for dealing with this type of encodings and decoding.
+
 import strutils
 import strtabs
 import netkit/misc
