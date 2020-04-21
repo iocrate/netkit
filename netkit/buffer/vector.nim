@@ -59,7 +59,7 @@ proc expand*(b: var VectorBuffer) =
   var newValue = newSeqOfCap[byte](newCapacity)
   copyMem(newValue.addr, b.value.addr, b.endPos)
   b.capacity = newCapacity
-  b.value.shallowCopy(newValue)
+  b.value = move newValue
 
 proc next*(b: var VectorBuffer): (pointer, Natural) = 
   ## Gets the next safe storage region. The return value indicates the pointer and length of the storage 

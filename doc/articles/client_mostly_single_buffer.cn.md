@@ -79,8 +79,8 @@ var mysql = newMysqlClient()
 
 var req1 = mysql.query("select * from users") # 第一个请求
 var req2 = mysql.query("select * from blogs") # 第二个请求
-var req3 = mysql.query("select * from blogs") # 第二个请求
-var req4 = mysql.query("select * from blogs") # 第二个请求
+var req3 = mysql.query("select * from blogs") # 第三个请求
+var req4 = mysql.query("select * from blogs") # 第四个请求
 
 await req2
 await req1
