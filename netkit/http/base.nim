@@ -200,6 +200,26 @@ template addImpl(fields: var HeaderFields, name: string, value: string) =
 
 proc initHeaderFields*(pairs: openarray[tuple[name: string, value: seq[string]]]): HeaderFields =
   ## Initializes a ``HeaderFields``. ``pairs`` is a container consisting of ``(key, value)`` tuples.
+  ## 
+  ## The following example demonstrates how to deal with a single value, such as ``Content-Length``:
+  ## 
+  ## ..code-block::nim
+  ## 
+  ##   let fields = initHeaderFields({
+  ##     "Content-Length": @["1"], 
+  ##     "Content-Type": @["text/plain"]
+  ##     "Cookie": @["SID=123; language=en"]
+  ##   })
+  ## 
+  ## The following example demonstrates how to deal with ``Set-Cookie`` or a comma-separated list of values
+  ## such as ``Accept``: 
+  ## 
+  ## ..code-block::nim
+  ## 
+  ##   let fields = initHeaderFields({
+  ##     "Set-Cookie": @["SID=123; path=/", "language=en"],
+  ##     "Accept": @["audio/*; q=0.2", "audio/basic"]
+  ##   })
   result = HeaderFields(initTable[string, seq[string]]())
   for pair in pairs:
     for v in pair.value:
@@ -207,6 +227,16 @@ proc initHeaderFields*(pairs: openarray[tuple[name: string, value: seq[string]]]
 
 proc initHeaderFields*(pairs: openarray[tuple[name: string, value: string]]): HeaderFields =
   ## Initializes a ``HeaderFields``. ``pairs`` is a container consisting of ``(key, value)`` tuples.
+  ## 
+  ## The following example demonstrates how to deal with a single value, such as ``Content-Length``:
+  ## 
+  ## ..code-block::nim
+  ## 
+  ##   let fields = initHeaderFields({
+  ##     "Content-Length": "16", 
+  ##     "Content-Type": "text/plain"
+  ##     "Cookie": "SID=123; language=en"
+  ##   })
   result = HeaderFields(initTable[string, seq[string]]())
   for pair in pairs:
     result.addImpl(pair.name, pair.value)
@@ -218,22 +248,70 @@ proc clear*(fields: var HeaderFields) =
 proc `[]`*(fields: HeaderFields, name: string): seq[string] {.raises: [KeyError].} =
   ## Returns the value of the field associated with ``name``. If ``name`` is not in this fields, the 
   ## ``KeyError`` exception is raised. 
+  ## 
+  ## Examples: 
+  ## 
+  ## ..code-block::nim
+  ## 
+  ##   let fields = initHeaderFields({
+  ##     "Content-Length": "16"
+  ##   })
+  ##   assert fields["Content-Length"][0] == "16"
   Table[string, seq[string]](fields)[name.toLowerAscii()]
 
 proc `[]=`*(fields: var HeaderFields, name: string, value: seq[string]) =
   ## Sets ``value`` to the field associated with ``name``. Replaces any existing value.
+  ## 
+  ## Examples: 
+  ## 
+  ## ..code-block::nim
+  ## 
+  ##   let fields = initHeaderFields({
+  ##     "Content-Length": "16"
+  ##   })
+  ##   fields["Content-Length"] == @["100"]
   Table[string, seq[string]](fields)[name.toLowerAscii()] = value
 
 proc add*(fields: var HeaderFields, name: string, value: string) =
   ## Adds ``value`` to the field associated with ``name``. If ``name`` does not exist then create a new one.
+  ## 
+  ## Examples: 
+  ## 
+  ## ..code-block::nim
+  ## 
+  ##   let fields = initHeaderFields()
+  ##   fields.add("Content-Length", "16")
+  ##   fields.add("Cookie", "SID=123")
+  ##   fields.add("Cookie", "language=en")
+  ##   fields.add("Accept", "audio/*; q=0.2")
+  ##   fields.add("Accept", "audio/basic")
   addImpl(fields, name, value)
 
 proc del*(fields: var HeaderFields, name: string) =
   ## Deletes the field associated with ``name``. 
+  ## 
+  ## Examples: 
+  ## 
+  ## ..code-block::nim
+  ## 
+  ##   fields.del("Content-Length")
+  ##   fields.del("Cookie")
+  ##   fields.del("Accept")
   Table[string, seq[string]](fields).del(name.toLowerAscii())
 
 proc contains*(fields: HeaderFields, name: string): bool =
   ## Returns true if this fields contains the specified ``name``. 
+  ## 
+  ## Examples: 
+  ## 
+  ## ..code-block::nim
+  ## 
+  ##   let fields = initHeaderFields({
+  ##     "Content-Length": "16"
+  ##   })
+  ##   assert fields.contains("Content-Length") == true
+  ##   assert fields.contains("content-length") == true
+  ##   assert fields.contains("ContentLength") == false
   Table[string, seq[string]](fields).contains(name.toLowerAscii())
 
 proc len*(fields: HeaderFields): int = 
@@ -264,7 +342,6 @@ proc getOrDefault*(
     return default
 
 template `$`(fields: HeaderFields, res: string) =
-  ## 
   for key, value in Table[string, seq[string]](fields).pairs():
     for v in value:
       res.add(key)
@@ -289,7 +366,6 @@ proc toResponseStr*(H: HttpHeader): string =
 
 proc toRequestStr*(H: HttpHeader): string = 
   ## Converts this request header into a string that follows the HTTP Protocol.
-  # TODO: 
   assert H.kind == HttpHeaderKind.Request
   const Version = "HTTP/1.1"
   result.add($H.reqMethod)
