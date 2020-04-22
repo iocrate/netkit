@@ -98,7 +98,7 @@ template seek(a: string, v: string, start: Natural, stop: Natural) =
       a = move s
   start = stop + 1
 
-proc decodeSingle(v: string, res: var seq[tuple[key: string, value: string]]) = 
+proc parseSingleRule(v: string, res: var seq[tuple[key: string, value: string]]) = 
   # delemeters: ``= ; "``
   var start = 0
   var stop = 0
@@ -149,7 +149,7 @@ proc decodeSingle(v: string, res: var seq[tuple[key: string, value: string]]) =
   if key.len > 0 or value.len > 0:
     res.add((key, value))
 
-proc decodeMulti(v: string, res: var seq[seq[tuple[key: string, value: string]]]) = 
+proc parsMultiRule(v: string, res: var seq[seq[tuple[key: string, value: string]]]) = 
   # delemeters: ``= ; " ,``
   var start = 0
   var stop = 0
@@ -218,14 +218,14 @@ proc decodeMulti(v: string, res: var seq[seq[tuple[key: string, value: string]]]
   if item.len > 0:
     res.add(item)
 
-proc decodeSingle*(fields: HeaderFields, name: string, default = ""): seq[tuple[key: string, value: string]] =
+proc parseSingleRule*(fields: HeaderFields, name: string, default = ""): seq[tuple[key: string, value: string]] =
   if fields.contains(name):
     var v = fields[name]
     if v.len > 1:
         raise newHttpError(Http400, "Multiple values are not allowed")
-    v[0].decodeSingle(result)    
+    v[0].parseSingleRule(result)    
 
-proc decodeMulti*(fields: HeaderFields, name: string, default = ""): seq[seq[tuple[key: string, value: string]]] =
+proc parsMultiRule*(fields: HeaderFields, name: string, default = ""): seq[seq[tuple[key: string, value: string]]] =
   if fields.contains(name):
     for v in fields[name]:
-      v.decodeMulti(result)
+      v.parsMultiRule(result)
