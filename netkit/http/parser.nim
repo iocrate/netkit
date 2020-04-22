@@ -12,7 +12,7 @@ import netkit/buffer/circular
 import netkit/http/constants as http_constants
 import netkit/http/base
 import netkit/http/exception
-import netkit/http/codecs/chunk
+import netkit/http/chunk
 
 type
   HttpParser* = object ## HTTP packet parser.
@@ -113,7 +113,7 @@ proc parseHttpHeader*(p: var HttpParser, buf: var MarkableCircularBuffer, header
           of StartLineState.Method:
             case p.markRequestLineCharOrCRLF(buf, SP)
             of MarkProcessState.Token:
-              header.reqMethod = p.popToken(buf, 1).toHttpMethod()
+              header.reqMethod = p.popToken(buf, 1).parseHttpMethod()
               p.startLineState = StartLineState.Url
             of MarkProcessState.CRLF:
               # [RFC7230-3.5](https://tools.ietf.org/html/rfc7230#section-3.5) 
@@ -139,7 +139,7 @@ proc parseHttpHeader*(p: var HttpParser, buf: var MarkableCircularBuffer, header
               let lastIdx = version.len - 1
               if version[lastIdx] == CR:
                 version.setLen(lastIdx)
-              header.version = version.toHttpVersion()
+              header.version = version.parseHttpVersion()
               p.currentLineLen = 0
               p.state = HttpParseState.FieldName
               break

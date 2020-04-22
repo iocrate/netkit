@@ -14,7 +14,7 @@ import netkit/buffer/circular
 import netkit/http/base
 import netkit/http/exception 
 import netkit/http/parser
-import netkit/http/codecs/chunk 
+import netkit/http/chunk 
 
 type
   HttpConnection* = ref object ## 

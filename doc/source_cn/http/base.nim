@@ -102,16 +102,6 @@ const
   CRLF* = "\x0D\x0A"
   WSP* = {SP, HTAB}
 
-proc toHttpCode*(code: int): HttpCode = discard
-  ## 获取整数 ``code`` 对应的 HttpCode 表示。 
-
-proc toHttpMethod*(s: string): HttpMethod = discard
-  ## 获取字符串 ``s`` 对应的 HttpMethod 表示。 
-
-proc toHttpVersion*(s: string): HttpVersion = discard
-  ## 获取字符串 ``s`` 对应的 HttpVersion 表示。 请注意， ``s`` 必须是 ``"HTTP/1.1"`` 或者是 ``"HTTP/1.0"``， 
-  ## 否则， 抛出异常。 当前， 仅支持 HTTP/1.1 和 HTTP/1.0。 
-
 proc initHeaderFields*(): HeaderFields = discard
   ## 初始化一个 HTTP 头字段集合对象。 
 
@@ -232,8 +222,26 @@ proc `$`*(fields: HeaderFields): string = discard
   ## 把 ``fields`` 转换为遵循 HTTP 协议规范的字符串。 
 
 proc toResponseStr*(H: HttpHeader): string = discard
-  ## 把 ``H`` 转换为遵循 HTTP 协议规范的字符串。 
+  ## 把 ``H`` 转换为遵循 HTTP 协议规范的字符串。 该字符串是一个完整的 HTTP 响应头部。 
+
+proc toResponseStr*(code: HttpCode): string = discard
+  ## 把 ``code`` 转换为遵循 HTTP 协议规范的字符串。 该字符串是一个完整的 HTTP 响应头部， 但是头部字段是空的， 
+  ## 只有状态行。   
   
 proc toRequestStr*(H: HttpHeader): string = discard
-  ## 把 ``H`` 转换为遵循 HTTP 协议规范的字符串。 
+  ## 把 ``H`` 转换为遵循 HTTP 协议规范的字符串。 该字符串是一个完整的 HTTP 请求头部。 
+  
+proc toRequestStr*(reqMethod: HttpMethod, url: string): string = discard
+  ## 把 ``H`` 转换为遵循 HTTP 协议规范的字符串。 该字符串是一个完整的 HTTP 请求头部， 但是头部字段是空的， 
+  ## 只有请求行。   
+
+proc parseHttpCode*(code: int): HttpCode = discard
+  ## 将整数 ``code`` 转换为对应的 HttpCode 表示。 
+
+proc parseHttpMethod*(s: string): HttpMethod = discard
+  ## 将字符串 ``s`` 转换为对应的 HttpMethod 表示。 
+
+proc parseHttpVersion*(s: string): HttpVersion = discard
+  ## 将字符串 ``s`` 转换为对应的 HttpVersion 表示。 请注意， ``s`` 必须是 ``"HTTP/1.1"`` 或者是 ``"HTTP/1.0"``， 
+  ## 否则， 抛出异常。 当前， 仅支持 HTTP/1.1 和 HTTP/1.0。 
 

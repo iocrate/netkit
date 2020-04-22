@@ -104,89 +104,6 @@ const
   HTAB* = '\x09'
   WSP* = {SP, HTAB}
 
-proc toHttpCode*(code: int): HttpCode  {.raises: [ValueError].} =
-  ## Convert to the corresponding ``HttpCode``. 
-  case code
-  of 100: Http100
-  of 101: Http101
-  of 200: Http200
-  of 201: Http201
-  of 202: Http202
-  of 203: Http203
-  of 204: Http204
-  of 205: Http205
-  of 206: Http206
-  of 300: Http300
-  of 301: Http301
-  of 302: Http302
-  of 303: Http303
-  of 304: Http304
-  of 305: Http305
-  of 307: Http307
-  of 400: Http400
-  of 401: Http401
-  of 403: Http403
-  of 404: Http404
-  of 405: Http405
-  of 406: Http406
-  of 407: Http407
-  of 408: Http408
-  of 409: Http409
-  of 410: Http410
-  of 411: Http411
-  of 412: Http412
-  of 413: Http413
-  of 414: Http414
-  of 415: Http415
-  of 416: Http416
-  of 417: Http417
-  of 418: Http418
-  of 421: Http421
-  of 422: Http422
-  of 426: Http426
-  of 428: Http428
-  of 429: Http429
-  of 431: Http431
-  of 451: Http451
-  of 500: Http500
-  of 501: Http501
-  of 502: Http502
-  of 503: Http503
-  of 504: Http504
-  of 505: Http505
-  else: raise newException(ValueError, "Not Implemented")
-
-proc toHttpMethod*(s: string): HttpMethod {.raises: [ValueError].} =
-  ## Convert to the corresponding ``HttpMethod``. 
-  result =
-    case s
-    of "GET": HttpGet
-    of "POST": HttpPost
-    of "HEAD": HttpHead
-    of "PUT": HttpPut
-    of "DELETE": HttpDelete
-    of "PATCH": HttpPatch
-    of "OPTIONS": HttpOptions
-    of "CONNECT": HttpConnect
-    of "TRACE": HttpTrace
-    else: raise newException(ValueError, "Not Implemented")
-
-proc toHttpVersion*(s: string): HttpVersion  {.raises: [ValueError].} =
-  ## Convert to the corresponding ``HttpVersion``.
-  if s.len != 8 or s[6] != '.':
-    raise newException(ValueError, "Invalid Http Version")
-  let major = s[5].ord - 48
-  let minor = s[7].ord - 48
-  if major != 1 or minor notin {0, 1}:
-    raise newException(ValueError, "Invalid Http Version")
-  const name = "HTTP/"
-  var i = 0
-  while i < 5:
-    if name[i] != s[i]:
-      raise newException(ValueError, "Invalid Http Version")
-    i.inc()
-  result = (s, major.Natural, minor.Natural)
-
 proc initHeaderFields*(): HeaderFields =
   ## Initializes a ``HeaderFields``.
   result = HeaderFields(initTable[string, seq[string]]())
@@ -354,7 +271,7 @@ proc `$`*(fields: HeaderFields): string =
   `$`(fields, result)
 
 proc toResponseStr*(H: HttpHeader): string = 
-  ## Converts this response header into a string that follows the HTTP Protocol.
+  ## Converts ``H`` into a string that is a response header follows the HTTP Protocol. 
   assert H.kind == HttpHeaderKind.Response
   const Version = "HTTP/1.1"
   result.add(Version)
@@ -364,8 +281,18 @@ proc toResponseStr*(H: HttpHeader): string =
   `$`(H.fields, result)
   result.add(CRLF)
 
+proc toResponseStr*(code: HttpCode): string = 
+  ## Converts ``code`` into a string that is a response header follows the HTTP Protocol. That is, only the 
+  ## status line, the header fields is empty.
+  const Version = "HTTP/1.1"
+  result.add(Version)
+  result.add(SP)
+  result.add($code)
+  result.add(CRLF)
+  result.add(CRLF)  
+
 proc toRequestStr*(H: HttpHeader): string = 
-  ## Converts this request header into a string that follows the HTTP Protocol.
+  ## Converts ``H`` into a string that is a request header follows the HTTP Protocol. 
   assert H.kind == HttpHeaderKind.Request
   const Version = "HTTP/1.1"
   result.add($H.reqMethod)
@@ -376,3 +303,98 @@ proc toRequestStr*(H: HttpHeader): string =
   result.add(CRLF)
   `$`(H.fields, result)
   result.add(CRLF)
+
+proc toRequestStr*(reqMethod: HttpMethod, url: string): string = 
+  ## Converts ``reqMethod`` and ``url`` into a string that is a request header follows the HTTP Protocol. 
+  ## That is, only the request line, the header fields is empty.
+  const Version = "HTTP/1.1"
+  result.add($reqMethod)
+  result.add(SP)
+  result.add($url.encodeUrl())
+  result.add(SP)
+  result.add(Version)
+  result.add(CRLF)
+  result.add(CRLF) 
+
+proc parseHttpCode*(code: int): HttpCode  {.raises: [ValueError].} =
+  ## Convert to the corresponding ``HttpCode``. 
+  case code
+  of 100: Http100
+  of 101: Http101
+  of 200: Http200
+  of 201: Http201
+  of 202: Http202
+  of 203: Http203
+  of 204: Http204
+  of 205: Http205
+  of 206: Http206
+  of 300: Http300
+  of 301: Http301
+  of 302: Http302
+  of 303: Http303
+  of 304: Http304
+  of 305: Http305
+  of 307: Http307
+  of 400: Http400
+  of 401: Http401
+  of 403: Http403
+  of 404: Http404
+  of 405: Http405
+  of 406: Http406
+  of 407: Http407
+  of 408: Http408
+  of 409: Http409
+  of 410: Http410
+  of 411: Http411
+  of 412: Http412
+  of 413: Http413
+  of 414: Http414
+  of 415: Http415
+  of 416: Http416
+  of 417: Http417
+  of 418: Http418
+  of 421: Http421
+  of 422: Http422
+  of 426: Http426
+  of 428: Http428
+  of 429: Http429
+  of 431: Http431
+  of 451: Http451
+  of 500: Http500
+  of 501: Http501
+  of 502: Http502
+  of 503: Http503
+  of 504: Http504
+  of 505: Http505
+  else: raise newException(ValueError, "Not Implemented")
+
+proc parseHttpMethod*(s: string): HttpMethod {.raises: [ValueError].} =
+  ## Convert to the corresponding ``HttpMethod``. 
+  result =
+    case s
+    of "GET": HttpGet
+    of "POST": HttpPost
+    of "HEAD": HttpHead
+    of "PUT": HttpPut
+    of "DELETE": HttpDelete
+    of "PATCH": HttpPatch
+    of "OPTIONS": HttpOptions
+    of "CONNECT": HttpConnect
+    of "TRACE": HttpTrace
+    else: raise newException(ValueError, "Not Implemented")
+
+proc parseHttpVersion*(s: string): HttpVersion  {.raises: [ValueError].} =
+  ## Convert to the corresponding ``HttpVersion``.
+  if s.len != 8 or s[6] != '.':
+    raise newException(ValueError, "Invalid Http Version")
+  let major = s[5].ord - 48
+  let minor = s[7].ord - 48
+  if major != 1 or minor notin {0, 1}:
+    raise newException(ValueError, "Invalid Http Version")
+  const name = "HTTP/"
+  var i = 0
+  while i < 5:
+    if name[i] != s[i]:
+      raise newException(ValueError, "Invalid Http Version")
+    i.inc()
+  result = (s, major.Natural, minor.Natural)
