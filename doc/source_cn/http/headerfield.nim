@@ -32,8 +32,8 @@ import strutils
 import netkit/http/base
 import netkit/http/exception
 
-proc decodeSingle*(fields: HeaderFields, name: string, default = ""): seq[tuple[key: string, value: string]] = discard
+proc decodeSingle*(fields: HeaderFields, name: string): seq[tuple[key: string, value: string]] = discard
   ## 
 
-proc decodeMulti*(fields: HeaderFields, name: string, default = ""): seq[seq[tuple[key: string, value: string]]] = discard 
+proc decodeMulti*(fields: HeaderFields, name: string): seq[seq[tuple[key: string, value: string]]] = discard 
   ## 

@@ -71,14 +71,14 @@ type
   HttpMetadata* = object ## Metadata object.
     case kind*: HttpMetadataKind
     of HttpMetadataKind.ChunkTrailers:
-      trailes*: seq[string] ## Trailer collection. For performance reasons, ``HttpMetadata`` does not further 
-                            ## parse the content of ``trailers``, but uses a string sequence to save them. You 
-                            ## can use ``parseChunkTrailers`` of the chunk module to convert the sequence of 
-                            ## strings into ``HeaderFileds`` to access every items.
+      trailers*: seq[string] ## Trailer collection. For performance reasons, ``HttpMetadata`` does not further 
+                             ## parse the content of ``trailers``, but uses a string sequence to save them. You 
+                             ## can use ``parseChunkTrailers`` of the chunk module to convert the sequence of 
+                             ## strings into ``HeaderFileds`` to access every items.
     of HttpMetadataKind.ChunkExtensions:
-      extensions*: string   ## Chunk Extensions. For performance reasons, ``HttpMetadata`` does not further 
-                            ## parse the content of ``extensions``, but uses a string to save them. You can use 
-                            ## ``parseChunkExtensions`` of the chunk module to convert the string into ``(name, value)`` 
-                            ## pair array to access every items.
+      extensions*: string    ## Chunk Extensions. For performance reasons, ``HttpMetadata`` does not further 
+                             ## parse the content of ``extensions``, but uses a string to save them. You can use 
+                             ## ``parseChunkExtensions`` of the chunk module to convert the string into ``(name, value)`` 
+                             ## pair array to access every items.
     of HttpMetadataKind.None:
       discard 

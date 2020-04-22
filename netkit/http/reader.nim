@@ -170,15 +170,15 @@ template readChunkHeaderByGuard(reader: HttpReader, header: ChunkHeader) =
     reader.metadata = HttpMetadata(kind: HttpMetadataKind.ChunkExtensions, extensions: header.extensions)
 
 template readChunkEndByGuard(reader: HttpReader) = 
-  var trailerVar: seq[string]
-  let readFuture = reader.conn.readChunkEnd(trailerVar.addr)
+  var trailersVar: seq[string]
+  let readFuture = reader.conn.readChunkEnd(trailersVar.addr)
   yield readFuture
   if readFuture.failed:
     reader.conn.close()
     raise readFuture.readError()
-  if trailerVar.len > 0:
-    trailerVar.shallow()
-    reader.metadata = HttpMetadata(kind: HttpMetadataKind.ChunkTrailer, trailer: trailerVar)
+  if trailersVar.len > 0:
+    trailersVar.shallow()
+    reader.metadata = HttpMetadata(kind: HttpMetadataKind.ChunkTrailers, trailers: trailersVar)
 
 template readChunk(reader: HttpReader, buf: pointer, n: int): Natural =
   assert reader.conn.closed
