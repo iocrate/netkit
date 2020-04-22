@@ -4,6 +4,17 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
+# ==============  ==========   ======  ============================================
+# Name            工具          用途    描述
+# ==============  ==========   ======  ============================================
+# Parsing         Parser       解析     将一个字符序列转换成一个对象树
+# Unparsing       Unparser     反向解析  将一个对象树转换成一个字符序列
+# Serialization   Serializer   序列化    将一个对象树转换成一个字符序列
+# Deserialization Deserializer 反序列化  将一个字符序列转换成一个对象树
+# Encoding        Encoder      编码     将一个字符序列进行扰码或者变换转换成另一个字符序列
+# Decoding        Decoder      解码     将一个经过扰码或者变换的字符序列转换成原始的字符序列
+# ==============  ==========   ======  ============================================
+
 import uri
 import strutils
 import netkit/buffer/circular

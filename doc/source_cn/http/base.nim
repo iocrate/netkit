@@ -236,12 +236,12 @@ proc toRequestStr*(reqMethod: HttpMethod, url: string): string = discard
   ## 只有请求行。   
 
 proc parseHttpCode*(code: int): HttpCode = discard
-  ## 将整数 ``code`` 转换为对应的 HttpCode 表示。 
+  ## 把整数 ``code`` 转换为对应的 HttpCode 表示。 
 
 proc parseHttpMethod*(s: string): HttpMethod = discard
-  ## 将字符串 ``s`` 转换为对应的 HttpMethod 表示。 
+  ## 把字符串 ``s`` 转换为对应的 HttpMethod 表示。 
 
 proc parseHttpVersion*(s: string): HttpVersion = discard
-  ## 将字符串 ``s`` 转换为对应的 HttpVersion 表示。 请注意， ``s`` 必须是 ``"HTTP/1.1"`` 或者是 ``"HTTP/1.0"``， 
+  ## 把字符串 ``s`` 转换为对应的 HttpVersion 表示。 请注意， ``s`` 必须是 ``"HTTP/1.1"`` 或者是 ``"HTTP/1.0"``， 
   ## 否则， 抛出异常。 当前， 仅支持 HTTP/1.1 和 HTTP/1.0。 
 

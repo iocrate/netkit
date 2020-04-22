@@ -34,16 +34,16 @@
 ##   0\r\n 
 ##   \r\n
 ## 
-## Trailer
-## -------
+## Trailers
+## --------
 ## 
-## 经过 ``Transfer-Encoding: chunked`` 编码的消息， 允许在尾部携带 Trailer 。 Trailer 实际上是一个或者多个 HTTP 响应头字段， 
-## 允许发送方在消息后面添加额外的元信息， 这些元信息可能是随着消息主体的发送动态生成的， 比如消息的完整性校验、 消息的数字签名、 或者
-## 消息经过处理之后的最终状态等。 
+## 经过 ``Transfer-Encoding: chunked`` 编码的消息， 允许在尾部携带 trailers 。 Trailers 实际上是一个或者多个 HTTP 响应头
+## 字 段，允许发送方在消息后面添加额外的元信息， 这些元信息可能是随着消息主体的发送动态生成的， 比如消息的完整性校验、 消息的数字签 
+## 名、或者消息经过处理之后的最终状态等。 
 ## 
-## 请注意： 只有客户端的请求头部 ``TE`` 设置了 trailers 后 ( ``TE: trailers`` ) ， 服务器端才能在响应里挂载 Trailer 。 
+## 请注意： 只有客户端的请求头部 ``TE`` 设置了 trailers 后 ( ``TE: trailers`` ) ， 服务器端才能在响应里挂载 trailers 。 
 ## 
-## 一个挂载 Trailer 的例子： 
+## 一个挂载 trailers 的例子： 
 ## 
 ## ..code-block:http
 ## 
@@ -66,12 +66,12 @@ type
   HttpMetadata* = object ## 元数据对象。 
     case kind*: HttpMetadataKind
     of HttpMetadataKind.ChunkTrailer:
-      trailer*: seq[string] ## Trailer 集合， 每一项表示一个头字段。出于性能考虑， ``HttpMetadata`` 未对 ``trailer`` 
-                            ## 的内容做进一步解析， 而是使用字符串序列保存。 您可以使用 chunk 模块的工具函数将字符串序列转换成 
-                            ## ``HeaderFileds`` 以访问 trailer 的内容。  
+      trailers*: seq[string] ## Trailers 集合， 每一项表示一个头字段。出于性能考虑， ``HttpMetadata`` 未对 ``trailers`` 
+                             ## 的内容做进一步解析， 而是使用字符串序列保存。 您可以使用 chunk 模块的 ``parseChunkTrailers`` 
+                             ## 将字符串序列转换成 ``HeaderFileds`` 以访问 trailers 的内容。  
     of HttpMetadataKind.ChunkExtensions:
-      extensions*: string   ## Chunk Extensions 。出于性能考虑， ``HttpMetadata`` 未对 ``extensions`` 
-                            ## 的内容做进一步解析， 而是使用字符串保存。 您可以使用 chunk 模块的工具函数将字符串序列转换成 ``?``
-                            ## 以访问 extensions 的内容。  
+      extensions*: string    ## Chunk Extensions 。出于性能考虑， ``HttpMetadata`` 未对 ``extensions`` 
+                             ## 的内容做进一步解析， 而是使用字符串保存。 您可以使用 chunk 模块的 ``parseChunkExtensions``
+                             ## 将字符串序列转换成 ``(name, value)`` 序列以访问 extensions 的内容。  
     of HttpMetadataKind.None:
       discard 

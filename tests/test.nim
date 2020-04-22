@@ -49,3 +49,7 @@ import asyncdispatch
 #   ##echo repr x
 #   x.shallow()
 #   x
+
+echo $('0'.ord())
+echo $('a'.ord())
+echo $('A'.ord())

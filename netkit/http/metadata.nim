@@ -36,10 +36,10 @@
 ##   0\r\n 
 ##   \r\n
 ## 
-## Trailer
-## -------
+## Trailers
+## --------
 ## 
-## Messages encoded with ``Transfer-Encoding: chunked`` are allowed to carry Trailer at the end. Trailer is
+## Messages encoded with ``Transfer-Encoding: chunked`` are allowed to carry trailers at the end. Trailer is
 ## actually one or more HTTP response header fields, allowing the sender to add additional meta-information 
 ## at the end of a message. These meta-information may be dynamically generated with the sending of the message 
 ## body, such as message integrity check, message Digital signature, or the final state of the message after 
@@ -48,7 +48,7 @@
 ## Note: Only when the client sets trailers in the request header ``TE`` (`` TE: trailers``),  the server can
 ## carry Trailer in the response.
 ## 
-## An example of carring Trailer:
+## An example of carring trailers:
 ## 
 ## ..code-block:http
 ## 
@@ -63,16 +63,22 @@
 ##   \r\n
 
 type
-  HttpMetadataKind* {.pure.} = enum ## Kinds of metadata.
-    None,                           ## Indicates no metadata.
-    ChunkTrailer,                   ## Indicates that the metadata is Trailer.
-    ChunkExtensions                 ## Indicates that the metadata is chunk-extensions.
+  HttpMetadataKind* {.pure.} = enum  ## Kinds of metadata.
+    None,                            ## Indicates no metadata.
+    ChunkTrailers,                   ## Indicates that the metadata is trailers.
+    ChunkExtensions                  ## Indicates that the metadata is chunk-extensions.
 
-  HttpMetadata* = object
+  HttpMetadata* = object ## Metadata object.
     case kind*: HttpMetadataKind
-    of HttpMetadataKind.ChunkTrailer:
-      trailer*: seq[string]
+    of HttpMetadataKind.ChunkTrailers:
+      trailes*: seq[string] ## Trailer collection. For performance reasons, ``HttpMetadata`` does not further 
+                            ## parse the content of ``trailers``, but uses a string sequence to save them. You 
+                            ## can use ``parseChunkTrailers`` of the chunk module to convert the sequence of 
+                            ## strings into ``HeaderFileds`` to access every items.
     of HttpMetadataKind.ChunkExtensions:
-      extensions*: string
+      extensions*: string   ## Chunk Extensions. For performance reasons, ``HttpMetadata`` does not further 
+                            ## parse the content of ``extensions``, but uses a string to save them. You can use 
+                            ## ``parseChunkExtensions`` of the chunk module to convert the string into ``(name, value)`` 
+                            ## pair array to access every items.
     of HttpMetadataKind.None:
       discard 

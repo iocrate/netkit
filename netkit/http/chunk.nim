@@ -4,9 +4,92 @@
 #    See the file "LICENSE", included in this
 #    destribution, for details about the copyright.
 
-## According to the HTTP protocol, a message whose header fields have ``Transfer-Encoding: chunked`` will be encoded, 
-## so that the data is sent chunk by chunk as a stream. These data chunk require to be encoded and decoded. This module 
-## provides tools for dealing with this type of encodings and decoding.
+## HTTP 1.1 protocol specification supports chunked encoding. By adding a ``Transfer-Encoding: chunked`` 
+## field to the message header, the message body can be sent chunk by chunk without determining the total
+## size of the message body. Each data chunk needs to be encoded and decoded when it is sent and received.
+## This module provides tools for dealing with these types of encodings and decodings.
+## 
+## Data Chunk and Data Tail
+## ------------------------
+## 
+## The entire message body was split into zero or more data chunks and one data tail.
+## 
+## Each data chunk include chunk-size (specify the size of the data chunk), chunk-extensions (optional, 
+## specify the extensions), and chunk-data (the actual data). Generally, such a data chunk is represented 
+## as a header and a body. The header include chunk-size and chunk-extensions, and the body is the chunk-data. 
+## 
+## The last part of the message body is the data tail, indicating the end of the message body. The data tail
+## supports carring trailers to allow the sender to add additional meta-information.
+## 
+## HTTP Message Example
+## ---------------------
+## 
+## The following example is a chunked HTTP message body:
+## 
+## ..code-block:http
+## 
+##   5;\r\n                                      # chunk-size and chunk-extensions
+##   Hello\r\n                                   # chunk-data
+##   9; language=en; city=London\r\n             # chunk-size and chunk-extensions
+##   Developer\r\n                               # chunk-data
+##   0\r\n                                       # data tail ----------------------
+##   Expires: Wed, 21 Oct 2015 07:28:00 GMT\r\n  # trailer
+##   \r\n                                        # --------------------------------
+## 
+## Usage - encoding
+## -----------------------------------------
+## 
+## To implement the HTTP message body shown in the above example, you can use the following methods:
+## 
+## ..code-block:http
+## 
+##   var message = ""
+## 
+##   message.add(encodeChunk("Hello"))
+##   message.add(encodeChunk("Developer", {
+##     "language": "en",
+##     "city": "London"
+##   }))
+##   message.add(encodeChunkEnd(initHeaderFields({
+##     "Expires": "Wed, 21 Oct 2015 07:28:00 GM"
+##   })))
+## 
+## This example demonstrates the "string version of encodeChunk", this module also provides other efficient 
+## encoding functions, you can view the specific description.
+## 
+## Usage - parsing
+## ----------------------------
+## 
+## To parse a character sequence that consisting of chunk-size and chunk-extensions: 
+## 
+## ..code-block::nim
+## 
+##   let header = parseChunkHeader("1A; a1=v1; a2=v2") 
+##   assert header.size = 26
+##   assert header.extensions = "; a1=v1; a2=v2"
+## 
+## To parse a character sequence related to chunk-extensions ： 
+## 
+## ..code-block::nim
+## 
+##   let extensions = parseChunkExtensions("; a1=v1; a2=v2") 
+##   assert extensions[0].name = "a1"
+##   assert extensions[0].value = "v1"
+##   assert extensions[1].name = "a1"
+##   assert extensions[1].value = "v1"
+## 
+## To parse a group of character sequence related to tailers： 
+## 
+## ..code-block::nim
+## 
+##   let tailers = parseChunkHeader(@["Expires: Wed, 21 Oct 2015 07:28:00 GMT"]) 
+##   assert tailers["Expires"][0] == "Wed, 21 Oct 2015 07:28:00 GMT"
+## 
+## About \n and \L 
+## -------------------
+## 
+## Since ``\n`` cannot be represented as a character (but a string) in Nim language, we use 
+## ``'\L'`` to represent a newline character. 
 
 import strutils
 import strtabs
@@ -15,53 +98,133 @@ import netkit/http/base
 import netkit/http/constants as http_constants
 
 type
-  ChunkHeader* = object ## Represents the size portion of the encoded data via ``Transfer-Encoding: chunked``.
-    size*: Natural
-    extensions*: string
+  ChunkHeader* = object ## Represents the header of a data chunk.
+    size*: Natural      ## Size of the data chunk.
+    extensions*: string ## Extensions of the data chunk.
 
-proc parseChunkHeader*(s: string): ChunkHeader = 
+template seek(r: string, v: string, start: Natural, stop: Natural) = 
+  if stop > start:
+    var s = v[start..stop-1]
+    s.removePrefix(WSP)
+    s.removeSuffix(WSP)
+    if s.len > 0:
+      r = move s
+  start = stop + 1
+
+proc parseChunkHeader*(s: string): ChunkHeader {.raises: [ValueError].} = 
+  ## Converts a string representing size and extensions into a ``ChunkHeader``. 
   ##
-  ## ``"1C" => (28, "")``  
-  ## ``"1C; name=value" => (28, "name=value")``
+  ## Examples:
+  ## 
+  ## ..code-block::nim
+  ## 
+  ##   parseChunkHeader("64") # => (100, "")
+  ##   parseChunkHeader("64; name=value") # => (100, "name=value")
   result.size = 0
   var i = 0
-  while true:
+  while i < s.len:
     case s[i]
     of '0'..'9':
-      result.size = result.size shl 4 or (s[i].ord() - '0'.ord())
+      result.size = result.size shl 4 or (s[i].ord() - 48) # '0'.ord()
     of 'a'..'f':
-      result.size = result.size shl 4 or (s[i].ord() - 'a'.ord() + 10)
+      result.size = result.size shl 4 or (s[i].ord() - 87) # 'a'.ord() - 10
     of 'A'..'F':
-      result.size = result.size shl 4 or (s[i].ord() - 'A'.ord() + 10)
+      result.size = result.size shl 4 or (s[i].ord() - 55) # 'A'.ord() - 10
     of ';':
       result.extensions = s[i..^1]
       break
     else:
-      raise newException(ValueError, "Bad chunked data")
+      raise newException(ValueError, "Invalid chunked data")
     i.inc()
 
-proc parseChunkTrailer*(lines: openarray[string]): HeaderFields = 
+proc parseChunkTrailers*(ts: openarray[string]): HeaderFields = 
+  ## Converts a string array representing Trailer into a ``HeaderFields``. 
   ## 
+  ## Examples: 
   ## 
-  ## ``"Expires: Wed, 21 Oct 2015 07:28:00 GMT" => ("Expires", "Wed, 21 Oct 2015 07:28:00 GMT")``  
+  ## ..code-block::nim
+  ## 
+  ##   let fields = parseChunkTrailers(@["Expires: Wed, 21 Oct 2015 07:28:00 GMT"]) 
+  ##              # => ("Expires", "Wed, 21 Oct 2015 07:28:00 GMT")  
+  ##   assert fields["Expires"][0] == "Wed, 21 Oct 2015 07:28:00 GMT"
   discard
   result = initHeaderFields()
-  for line in lines:
-    var i = 0
-    for c in line:
-      if c == COLON:
+  for s in ts:
+    var start = 0
+    var stop = 0
+    var key: string
+    var value: string
+    while stop < s.len:
+      if s[stop] == ':':
+        key.seek(s, start, stop) 
         break
-      i.inc()
-    if i > 0:
-      result.add(line[0..i-1], line[i+1..^1])
+      stop.inc()
+    stop = s.len
+    value.seek(s, start, stop) 
+    if key.len > 0 or value.len > 0:
+      result.add(key, value)
 
-proc parseChunkExtensions*(s: string): StringTableRef = 
+proc parseChunkExtensions*(s: string): seq[tuple[name: string, value: string]] = 
+  ## Converts a string representing extensions into a ``(name, value)`` pair seq. 
   ## 
+  ## Examples: 
   ## 
-  ## ``";a1=v1;a2=v2" => ("a1", "v1"), ("a2", "v2")``  
-  ## ``";a1;a2=v2" => ("a1", ""  ), ("a2", "v2")``  
-  discard
-  ## TODO: implement it
+  ## ..code-block::nim
+  ## 
+  ##   let extensions = parseChunkExtensions(";a1=v1;a2=v2") 
+  ##                  # => ("a1", "v1"), ("a2", "v2")
+  ##   assert extensions[0].name == "a1"
+  ##   assert extensions[0].value == "v1"
+  ##   assert extensions[1].name == "a2"
+  ##   assert extensions[1].value == "v2"
+  var start = 0
+  var stop = 0
+  var flag = '\x0'
+  var flagQuote = '\x0'
+  var flagPair = '\x0'
+  var key: string
+  var value: string
+  while stop < s.len:
+    case flag
+    of '"':
+      case flagQuote
+      of '\\':
+        flagQuote = '\x0'
+      else:
+        case value[stop] 
+        of '\\':
+          flagQuote = '\\'
+        of '"':
+          flag = '\x0'
+        else:
+          discard
+    else:
+      case s[stop] 
+      of '"':
+        flag = '"'
+      of '=':
+        case flagPair
+        of '=':
+          discard # traits as a value
+        else:
+          flagPair = '='
+          key.seek(s, start, stop) 
+      of ';':
+        case flagPair
+        of '=':
+          value.seek(s, start, stop) 
+          flagPair = '\x0'
+        else:
+          key.seek(s, start, stop) 
+        if key.len > 0 or value.len > 0:
+          result.add((key, value))
+          key = ""
+          value = ""
+      else:
+        discard
+    stop.inc()
+  if key.len > 0 or value.len > 0:
+    result.add((key, value))
 
 proc toHex(x: Natural): string = 
   ## 请注意， 当前 ``Natural`` 最大值是 ``high(int64)`` 。 当 ``Natural`` 最大值超过 ``high(int64)``
