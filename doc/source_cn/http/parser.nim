@@ -10,7 +10,7 @@ import netkit/buffer/circular
 import netkit/http/constants as http_constants
 import netkit/http/base
 import netkit/http/exception
-import netkit/http/codecs/chunk
+import netkit/http/chunk
 
 type
   HttpParser* = object ## HTTP 包解析器。 

@@ -81,7 +81,7 @@ import netkit/buffer/circular
 import netkit/http/base
 import netkit/http/exception 
 import netkit/http/parser
-import netkit/http/codecs/chunk 
+import netkit/http/chunk 
 
 type
   HttpConnection* = ref object ## 表示客户端与服务器之间的一个活跃的通信连接。 这个对象不由用户代码直接构造。 

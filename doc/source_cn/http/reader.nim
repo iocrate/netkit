@@ -17,8 +17,8 @@ import netkit/http/base
 import netkit/http/connection
 import netkit/http/constants as http_constants
 import netkit/http/exception
-import netkit/http/codecs/chunk 
-import netkit/http/codecs/metadata 
+import netkit/http/chunk 
+import netkit/http/metadata 
 
 type
   HttpReader* = ref object of RootObj ##
