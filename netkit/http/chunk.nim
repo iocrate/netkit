@@ -102,6 +102,10 @@ type
     size*: Natural      ## Size of the data chunk.
     extensions*: string ## Extensions of the data chunk.
 
+  ChunkExtension* = tuple ## Represents a chunk-extension.
+    name: string          ## The name of this extension.
+    value: string         ## The value of this extension
+
 template seek(r: string, v: string, start: Natural, stop: Natural) = 
   if stop > start:
     var s = v[start..stop-1]
@@ -136,33 +140,6 @@ proc parseChunkHeader*(s: string): ChunkHeader {.raises: [ValueError].} =
     else:
       raise newException(ValueError, "Invalid chunked data")
     i.inc()
-
-proc parseChunkTrailers*(ts: openarray[string]): HeaderFields = 
-  ## Converts a string array representing Trailer into a ``HeaderFields``. 
-  ## 
-  ## Examples: 
-  ## 
-  ## ..code-block::nim
-  ## 
-  ##   let fields = parseChunkTrailers(@["Expires: Wed, 21 Oct 2015 07:28:00 GMT"]) 
-  ##              # => ("Expires", "Wed, 21 Oct 2015 07:28:00 GMT")  
-  ##   assert fields["Expires"][0] == "Wed, 21 Oct 2015 07:28:00 GMT"
-  discard
-  result = initHeaderFields()
-  for s in ts:
-    var start = 0
-    var stop = 0
-    var key: string
-    var value: string
-    while stop < s.len:
-      if s[stop] == ':':
-        key.seek(s, start, stop) 
-        break
-      stop.inc()
-    stop = s.len
-    value.seek(s, start, stop) 
-    if key.len > 0 or value.len > 0:
-      result.add(key, value)
 
 proc parseChunkExtensions*(s: string): seq[tuple[name: string, value: string]] = 
   ## Converts a string representing extensions into a ``(name, value)`` pair seq. 
@@ -226,6 +203,33 @@ proc parseChunkExtensions*(s: string): seq[tuple[name: string, value: string]] =
   if key.len > 0 or value.len > 0:
     result.add((key, value))
 
+proc parseChunkTrailers*(ts: openarray[string]): HeaderFields = 
+  ## Converts a string array representing Trailer into a ``HeaderFields``. 
+  ## 
+  ## Examples: 
+  ## 
+  ## ..code-block::nim
+  ## 
+  ##   let fields = parseChunkTrailers(@["Expires: Wed, 21 Oct 2015 07:28:00 GMT"]) 
+  ##              # => ("Expires", "Wed, 21 Oct 2015 07:28:00 GMT")  
+  ##   assert fields["Expires"][0] == "Wed, 21 Oct 2015 07:28:00 GMT"
+  discard
+  result = initHeaderFields()
+  for s in ts:
+    var start = 0
+    var stop = 0
+    var key: string
+    var value: string
+    while stop < s.len:
+      if s[stop] == ':':
+        key.seek(s, start, stop) 
+        break
+      stop.inc()
+    stop = s.len
+    value.seek(s, start, stop) 
+    if key.len > 0 or value.len > 0:
+      result.add(key, value)
+
 proc toHex(x: Natural): string = 
   ## 请注意， 当前 ``Natural`` 最大值是 ``high(int64)`` 。 当 ``Natural`` 最大值超过 ``high(int64)``
   ## 的时候， 该函数将不再准确。 
@@ -246,8 +250,6 @@ proc toHex(x: Natural): string =
     result.add(s[i])
 
 proc toChunkExtensions(args: openarray[tuple[name: string, value: string]]): string = 
-  ## 
-  ## 
   ## ``("a1", "v1"), ("a2", "v2") => ";a1=v1;a2=v2"``  
   ## ``("a1", ""  ), ("a2", "v2") => ";a1;a2=v2"``
   for arg in args:
@@ -286,14 +288,29 @@ proc encodeChunk*(
   dest: pointer, 
   dsize: Natural
 ) = 
+  ## Uses ``Transfer-Encoding: chunked`` to encode a data chunk. ``source`` specifies the actual data, and ``ssize``
+  ## specifies the length of ``source``. The encoded data is copied to `` dest``, and ``dsize`` specifies the length 
+  ## of ``dest``. 
   ## 
+  ## Note that ``dsize`` must be at least ``21 + extensions.len`` larger than ``ssize``, otherwise, there 
+  ## will not be enough space to store the encoded data, causing an exception. 
   ## 
-  ## ..code-block::bnf
+  ## This function uses two buffers ``source`` and ``dest`` to handle the encoding process. It is very useful if you 
+  ## need to process a large amount of data frequently and pay attention to the performance consumption during 
+  ## processing. By saving references to the two buffers, you don't need to create additional storage space to save 
+  ## the encoded data.
   ## 
-  ##   chunk-ext = *( ";" chunk-ext-name [ "=" chunk-ext-val ] )
+  ## If you do not pay attention to the performance consumption during processing, or the amount of data is not large, 
+  ## it is recommended to use the following string version of ``encodeChunk``.
   ## 
-  ## ``"abc" => "3\r\nabc\r\n"``  
-  ## ``"abc", ";n1=v1;n2=v2" => "3;n1=v1;n2=v2\r\nabc\r\n"``
+  ## Examples:
+  ## 
+  ## ..code-block::nim
+  ## 
+  ##   let source = "Developer"
+  ##   let dest = newString(source.len + 21)
+  ##   encodeChunk(source.cstring, source.len, dest.cstring, dest.len)
+  ##   assert dest == "9\r\LDeveloper\r\L"
   if dsize - ssize - 4 < LimitChunkSizeLen:
     raise newException(OverflowError, "Dest size is not large enough")
   let chunkSizeStr = ssize.toHex()  
@@ -307,14 +324,30 @@ proc encodeChunk*(
   dsize: Natural, 
   extensions = openarray[tuple[name: string, value: string]]
 ) = 
+  ## Uses ``Transfer-Encoding: chunked`` to encode a data chunk. ``source`` specifies the actual data, and ``ssize``
+  ## specifies the length of ``source``. The encoded data is copied to `` dest``, and ``dsize`` specifies the length 
+  ## of ``dest``. ``extensions`` specifies the chunk-extensions. 
   ## 
+  ## Note that ``dsize`` must be at least ``21 + extensions.len`` larger than ``ssize``, otherwise, there 
+  ## will not be enough space to store the encoded data, causing an exception. 
   ## 
-  ## ..code-block::bnf
+  ## This function uses two buffers ``source`` and ``dest`` to handle the encoding process. It is very useful if you 
+  ## need to process a large amount of data frequently and pay attention to the performance consumption during 
+  ## processing. By saving references to the two buffers, you don't need to create additional storage space to save 
+  ## the encoded data.
   ## 
-  ##   chunk-ext = *( ";" chunk-ext-name [ "=" chunk-ext-val ] )
+  ## If you do not pay attention to the performance consumption during processing, or the amount of data is not large, 
+  ## it is recommended to use the following string version of ``encodeChunk``.
   ## 
-  ## ``"abc" => "3\r\nabc\r\n"``  
-  ## ``"abc", ";n1=v1;n2=v2" => "3;n1=v1;n2=v2\r\nabc\r\n"``
+  ## Examples:
+  ## 
+  ## ..code-block::nim
+  ## 
+  ##   let source = "Developer"
+  ##   let extensions = "language=en; city=London"
+  ##   let dest = newString(source.len + 21 + extensions.len)
+  ##   encodeChunk(source.cstring, source.len, dest.cstring, dest.len, extensions)
+  ##   assert dest == "9; language=en; city=London\r\LDeveloper\r\L"
   let extensionsStr = extensions.toChunkExtensions()
   if dsize - ssize - extensionsStr.len - 4 < LimitChunkSizeLen:
     raise newException(OverflowError, "Dest size is not large enough")
@@ -322,29 +355,38 @@ proc encodeChunk*(
   assert chunkSizeStr.len <= LimitChunkSizeLen
   encodeChunkImpl(source, ssize, dest, dsize, extensionsStr, chunkSizeStr)
 
-proc encodeChunk*(source: string): string = 
+proc encodeChunk*(source: string): string =
+  ## Returns a data chunk encoded with ``Transfer-Encoding: chunked``. ``source`` specifies the actual data. 
+  ## This one has no metadata.
   ## 
+  ## This is the string version of ``encodeChunk``, which is more convenient and simple to use.
   ## 
-  ## ..code-block::bnf
+  ## Examples:
   ## 
-  ##   chunk-ext = *( ";" chunk-ext-name [ "=" chunk-ext-val ] )
+  ## ..code-block::nim
   ## 
-  ## ``"abc" => "3\r\nabc\r\n"``
-  ## ``"abc", ";n1=v1;n2=v2" => "3;n1=v1;n2=v2\r\nabc\r\n"``
+  ##   let out = encodeChunk("Developer")
+  ##   assert out == "9\r\LDeveloper\r\L"
   let chunkSizeStr = source.len.toHex()  
   assert chunkSizeStr.len <= LimitChunkSizeLen
   result = newString(chunkSizeStr.len + source.len + 4)
   encodeChunkImpl(source.cstring, source.len, result.cstring, result.len, void, chunkSizeStr)
 
 proc encodeChunk*(source: string, extensions: openarray[tuple[name: string, value: string]]): string = 
+  ## Returns a data chunk encoded with ``Transfer-Encoding: chunked``. ``source`` specifies the actual data, 
+  ## ``extensions`` specifies the chunk-extensions. 
   ## 
+  ## This is the string version of ``encodeChunk``, which is more convenient and simple to use.
   ## 
-  ## ..code-block::bnf
+  ## Examples:
   ## 
-  ##   chunk-ext = *( ";" chunk-ext-name [ "=" chunk-ext-val ] )
+  ## ..code-block::nim
   ## 
-  ## ``"abc" => "3\r\nabc\r\n"``
-  ## ``"abc", ";n1=v1;n2=v2" => "3;n1=v1;n2=v2\r\nabc\r\n"``
+  ##   let out = encodeChunk("Developer", {
+  ##     "language": "en",
+  ##     "city": "London"
+  ##   })
+  ##   assert out == "9; language=en; city=London\r\LDeveloper\r\L"
   let extensionsStr = extensions.toChunkExtensions()
   let chunkSizeStr = source.len.toHex()  
   assert chunkSizeStr.len <= LimitChunkSizeLen
@@ -352,17 +394,27 @@ proc encodeChunk*(source: string, extensions: openarray[tuple[name: string, valu
   encodeChunkImpl(source.cstring, source.len, result.cstring, result.len, extensionsStr, chunkSizeStr)
 
 proc encodeChunkEnd*(): string = 
+  ## Returns a data tail encoded with ``Transfer-Encoding: chunked``. This one has no metadata.
   ## 
+  ## Examples: 
   ## 
-  ## ``=> "0\r\n\r\n"``
-  ## ``("n1", "v1"), ("n2", "v2") => "0\r\nn1: v1\r\nn2: v2\r\n\r\n"``  
+  ## ..code-block:nim
+  ## 
+  ##   let out = encodeChunkEnd()
+  ##   assert out == "0\r\L\r\L"
   result = "0\C\L\C\L"
 
 proc encodeChunkEnd*(trailers: openarray[tuple[name: string, value: string]]): string = 
+  ## Returns a data tail encoded with ``Transfer-Encoding: chunked``. ``trailers`` specifies the carried metadata。
   ## 
+  ## Examples: 
   ## 
-  ## ``=> "0\r\n\r\n"``
-  ## ``("n1", "v1"), ("n2", "v2") => "0\r\nn1: v1\r\nn2: v2\r\n\r\n"``  
+  ## ..code-block:nim
+  ## 
+  ##   let out = encodeChunkEnd(initHeaderFields({
+  ##     "Expires": "Wed, 21 Oct 2015 07:28:00 GM"
+  ##   }))
+  ##   assert out == "0\r\LExpires: Wed, 21 Oct 2015 07:28:00 GM\r\L\r\L"
   result.add("0\C\L")
   for trailer in trailers:
     result.add(trailer.name)
