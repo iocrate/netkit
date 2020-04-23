@@ -149,7 +149,8 @@
 ##    返回结果不为空时， 则每个项表示其中一个值， 以 ``seq[(key, value)]`` 表示， 该 seq 的第一项的 ``key`` 表示值本身， 其他项表示
 ##    值的参数。 
 ## 
-##    注意：使用时， 您必须确定该字段确实是多行表示。 如果您使用该函数处理类似 ``Date`` 这样的单行字段， 有可能会得到错误的结果。  
+##    注意：使用时， 您必须确定该字段确实是多行表示。 如果您使用该函数处理类似 ``Date`` 这样的单行字段， 有可能会得到错误的结果。 因为 ``Date``
+##         将 ``,`` 作为值的一部分， 比如 ``Date: Thu, 23 Apr 2020 07:41:15 GMT``  
 ## 
 ## 5. ``Set-Cookie`` 是一个特例， 使用多行表示， 表示多个值
 ## 
@@ -170,14 +171,21 @@
 ## 
 ##    返回结果不为空时， 则每个项表示其中一行， 每行以 ``(key, value)`` 表示名值对。  
 ## 
-##    注意：使用时， 您必须确定该字段确实是单行表示。 如果您使用该函数处理类似 ``Date`` 这样的单行字段， 有可能会得到错误的结果。   
+##    注意：使用时， 您必须确定该字段确实是多行表示。 如果您使用该函数处理类似 ``Date`` 这样的单行字段， 有可能会得到错误的结果。 因为 ``Date``
+##         将 ``,`` 作为值的一部分， 比如 ``Date: Thu, 23 Apr 2020 07:41:15 GMT``    
 
 import strutils
 import netkit/http/base
 import netkit/http/exception
 
-proc parseSingleRule*(fields: HeaderFields, name: string): seq[tuple[key: string, value: string]] = discard
+proc parseSingleRule*(fields: HeaderFields, name: string): seq[tuple[key: string, value: string]] {.raises: [ValueError].} = discard
+  ## 使用 “单行值规则” 解析名为 ``name`` 的字段值， 返回一组 ``(key, value)`` pair 。 
   ## 
+  ## 注意： 您必须确定该字段确实是单行表示。 如果您使用该函数处理类似 ``Accept`` 这样的多行字段， 有可能会丢失值； 如果发现 ``fields`` 中该字
+  ## 段超过了一个值， 将抛出 ``ValueError`` 异常。  
 
 proc parsMultiRule*(fields: HeaderFields, name: string): seq[seq[tuple[key: string, value: string]]] = discard 
+  ## 使用 “多行值规则” 解析名为 ``name`` 的字段值， 返回一组 ``seq(key, value)`` pair 。 
   ## 
+  ## 注意： 您必须确定该字段确实是单行表示。 如果您使用该函数处理类似 ``Date`` 这样的单行字段， 有可能会得到错误的结果。 因为 ``Date``
+  ## 将 ``,`` 作为值的一部分， 比如 ``Date: Thu, 23 Apr 2020 07:41:15 GMT`` 。   
