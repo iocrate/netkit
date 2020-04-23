@@ -27,15 +27,11 @@ proc initCircularBuffer*(): CircularBuffer =
   ## Initializes an ``CircularBuffer`` object. 
   discard
 
-proc initMarkableCircularBuffer*(): MarkableCircularBuffer =
-  ## Initializes an ``MarkableCircularBuffer`` object. 
-  discard
-
-proc capacity*(b: CircularBuffer): Natural = 
+proc capacity*(b: CircularBuffer): Natural {.inline.} = 
   ## Gets the capacity of the buffer.
   BufferSize
 
-proc len*(b: CircularBuffer): Natural = 
+proc len*(b: CircularBuffer): Natural {.inline.} = 
   ## Gets the length of the data currently stored in the buffer.
   b.endMirrorPos - b.startPos
 
@@ -155,6 +151,10 @@ iterator items*(b: CircularBuffer): char =
   while i < b.endMirrorPos:
     yield b.value[i mod BufferSize].chr
     i.inc()
+
+proc initMarkableCircularBuffer*(): MarkableCircularBuffer =
+  ## Initializes an ``MarkableCircularBuffer`` object. 
+  discard
       
 proc del*(b: var MarkableCircularBuffer, size: Natural): Natural = 
   ## Deletes up to ``size`` of the stored data, and returns the actual number deleted.
@@ -235,7 +235,7 @@ proc markAll*(b: var MarkableCircularBuffer) =
   ## continue from the position where it last ended.
   b.markedPos = b.endMirrorPos
 
-proc lenMarks*(b: MarkableCircularBuffer): Natural = 
+proc lenMarks*(b: MarkableCircularBuffer): Natural {.inline.} = 
   ## Gets the length of the stored data that has been marked.
   b.markedPos - b.startPos
 

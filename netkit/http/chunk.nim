@@ -112,7 +112,7 @@ template seek(r: string, v: string, start: Natural, stop: Natural) =
     s.removePrefix(WSP)
     s.removeSuffix(WSP)
     if s.len > 0:
-      r = move s
+      r = move(s)
   start = stop + 1
 
 proc parseChunkHeader*(s: string): ChunkHeader {.raises: [ValueError].} = 
@@ -141,7 +141,7 @@ proc parseChunkHeader*(s: string): ChunkHeader {.raises: [ValueError].} =
       raise newException(ValueError, "Invalid chunked data")
     i.inc()
 
-proc parseChunkExtensions*(s: string): seq[tuple[name: string, value: string]] = 
+proc parseChunkExtensions*(s: string): seq[ChunkExtension] = 
   ## Converts a string representing extensions into a ``(name, value)`` pair seq. 
   ## 
   ## Examples: 
@@ -249,7 +249,7 @@ proc toHex(x: Natural): string =
   for i in 16-m..15:
     result.add(s[i])
 
-proc toChunkExtensions(args: openarray[tuple[name: string, value: string]]): string = 
+proc toChunkExtensions(args: openarray[ChunkExtension]): string = 
   ## ``("a1", "v1"), ("a2", "v2") => ";a1=v1;a2=v2"``  
   ## ``("a1", ""  ), ("a2", "v2") => ";a1;a2=v2"``
   for arg in args:
@@ -322,7 +322,7 @@ proc encodeChunk*(
   ssize: Natural, 
   dest: pointer, 
   dsize: Natural, 
-  extensions = openarray[tuple[name: string, value: string]]
+  extensions = openarray[ChunkExtension]
 ) = 
   ## Uses ``Transfer-Encoding: chunked`` to encode a data chunk. ``source`` specifies the actual data, and ``ssize``
   ## specifies the length of ``source``. The encoded data is copied to `` dest``, and ``dsize`` specifies the length 
@@ -372,7 +372,7 @@ proc encodeChunk*(source: string): string =
   result = newString(chunkSizeStr.len + source.len + 4)
   encodeChunkImpl(source.cstring, source.len, result.cstring, result.len, void, chunkSizeStr)
 
-proc encodeChunk*(source: string, extensions: openarray[tuple[name: string, value: string]]): string = 
+proc encodeChunk*(source: string, extensions: openarray[ChunkExtension]): string = 
   ## Returns a data chunk encoded with ``Transfer-Encoding: chunked``. ``source`` specifies the actual data, 
   ## ``extensions`` specifies the chunk-extensions. 
   ## 
@@ -404,7 +404,7 @@ proc encodeChunkEnd*(): string =
   ##   assert out == "0\r\L\r\L"
   result = "0\C\L\C\L"
 
-proc encodeChunkEnd*(trailers: openarray[tuple[name: string, value: string]]): string = 
+proc encodeChunkEnd*(trailers: HeaderFields): string = 
   ## Returns a data tail encoded with ``Transfer-Encoding: chunked``. ``trailers`` specifies the carried metadata。
   ## 
   ## Examples: 
@@ -416,10 +416,6 @@ proc encodeChunkEnd*(trailers: openarray[tuple[name: string, value: string]]): s
   ##   }))
   ##   assert out == "0\r\LExpires: Wed, 21 Oct 2015 07:28:00 GM\r\L\r\L"
   result.add("0\C\L")
-  for trailer in trailers:
-    result.add(trailer.name)
-    result.add(": ")
-    result.add(trailer.value)
-    result.add("\C\L")
+  result.add($trailers)
   result.add("\C\L")
   

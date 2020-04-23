@@ -68,7 +68,7 @@ type
     ChunkTrailers,                   ## Indicates that the metadata is trailers.
     ChunkExtensions                  ## Indicates that the metadata is chunk-extensions.
 
-  HttpMetadata* = object ## Metadata object.
+  HttpMetadata* = object     ## Metadata object.
     case kind*: HttpMetadataKind
     of HttpMetadataKind.ChunkTrailers:
       trailers*: seq[string] ## Trailer collection. For performance reasons, ``HttpMetadata`` does not further 

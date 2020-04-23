@@ -14,7 +14,7 @@ discard """
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-import unittest
+# import unittest
 import asyncdispatch
 # import netkit/http/base
 
@@ -37,19 +37,21 @@ import asyncdispatch
 
 # f: futDemo()
 
-# proc f1(a: uint) =
-#   discard
+type
+  Opt = object
+    x: pointer
+    y: int
 
-# var a = "abc"
-# var b = a
+  Test = ref object
+    opt: Opt
 
-# var x = "efg"
+proc `=destroy`(a: var Opt) = 
+  echo "=destroy"
 
-# template f(): string =
-#   ##echo repr x
-#   x.shallow()
-#   x
+proc g() =
+  var t: Test = Test()
 
-echo $('0'.ord())
-echo $('a'.ord())
-echo $('A'.ord())
+g()
+
+GC_fullCollect()
+
