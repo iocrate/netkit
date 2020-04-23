@@ -4,7 +4,60 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
+## This module implements an incremental HTTP parser. This parser supports parsing both request 
+## messages and response messages. 
 ## 
+## This parser is incremental, meaning that the message can be parsed continuously regardless 
+## of whether the message is delivered at once or divided into multiple parts. This makes the 
+## parser particularly suitable for complex IO transfer environments.
+## 
+## Usage - parsing message header
+## ------------------------------
+## 
+## ..code-block::nim
+## 
+##   var parser = initHttpParser()
+##   var buffer = initMarkableCircularBuffer()
+##   var header = HttpHeader(kind: HttpHeaderKind.Request)
+##   var finished = false
+## 
+##   while not finished:
+##     put data to buffer ...
+##     finished = parser.parseHttpHeader(buffer, header)
+##     
+## Usage - parsing chunked header
+## ------------------------------
+## 
+## Refer to **chunk** module and **metadata** module for more information about ``Transfer-Encoding: chunked`` 
+## and chunked encoding. 
+## 
+## ..code-block::nim
+## 
+##   var parser = initHttpParser()
+##   var buffer = initMarkableCircularBuffer()
+##   var header: ChunkHeader
+##   var finished = false
+## 
+##   while not finished:
+##     put data to buffer ...
+##     finished = parser.parseChunkHeader(buffer, header)
+## 
+## Usage - parsing chunked tail
+## ------------------------------
+## 
+## Refer to **chunk** module and **metadata** module for more information about ``Transfer-Encoding: chunked`` 
+## and chunked encoding. 
+## 
+## ..code-block::nim
+## 
+##   var parser = initHttpParser()
+##   var buffer = initMarkableCircularBuffer()
+##   var trailers: seq[string]
+##   var finished = false
+## 
+##   while not finished:
+##     put data to buffer ...
+##     finished = parser.parseChunkEnd(buffer, trailers)
 
 import uri
 import strutils
@@ -15,7 +68,7 @@ import netkit/http/exception
 import netkit/http/chunk
 
 type
-  HttpParser* = object ## HTTP packet parser.
+  HttpParser* = object ## HTTP message parser.
     secondaryBuffer: string
     currentLineLen: Natural
     currentFieldName: string
@@ -33,11 +86,14 @@ type
     Unknown, Token, Crlf
 
 proc initHttpParser*(): HttpParser =
-  ## 
+  ## Initialize a ``HttpParser``.
   discard
 
 proc clear*(p: var HttpParser) = 
+  ## Reset `` p`` to clear all status. 
   ## 
+  ## Since ``HttpParser`` is an incremental interpreter, various state data will be saved during the parsing process. 
+  ## This proc resets all states in order to start a new parsing process.
   p.secondaryBuffer = ""
   p.currentLineLen = 0
   p.currentFieldName = ""
@@ -101,7 +157,14 @@ proc markRequestFieldCharOrCRLF(p: var HttpParser, buf: var MarkableCircularBuff
     raise newHttpError(Http400, "Header Field Too Long")
 
 proc parseHttpHeader*(p: var HttpParser, buf: var MarkableCircularBuffer, header: var HttpHeader): bool = 
+  ## Parses the header of a HTTP message. ``buf`` specifies the buffer, which stores the data to be parsed. ``header`` 
+  ## specifies the message header object output when the parsing is complete.
   ## 
+  ## Depending on the value of the ``kind`` attribute of ``header``, different resolutions are taken. When ``kind=Request``, 
+  ## a message is parsed as a request. When ``kind=Response``, a message is parsed as a request.
+  ## 
+  ## This process is performed incrementally, that is, the next parsing will continue from the previous 
+  ## parsing.
   result = false
   while true:
     case p.state
@@ -205,7 +268,10 @@ proc parseChunkHeader*(
   buf: var MarkableCircularBuffer,
   header: var ChunkHeader
 ): bool = 
+  ## Parse the size and extensions of a data chunk that is encoded by ``Transfor-Encoding: chunked``.
   ## 
+  ## This process is performed incrementally, that is, the next parsing will continue from the previous 
+  ## parsing.
   result = false
   let succ = p.markChar(buf, LF)
   if p.currentLineLen.int > LimitChunkHeaderLen:
@@ -217,18 +283,21 @@ proc parseChunkHeader*(
       token.setLen(lastIdx)
     p.currentLineLen = 0
     result = true
-    let res = token.parseChunkHeader()
+    var res = token.parseChunkHeader()
     header.size = res.size
-    header.extensions.shallowCopy(res.extensions)
+    header.extensions = move(res.extensions)
   else:
     p.popMarksToSecondaryIfFull(buf)
 
 proc parseChunkEnd*(
   p: var HttpParser, 
   buf: var MarkableCircularBuffer, 
-  trailer: var seq[string]
+  trailers: var seq[string]
 ): bool = 
+  ## Parse the tail of a message that is encoded by ``Transfor-Encoding: chunked``.
   ## 
+  ## This process is performed incrementally, that is, the next parsing will continue from the previous 
+  ## parsing.
   result = false
   while true:
     let succ = p.markChar(buf, LF)
@@ -242,7 +311,7 @@ proc parseChunkEnd*(
       p.currentLineLen = 0
       if token.len == 0:
         return true
-      trailer.add(token)
+      trailers.add(token)
     else:
       p.popMarksToSecondaryIfFull(buf)
       break
