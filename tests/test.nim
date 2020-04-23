@@ -39,8 +39,7 @@ import asyncdispatch
 
 type
   Opt = object
-    x: pointer
-    y: int
+    x: string
 
   Test = ref object
     opt: Opt
@@ -48,10 +47,10 @@ type
 proc `=destroy`(a: var Opt) = 
   echo "=destroy"
 
-proc g() =
-  var t: Test = Test()
+# proc g() =
+#   var t: Test = Test()
 
-g()
+# g()
 
-GC_fullCollect()
+# GC_fullCollect()
 

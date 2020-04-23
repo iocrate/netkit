@@ -4,6 +4,65 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
+## 本模块实现了一个 HTTP 会话连接。 ``HttpConnection`` 提供了多个函数， 能够识别网络 IO 传输的 HTTP
+## 消息结构。 
+## 
+## 使用
+## ----
+## 
+## 创建一个连接： 
+## 
+## ..code-block::nim
+## 
+##   var conn = newHttpConnection(socket, address)
+## 
+## 读取一个消息头部：  
+## 
+## ..code-block::nim
+## 
+##   await conn.readHttpHeader(header)
+## 
+## 读取一个消息体：  
+## 
+## ..code-block::nim
+## 
+##   var readLen = 1024 
+##   var size = 1024
+##   while readLen == size:
+##     readLen = await conn.readData(buf, size)
+## 
+## 当消息体使用 chunked 编码时， 持续地读取消息体：  
+## 
+## ..code-block::nim
+## 
+##   await conn.readChunkHeader(header)
+##   
+##   if header.size == 0: # read tail
+##     await conn.readEnd(trailers)
+##   else:                
+##     var exceptLen = header.size 
+##     while exceptLen != 0:
+##       let readLen = await conn.readData(buf, header.size)
+##       exceptLen.inc(readLen)
+## 
+## 向对方发送消息：
+## 
+## ..code-block::nim
+## 
+##   await conn.readChunkHeader("""
+##   GET /iocrate/netkit HTTP/1.1
+##   Host: iocrate.com
+##   Content-Length: 12
+##
+##   foobarfoobar
+##   """)
+## 
+## 关闭连接： 
+## 
+## ..code-block::nim
+## 
+##   conn.close()
+
 # 关于 HTTP Server Request 的边界条件
 # ----------------------------------
 #
@@ -84,7 +143,7 @@ import netkit/http/parser
 import netkit/http/chunk 
 
 type
-  HttpConnection* = ref object ## 表示客户端与服务器之间的一个活跃的通信连接。 这个对象不由用户代码直接构造。 
+  HttpConnection* = ref object ## 表示客户端与服务器之间的一个活跃的通信连接。 
     buffer: MarkableCircularBuffer
     parser: HttpParser
     socket: AsyncFD
@@ -95,26 +154,40 @@ proc newHttpConnection*(socket: AsyncFD, address: string): HttpConnection = disc
   ## 初始化一个 ``HttpConnection`` 对象。 
 
 proc close*(conn: HttpConnection) {.inline.} = discard
-  ##
+  ## 关闭连接。 
 
 proc closed*(conn: HttpConnection): bool {.inline.} = discard
-  ##
+  ## 判断连接是否已经关闭。 
+
+proc readHttpHeader*(conn: HttpConnection, header: ptr HttpHeader): Future[void] = discard
+  ## 读取一个消息头部。 
+  ## 
+  ## 如果在成功读取之前连接断开， 则会触发一个 ```ReadAbortedError` 异常。 如果出现系统错误， 则会触发一个 ```OSError` 异常。 
+
+proc readChunkHeader*(conn: HttpConnection, header: ptr ChunkHeader): Future[void] = discard
+  ## 读取一个 chunked 数据块头部。 
+  ## 
+  ## 如果在成功读取之前连接断开， 则会触发一个 ```ReadAbortedError` 异常。 如果出现系统错误， 则会触发一个 ```OSError` 异常。 
+
+proc readChunkEnd*(conn: HttpConnection, trailers: ptr seq[string]): Future[void] = discard
+  ## 读取一个 chunked 消息的尾部。 
+  ## 
+  ## 如果在成功读取之前连接断开， 则会触发一个 ```ReadAbortedError` 异常。 如果出现系统错误， 则会触发一个 ```OSError` 异常。
 
 proc readData*(conn: HttpConnection, buf: pointer, size: Natural): Future[Natural] = discard
   ## 读取直到 ``size`` 字节， 读取的数据填充在 ``buf``， 返回实际读取的数量。 如果返回值不等于 ``size``， 说明
-  ## 连接已经关闭。如果连接关闭， 则返回；否则，一直读取，直到 ``size`` 字节。 
-
-proc readHttpHeader*(conn: HttpConnection, header: ptr HttpHeader): Future[void] = discard
-  ##
-
-proc readChunkHeader*(conn: HttpConnection, header: ptr ChunkHeader): Future[void] = discard
-  ##
-
-proc readChunkEnd*(conn: HttpConnection, trailer: ptr seq[string]): Future[void] = discard
-  ##
+  ## 出现错误或者连接已经断开。 如果出现错误或连接已经断开， 则立刻返回； 否则， 将一直等待读取， 直到 ``size`` 字节。 
+  ## 
+  ## 这个函数应该用来读取消息体。 
+  ## 
+  ## 如果在成功读取之前连接断开， 则会触发一个 ```ReadAbortedError` 异常。 如果出现系统错误， 则会触发一个 ```OSError` 异常。  
 
 proc write*(conn: HttpConnection, buf: pointer, size: Natural): Future[void] {.inline.} = discard
-  ## 写入响应数据。 ``buf`` 指定数据源， ``len`` 指定数据源的长度。 
+  ## 写入数据。 ``buf`` 指定数据源， ``len`` 指定数据源的长度。 
+  ## 
+  ## 如果在成功完成之前关闭连接或者出现其他错误， 则会触发一个 ```WriteAbortedError` 异常。 
 
 proc write*(conn: HttpConnection, data: string): Future[void] {.inline.} = discard
-  ## 写入响应数据。 ``data`` 指定数据源。 
+  ## 写入数据。 ``data`` 指定数据源。 
+  ## 
+  ## 如果在成功完成之前关闭连接或者出现其他错误， 则会触发一个 ```WriteAbortedError` 异常。 

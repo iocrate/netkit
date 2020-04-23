@@ -104,8 +104,8 @@ proc clear*(p: var HttpParser) =
 proc popToken(p: var HttpParser, buf: var MarkableCircularBuffer, size: Natural = 0): string = 
   if p.secondaryBuffer.len > 0:
     p.secondaryBuffer.add(buf.popMarks(size))
-    result = p.secondaryBuffer
-    p.secondaryBuffer = ""
+    result = move(p.secondaryBuffer)
+    # p.secondaryBuffer = "" # not need anymore
   else:
     result = buf.popMarks(size)
   if result.len == 0:
@@ -210,9 +210,9 @@ proc parseHttpHeader*(p: var HttpParser, buf: var MarkableCircularBuffer, header
               p.popMarksToSecondaryIfFull(buf)
               return
           else:
-            raise newException(ValueError, "Imposible StartLineState " & $p.startLineState)
+            raise newException(Exception, "Imposible StartLineState " & $p.startLineState)
       of HttpHeaderKind.Response:
-        raise newException(Exception, "Not Implemented yet")
+        raise newException(Exception, "Not implemented yet")
     of HttpParseState.FieldName:
       case p.markRequestFieldCharOrCRLF(buf, COLON)
       of MarkProcessState.Token:
