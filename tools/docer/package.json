@@ -1,0 +1,12 @@
+{
+  "name": "kanban-redis",
+  "version": "0.1.0",
+  "author": {
+    "name": "Wang Tong",
+    "email": "itulayangi@outlook.com"
+  },
+  "devDependencies": {},
+  "dependencies": {
+    "jsdom": "^16.2.2"
+  }
+}

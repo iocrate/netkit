@@ -13,13 +13,13 @@ import uri
 
 type
   HttpCode* = enum ## HTTP status code. 
-    Http100 = "100 Continue"
-    Http101 = "101 Switching Protocols"
-    Http200 = "200 OK"
-    Http201 = "201 Created"
-    Http202 = "202 Accepted"
-    Http203 = "203 Non-Authoritative Information"
-    Http204 = "204 No Content"
+    Http100 = "100 Continue"  
+    Http101 = "101 Switching Protocols"  
+    Http200 = "200 OK"  
+    Http201 = "201 Created"  
+    Http202 = "202 Accepted"  
+    Http203 = "203 Non-Authoritative Information"  
+    Http204 = "204 No Content"  
     Http205 = "205 Reset Content"
     Http206 = "206 Partial Content"
     Http300 = "300 Multiple Choices"
@@ -131,12 +131,12 @@ proc initHeaderFields*(pairs: openarray[tuple[name: string, value: seq[string]]]
   ## The following example demonstrates how to deal with ``Set-Cookie`` or a comma-separated list of values
   ## such as ``Accept``: 
   ## 
-  ## ..code-block::nim
+  ##   ..code-block::nim
   ## 
-  ##   let fields = initHeaderFields({
-  ##     "Set-Cookie": @["SID=123; path=/", "language=en"],
-  ##     "Accept": @["audio/*; q=0.2", "audio/basic"]
-  ##   })
+  ##     let fields = initHeaderFields({
+  ##       "Set-Cookie": @["SID=123; path=/", "language=en"],
+  ##       "Accept": @["audio/\*; q=0.2", "audio/basic"]
+  ##     })
   result = HeaderFields(initTable[string, seq[string]]())
   for pair in pairs:
     for v in pair.value:
@@ -200,7 +200,7 @@ proc add*(fields: var HeaderFields, name: string, value: string) =
   ##   fields.add("Content-Length", "16")
   ##   fields.add("Cookie", "SID=123")
   ##   fields.add("Cookie", "language=en")
-  ##   fields.add("Accept", "audio/*; q=0.2")
+  ##   fields.add("Accept", "audio/\*; q=0.2")
   ##   fields.add("Accept", "audio/basic")
   addImpl(fields, name, value)
 

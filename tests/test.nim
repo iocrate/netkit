@@ -14,7 +14,7 @@ discard """
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-# import unittest
+import unittest
 import asyncdispatch
 # import netkit/http/base
 
@@ -53,4 +53,8 @@ proc `=destroy`(a: var Opt) =
 # g()
 
 # GC_fullCollect()
+
+test "marks":
+  var a = "abc"
+  check a.len == 3
 

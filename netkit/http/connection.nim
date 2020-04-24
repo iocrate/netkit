@@ -110,7 +110,7 @@ proc readHttpHeader*(conn: HttpConnection, header: ptr HttpHeader): Future[void]
   ## Reads the header of a HTTP message.
   ## 
   ## If a system error occurs during reading, a ``OsError`` exception will be raised. If the connection is  
-  ## disconnected before successful reading, a ``ReadAbortedError` exception will be raised.
+  ## disconnected before successful reading, a ``ReadAbortedError`` exception will be raised.
   var succ = false
   conn.parser.clear()
   if conn.buffer.len > 0:
@@ -157,8 +157,8 @@ proc readData*(conn: HttpConnection, buf: pointer, size: Natural): Future[Natura
   ## 
   ## This proc should be used to read the message body.
   ## 
-  ## If a system error occurs during reading, a ``OsError` exception will be raised. If the connection is  
-  ## disconnected before successful reading, a ``ReadAbortedError` exception will be raised.
+  ## If a system error occurs during reading, a ``OsError`` exception will be raised. If the connection is  
+  ## disconnected before successful reading, a ``ReadAbortedError`` exception will be raised.
   result = conn.buffer.len
   if result >= size:
     discard conn.buffer.get(buf, size)
