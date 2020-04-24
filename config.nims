@@ -4,6 +4,7 @@ const PROJECT_DIR = projectDir()
 const TEST_DIR = PROJECT_DIR / "tests"
 const BUILD_DIR = PROJECT_DIR / "build"
 const BUILD_TEST_DIR = BUILD_DIR / "tests"
+const BUILD_DOC_DIR = BUILD_DIR / "doc"
 
 task test, "Run my tests":
 #  run the following command:
@@ -48,11 +49,12 @@ task docs, "Gen docs":
 #    test tests/d/e/f.nim
 #
   withDir PROJECT_DIR:
+    rmDir(BUILD_DOC_DIR)
     mkDir(BUILD_TEST_DIR)
     var args: seq[string] = @["nim", "doc2"]
     args.add("--project")
     args.add("--index:on")
     args.add("--git.url:https://github.com/iocrate/netkit")
-    args.add(fmt"--out:{BUILD_TEST_DIR}")
-    args.add("netkit/http/server.nim")
+    args.add(fmt"--out:{BUILD_DOC_DIR}")
+    args.add("netkit.nim")
     exec(args.join(" "))

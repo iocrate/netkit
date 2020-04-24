@@ -5,7 +5,9 @@
     "name": "Wang Tong",
     "email": "itulayangi@outlook.com"
   },
-  "devDependencies": {},
+  "engines": {
+    "node": ">=12.16.2"
+  },
   "dependencies": {
     "jsdom": "^16.2.2"
   }

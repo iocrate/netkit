@@ -13,9 +13,13 @@ import uri
 
 type
   HttpCode* = enum ## HTTP status code. 
-    Http100 = "100 Continue"  
-    Http101 = "101 Switching Protocols"  
-    Http200 = "200 OK"  
+    Http100 = "100 Continue"  ## abcefg
+                              ## fgg
+    Http101 = "101 Switching Protocols" 
+      ## HTTP 1023013012390213 8ewebdhasbew
+      ## 31903u1412384189-41y-59
+      ## 1312893128938123891398 
+    Http200 = "200 OK"  ## 092319319
     Http201 = "201 Created"  
     Http202 = "202 Accepted"  
     Http203 = "203 Non-Authoritative Information"  
@@ -120,7 +124,7 @@ proc initHeaderFields*(pairs: openarray[tuple[name: string, value: seq[string]]]
   ## 
   ## The following example demonstrates how to deal with a single value, such as ``Content-Length``:
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ## 
   ##   let fields = initHeaderFields({
   ##     "Content-Length": @["1"], 
@@ -131,7 +135,7 @@ proc initHeaderFields*(pairs: openarray[tuple[name: string, value: seq[string]]]
   ## The following example demonstrates how to deal with ``Set-Cookie`` or a comma-separated list of values
   ## such as ``Accept``: 
   ## 
-  ##   ..code-block::nim
+  ##   .. code-block::nim
   ## 
   ##     let fields = initHeaderFields({
   ##       "Set-Cookie": @["SID=123; path=/", "language=en"],
@@ -147,7 +151,7 @@ proc initHeaderFields*(pairs: openarray[tuple[name: string, value: string]]): He
   ## 
   ## The following example demonstrates how to deal with a single value, such as ``Content-Length``:
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ## 
   ##   let fields = initHeaderFields({
   ##     "Content-Length": "16", 
@@ -168,7 +172,7 @@ proc `[]`*(fields: HeaderFields, name: string): seq[string] {.raises: [KeyError]
   ## 
   ## Examples: 
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ## 
   ##   let fields = initHeaderFields({
   ##     "Content-Length": "16"
@@ -181,7 +185,7 @@ proc `[]=`*(fields: var HeaderFields, name: string, value: seq[string]) =
   ## 
   ## Examples: 
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ## 
   ##   let fields = initHeaderFields({
   ##     "Content-Length": "16"
@@ -194,7 +198,7 @@ proc add*(fields: var HeaderFields, name: string, value: string) =
   ## 
   ## Examples: 
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ## 
   ##   let fields = initHeaderFields()
   ##   fields.add("Content-Length", "16")
@@ -209,7 +213,7 @@ proc del*(fields: var HeaderFields, name: string) =
   ## 
   ## Examples: 
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ## 
   ##   fields.del("Content-Length")
   ##   fields.del("Cookie")
@@ -221,7 +225,7 @@ proc contains*(fields: HeaderFields, name: string): bool =
   ## 
   ## Examples: 
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ## 
   ##   let fields = initHeaderFields({
   ##     "Content-Length": "16"
