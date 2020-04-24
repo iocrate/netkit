@@ -34,9 +34,9 @@ task test, "Run my tests":
       args.add(fmt"--out:{BuildTestDir / t}")
       args.add(fmt"--path:{ProjectDir}")
       args.add(TestDir / t)
+      rmDir(BuildDir / t.parentDir())
       mkDir(BuildTestDir / t.parentDir())
       exec(args.join(" "))
-  rmDir(BuildDir)
   
 task docs, "Gen docs":
   # **netkit.nim** is the entry file of this project. This task starts with **netkit.nim** to generate 

@@ -54,7 +54,6 @@ class DocPolisher {
     pre {
       width: 100%;
       overflow: hidden;
-      border: none;
       padding: 0.5em 1em;
     }
     pre:hover {
