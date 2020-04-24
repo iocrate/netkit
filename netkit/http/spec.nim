@@ -64,11 +64,11 @@ proc checkFieldValue*(s: string) {.raises: [ValueError].} =
   ## 
   ## ..code-block::nim
   ## 
-  ##   field-value    =  *( field-content / obs-fold )
-  ##   field-content  =  field-vchar [ 1*( SP / HTAB ) field-vchar ]
+  ##   field-value    =  \*( field-content / obs-fold )
+  ##   field-content  =  field-vchar [ 1\*( SP / HTAB ) field-vchar ]
   ##   field-vchar    =  VCHAR / obs-text
   ##   obs-text       =  %x80-FF
-  ##   obs-fold       =  CRLF 1*( SP / HTAB )  ; obsolete line folding  
+  ##   obs-fold       =  CRLF 1\*( SP / HTAB )  ; obsolete line folding  
   ## 
   const ValueChars = { HTAB, SP, '\x21'..'\x7E', '\x80'..'\xFF' }
   for c in s:

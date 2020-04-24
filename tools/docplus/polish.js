@@ -10,13 +10,9 @@ const Fs = require('fs')
 const Path = require('path')
 const JsDom = require('jsdom')
 
-const DOC_DIR = Path.resolve(__dirname, '../build/doc')
+const DOC_DIR = Path.resolve(__dirname, '../../build/doc')
 
-// let html = Fs.readFileSync(Path.join(__dirname, '../../build/tests/base.html'), 'utf8')
-// const dom = new JsDom.JSDOM(html)
-// const document = dom.window.document
-
-class DocPainter {
+class DocPolisher {
   constructor(document) {
     this.document = document
   }
@@ -95,7 +91,7 @@ class DocPainter {
     for (let i = 0, len = keywordElems.length; i < len; i++) {
       const elem = keywordElems[i]
       if (elem.innerHTML === 'enum') {
-        removeChildTexts(elem.parentElement)
+        this.removeChildTexts(elem.parentElement)
   
         const others = elem.parentElement.querySelectorAll('.Other')
         for (let i = 0, len = others.length; i < len; i++) {
@@ -125,12 +121,13 @@ class DocManager {
 
   run() {
     for (let file of this.files()) {
-      console.log('Painting file:', file)
-      // const content = Fs.readFileSync(file, 'utf8')
-      // const dom = new JsDom.JSDOM(content)
-      // const painter = new DocPainter(dom.window.document)
-      // painter.paintCSS()
-      // painter.paintEnums()
+      console.log('Polishing:', file)
+      const content = Fs.readFileSync(file, 'utf8')
+      const dom = new JsDom.JSDOM(content)
+      const painter = new DocPolisher(dom.window.document)
+      painter.paintCSS()
+      painter.paintEnums()
+      Fs.writeFileSync(file, dom.serialize(), 'utf8')
     }
   }
 
@@ -154,5 +151,5 @@ class DocManager {
 if (typeof process.env.DOC_PAINTE_DIRNAME === 'string') {
   new DocManager(Path.join(DOC_DIR, process.env.DOC_PAINTE_DIRNAME)).run()
 } else {
-  new DocManager(Path.join(DOC_DIR, 'source_cn')).run()
+  new DocManager(Path.join(DOC_DIR)).run()
 }

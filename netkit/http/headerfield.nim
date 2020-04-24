@@ -267,7 +267,6 @@
 
 import strutils
 import netkit/http/base
-import netkit/http/exception
 
 template seek(a: string, v: string, start: Natural, stop: Natural) = 
   if stop > start:

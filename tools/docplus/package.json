@@ -5,6 +5,7 @@
     "name": "Wang Tong",
     "email": "itulayangi@outlook.com"
   },
+  "main": "./polish.js",
   "engines": {
     "node": ">=12.16.2"
   },
