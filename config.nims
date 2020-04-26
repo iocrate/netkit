@@ -5,7 +5,7 @@ const TestDir = ProjectDir / "tests"
 const BuildDir = ProjectDir / "build"
 const BuildTestDir = BuildDir / "tests"
 const BuildDocEnDir = BuildDir / "doc/en"
-const BuildDocZhDir = BuildDir / "doc/zh"
+# const BuildDocZhDir = BuildDir / "doc/zh"
 const DocPolisher = ProjectDir / "tools/docplus/polish.js"
 
 task test, "Run my tests":
@@ -77,4 +77,4 @@ task docplus, "Polish docs":
   # Note that before running this task, run ``$ nim docs`` to generate HTML documents. In addition, Node.js 
   # is required.
   withDir ProjectDir:
-    exec("DOC_PAINTE_DIRNAME=en" & DocPolisher)
+    exec("DOC_PAINTE_DIRNAME=en " & DocPolisher)

@@ -4,4 +4,3 @@ build/
 testresults
 nimcache
 *.exe
-node_modules/
