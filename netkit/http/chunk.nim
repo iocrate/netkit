@@ -9,87 +9,100 @@
 ## size of the message body. Each data chunk needs to be encoded and decoded when it is sent and received.
 ## This module provides tools for dealing with these types of encodings and decodings.
 ## 
-## Data Chunk and Data Tail
-## ------------------------
+## Overview
+## ========================
 ## 
-## The entire message body was split into zero or more data chunks and one data tail.
+## .. container:: r-fragment
 ## 
-## Each data chunk include chunk-size (specify the size of the data chunk), chunk-extensions (optional, 
-## specify the extensions), and chunk-data (the actual data). Generally, such a data chunk is represented 
-## as a header and a body. The header include chunk-size and chunk-extensions, and the body is the chunk-data. 
+##   Data Chunk and Data Tail
+##   ------------------------
 ## 
-## The last part of the message body is the data tail, indicating the end of the message body. The data tail
-## supports carring trailers to allow the sender to add additional meta-information.
+##   The entire message body was split into zero or more data chunks and one data tail.
 ## 
-## HTTP Message Example
-## ---------------------
+##   Each data chunk include chunk-size (specify the size of the data chunk), chunk-extensions (optional, 
+##   specify the extensions), and chunk-data (the actual data). Generally, such a data chunk is represented 
+##   as a header and a body. The header include chunk-size and chunk-extensions, and the body is the chunk-data. 
 ## 
-## The following example is a chunked HTTP message body:
+##   The last part of the message body is the data tail, indicating the end of the message body. The data tail
+##   supports carring trailers to allow the sender to add additional meta-information.
 ## 
-## ..code-block:http
+## .. container:: r-fragment
 ## 
-##   5;\r\n                                      # chunk-size and chunk-extensions
-##   Hello\r\n                                   # chunk-data
-##   9; language=en; city=London\r\n             # chunk-size and chunk-extensions
-##   Developer\r\n                               # chunk-data
-##   0\r\n                                       # data tail ----------------------
-##   Expires: Wed, 21 Oct 2015 07:28:00 GMT\r\n  # trailer
-##   \r\n                                        # --------------------------------
+##   HTTP Message Example
+##   ------------------------
 ## 
-## Usage - encoding
-## -----------------------------------------
+##   The following example is a chunked HTTP message body:
 ## 
-## To implement the HTTP message body shown in the above example, you can use the following methods:
+##   .. code-block::http
 ## 
-## ..code-block:http
+##     5;\r\n                                      # chunk-size and chunk-extensions
+##     Hello\r\n                                   # chunk-data
+##     9; language=en; city=London\r\n             # chunk-size and chunk-extensions
+##     Developer\r\n                               # chunk-data
+##     0\r\n                                       # data tail ----------------------
+##     Expires: Wed, 21 Oct 2015 07:28:00 GMT\r\n  # trailer
+##     \r\n                                        # --------------------------------
 ## 
-##   var message = ""
+## .. container:: r-fragment
 ## 
-##   message.add(encodeChunk("Hello"))
-##   message.add(encodeChunk("Developer", {
-##     "language": "en",
-##     "city": "London"
-##   }))
-##   message.add(encodeChunkEnd(initHeaderFields({
-##     "Expires": "Wed, 21 Oct 2015 07:28:00 GM"
-##   })))
+##   Usage - encoding
+##   ------------------------
 ## 
-## This example demonstrates the "string version of encodeChunk", this module also provides other efficient 
-## encoding functions, you can view the specific description.
+##   To implement the HTTP message body shown in the above example, you can use the following methods:
 ## 
-## Usage - parsing
-## ----------------------------
+##   .. code-block::http
 ## 
-## To parse a character sequence that consisting of chunk-size and chunk-extensions: 
+##     var message = ""
 ## 
-## ..code-block::nim
+##     message.add(encodeChunk("Hello"))
+##     message.add(encodeChunk("Developer", {
+##       "language": "en",
+##       "city": "London"
+##     }))
+##     message.add(encodeChunkEnd(initHeaderFields({
+##       "Expires": "Wed, 21 Oct 2015 07:28:00 GM"
+##     })))
 ## 
-##   let header = parseChunkHeader("1A; a1=v1; a2=v2") 
-##   assert header.size = 26
-##   assert header.extensions = "; a1=v1; a2=v2"
+##   This example demonstrates the "string version of encodeChunk", this module also provides other efficient 
+##   encoding functions, you can view the specific description.
 ## 
-## To parse a character sequence related to chunk-extensions ： 
+## .. container:: r-fragment
 ## 
-## ..code-block::nim
+##   Usage - parsing
+##   ------------------------
 ## 
-##   let extensions = parseChunkExtensions("; a1=v1; a2=v2") 
-##   assert extensions[0].name = "a1"
-##   assert extensions[0].value = "v1"
-##   assert extensions[1].name = "a1"
-##   assert extensions[1].value = "v1"
+##   To parse a character sequence that consisting of chunk-size and chunk-extensions: 
 ## 
-## To parse a group of character sequence related to tailers： 
+##   .. code-block::nim
 ## 
-## ..code-block::nim
+##     let header = parseChunkHeader("1A; a1=v1; a2=v2") 
+##     assert header.size = 26
+##     assert header.extensions = "; a1=v1; a2=v2"
 ## 
-##   let tailers = parseChunkHeader(@["Expires: Wed, 21 Oct 2015 07:28:00 GMT"]) 
-##   assert tailers["Expires"][0] == "Wed, 21 Oct 2015 07:28:00 GMT"
+##   To parse a character sequence related to chunk-extensions ： 
 ## 
-## About \n and \L 
-## -------------------
+##   .. code-block::nim
 ## 
-## Since ``\n`` cannot be represented as a character (but a string) in Nim language, we use 
-## ``'\L'`` to represent a newline character. 
+##     let extensions = parseChunkExtensions("; a1=v1; a2=v2") 
+##     assert extensions[0].name = "a1"
+##     assert extensions[0].value = "v1"
+##     assert extensions[1].name = "a1"
+##     assert extensions[1].value = "v1"
+## 
+##   To parse a group of character sequence related to tailers： 
+## 
+##   .. code-block::nim
+## 
+##     let tailers = parseChunkHeader(@["Expires: Wed, 21 Oct 2015 07:28:00 GMT"]) 
+##     assert tailers["Expires"][0] == "Wed, 21 Oct 2015 07:28:00 GMT"
+## 
+## .. container:: r-fragment
+## 
+##   About \n and \L 
+##   ------------------------
+## 
+##   Since ``\n`` cannot be represented as a character (but a string) in Nim language, we use 
+##   ``'\L'`` to represent a newline character. 
 
 import strutils
 import strtabs
@@ -120,7 +133,7 @@ proc parseChunkHeader*(s: string): ChunkHeader {.raises: [ValueError].} =
   ##
   ## Examples:
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ## 
   ##   parseChunkHeader("64") # => (100, "")
   ##   parseChunkHeader("64; name=value") # => (100, "name=value")
@@ -146,7 +159,7 @@ proc parseChunkExtensions*(s: string): seq[ChunkExtension] =
   ## 
   ## Examples: 
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ## 
   ##   let extensions = parseChunkExtensions(";a1=v1;a2=v2") 
   ##                  # => ("a1", "v1"), ("a2", "v2")
@@ -208,7 +221,7 @@ proc parseChunkTrailers*(ts: openarray[string]): HeaderFields =
   ## 
   ## Examples: 
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ## 
   ##   let fields = parseChunkTrailers(@["Expires: Wed, 21 Oct 2015 07:28:00 GMT"]) 
   ##              # => ("Expires", "Wed, 21 Oct 2015 07:28:00 GMT")  
@@ -305,7 +318,7 @@ proc encodeChunk*(
   ## 
   ## Examples:
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ## 
   ##   let source = "Developer"
   ##   let dest = newString(source.len + 21)
@@ -341,7 +354,7 @@ proc encodeChunk*(
   ## 
   ## Examples:
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ## 
   ##   let source = "Developer"
   ##   let extensions = "language=en; city=London"
@@ -363,7 +376,7 @@ proc encodeChunk*(source: string): string =
   ## 
   ## Examples:
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ## 
   ##   let out = encodeChunk("Developer")
   ##   assert out == "9\r\LDeveloper\r\L"
@@ -380,7 +393,7 @@ proc encodeChunk*(source: string, extensions: openarray[ChunkExtension]): string
   ## 
   ## Examples:
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ## 
   ##   let out = encodeChunk("Developer", {
   ##     "language": "en",
@@ -398,7 +411,7 @@ proc encodeChunkEnd*(): string =
   ## 
   ## Examples: 
   ## 
-  ## ..code-block:nim
+  ## .. code-block::nim
   ## 
   ##   let out = encodeChunkEnd()
   ##   assert out == "0\r\L\r\L"
@@ -409,7 +422,7 @@ proc encodeChunkEnd*(trailers: HeaderFields): string =
   ## 
   ## Examples: 
   ## 
-  ## ..code-block:nim
+  ## .. code-block::nim
   ## 
   ##   let out = encodeChunkEnd(initHeaderFields({
   ##     "Expires": "Wed, 21 Oct 2015 07:28:00 GM"

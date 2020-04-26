@@ -69,6 +69,12 @@ class DocPolisher {
       border-radius: 2px;
       background-color: transparent;
     }
+
+    .r-fragment {
+      padding: 0 0 0 30px;
+      border-left: 1px solid rgb(216,216,216);
+      margin: 40px 0;
+    }
   </style>`)
   }
   
