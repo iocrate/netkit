@@ -68,7 +68,7 @@ import asyncdispatch
 import nativesockets
 import netkit/misc
 import netkit/buffer/circular
-import netkit/http/base
+import netkit/http/header
 import netkit/http/exception 
 import netkit/http/parser
 import netkit/http/chunk 

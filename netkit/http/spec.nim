@@ -16,7 +16,17 @@
 #   Chars: set[char] = {...} # => Chars: array[0..255, bit] = [0,0,0,0,1,1,0,1,0,0,0,1,...] 
 #   'A' in {...}             # => Chars[61] == 1
 
-import netkit/http/base
+const 
+  # [RFC5234](https://tools.ietf.org/html/rfc5234#appendix-B.1)
+  COLON* = ':'
+  COMMA* = ','
+  SEMICOLON* = ';'
+  CR* = '\x0D'
+  LF* = '\x0A'
+  CRLF* = "\x0D\x0A"
+  SP* = '\x20'
+  HTAB* = '\x09'
+  WSP* = {SP, HTAB}
 
 proc checkFieldName*(s: string) {.raises: [ValueError].} = 
   ## `RFC5234 <https://tools.ietf.org/html/rfc5234>`_

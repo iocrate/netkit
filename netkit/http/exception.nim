@@ -6,7 +6,7 @@
 
 ## This module defines exceptions related to HTTP operations.
 
-import netkit/http/base
+import netkit/http/status
 
 type
   HttpError* = object of CatchableError ## Indicates a error related to HTTP protocol.

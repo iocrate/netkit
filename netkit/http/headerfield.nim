@@ -265,8 +265,175 @@
 #     comment        = "(" *( ctext / quoted-pair / comment ) ")"
 #     ctext          = HTAB / SP / %x21-27 / %x2A-5B / %x5D-7E / obs-text
 
+import tables
 import strutils
-import netkit/http/base
+import netkit/http/spec
+
+type
+  HeaderFields* = distinct Table[string, seq[string]] ## Represents the header fields of a HTTP message.
+
+proc initHeaderFields*(): HeaderFields =
+  ## Initializes a ``HeaderFields``.
+  result = HeaderFields(initTable[string, seq[string]]())
+
+template addImpl(fields: var HeaderFields, name: string, value: string) = 
+  let nameUA = name.toLowerAscii()
+  if Table[string, seq[string]](fields).hasKey(nameUA):
+    Table[string, seq[string]](fields)[nameUA].add(value)
+  else:
+    Table[string, seq[string]](fields)[nameUA] = @[value]
+
+proc initHeaderFields*(pairs: openarray[tuple[name: string, value: seq[string]]]): HeaderFields =
+  ## Initializes a ``HeaderFields``. ``pairs`` is a container consisting of ``(key, value)`` tuples.
+  ## 
+  ## The following example demonstrates how to deal with a single value, such as ``Content-Length``:
+  ## 
+  ## .. code-block::nim
+  ## 
+  ##   let fields = initHeaderFields({
+  ##     "Content-Length": @["1"], 
+  ##     "Content-Type": @["text/plain"]
+  ##     "Cookie": @["SID=123; language=en"]
+  ##   })
+  ## 
+  ## The following example demonstrates how to deal with ``Set-Cookie`` or a comma-separated list of values
+  ## such as ``Accept``: 
+  ## 
+  ##   .. code-block::nim
+  ## 
+  ##     let fields = initHeaderFields({
+  ##       "Set-Cookie": @["SID=123; path=/", "language=en"],
+  ##       "Accept": @["audio/\*; q=0.2", "audio/basic"]
+  ##     })
+  result = HeaderFields(initTable[string, seq[string]]())
+  for pair in pairs:
+    for v in pair.value:
+      result.addImpl(pair.name, v)
+
+proc initHeaderFields*(pairs: openarray[tuple[name: string, value: string]]): HeaderFields =
+  ## Initializes a ``HeaderFields``. ``pairs`` is a container consisting of ``(key, value)`` tuples.
+  ## 
+  ## The following example demonstrates how to deal with a single value, such as ``Content-Length``:
+  ## 
+  ## .. code-block::nim
+  ## 
+  ##   let fields = initHeaderFields({
+  ##     "Content-Length": "16", 
+  ##     "Content-Type": "text/plain"
+  ##     "Cookie": "SID=123; language=en"
+  ##   })
+  result = HeaderFields(initTable[string, seq[string]]())
+  for pair in pairs:
+    result.addImpl(pair.name, pair.value)
+
+proc clear*(fields: var HeaderFields) = 
+  ## Resets this fields so that it is empty.
+  Table[string, seq[string]](fields).clear()
+
+proc `[]`*(fields: HeaderFields, name: string): seq[string] {.raises: [KeyError].} =
+  ## Returns the value of the field associated with ``name``. If ``name`` is not in this fields, the 
+  ## ``KeyError`` exception is raised. 
+  ## 
+  ## Examples: 
+  ## 
+  ## .. code-block::nim
+  ## 
+  ##   let fields = initHeaderFields({
+  ##     "Content-Length": "16"
+  ##   })
+  ##   assert fields["Content-Length"][0] == "16"
+  Table[string, seq[string]](fields)[name.toLowerAscii()]
+
+proc `[]=`*(fields: var HeaderFields, name: string, value: seq[string]) =
+  ## Sets ``value`` to the field associated with ``name``. Replaces any existing value.
+  ## 
+  ## Examples: 
+  ## 
+  ## .. code-block::nim
+  ## 
+  ##   let fields = initHeaderFields({
+  ##     "Content-Length": "16"
+  ##   })
+  ##   fields["Content-Length"] == @["100"]
+  Table[string, seq[string]](fields)[name.toLowerAscii()] = value
+
+proc add*(fields: var HeaderFields, name: string, value: string) =
+  ## Adds ``value`` to the field associated with ``name``. If ``name`` does not exist then create a new one.
+  ## 
+  ## Examples: 
+  ## 
+  ## .. code-block::nim
+  ## 
+  ##   let fields = initHeaderFields()
+  ##   fields.add("Content-Length", "16")
+  ##   fields.add("Cookie", "SID=123")
+  ##   fields.add("Cookie", "language=en")
+  ##   fields.add("Accept", "audio/\*; q=0.2")
+  ##   fields.add("Accept", "audio/basic")
+  addImpl(fields, name, value)
+
+proc del*(fields: var HeaderFields, name: string) =
+  ## Deletes the field associated with ``name``. 
+  ## 
+  ## Examples: 
+  ## 
+  ## .. code-block::nim
+  ## 
+  ##   fields.del("Content-Length")
+  ##   fields.del("Cookie")
+  ##   fields.del("Accept")
+  Table[string, seq[string]](fields).del(name.toLowerAscii())
+
+proc contains*(fields: HeaderFields, name: string): bool =
+  ## Returns true if this fields contains the specified ``name``. 
+  ## 
+  ## Examples: 
+  ## 
+  ## .. code-block::nim
+  ## 
+  ##   let fields = initHeaderFields({
+  ##     "Content-Length": "16"
+  ##   })
+  ##   assert fields.contains("Content-Length") == true
+  ##   assert fields.contains("content-length") == true
+  ##   assert fields.contains("ContentLength") == false
+  Table[string, seq[string]](fields).contains(name.toLowerAscii())
+
+proc len*(fields: HeaderFields): int = 
+  ## Returns the number of names in this fields.
+  Table[string, seq[string]](fields).len
+
+iterator pairs*(fields: HeaderFields): tuple[name, value: string] =
+  ## Yields each ``(name, value)`` pair.
+  for k, v in Table[string, seq[string]](fields):
+    for value in v:
+      yield (k, value)
+
+iterator names*(fields: HeaderFields): string =
+  ## Yields each field name.
+  for k in Table[string, seq[string]](fields).keys():
+    yield k
+
+proc getOrDefault*(
+  fields: HeaderFields, 
+  name: string,
+  default = @[""]
+): seq[string] =
+  ## Returns the value of the field associated with ``name``. If ``name`` is not in this fields, then 
+  ## ``default`` is returned.
+  if fields.contains(name):
+    return fields[name]
+  else:
+    return default
+
+proc `$`*(fields: HeaderFields): string =
+  ## Converts this fields into a string that follows the HTTP Protocol.
+  for key, value in Table[string, seq[string]](fields).pairs():
+    for v in value:
+      result.add(key)
+      result.add(": ")
+      result.add(v)
+      result.add(CRLF)
 
 template seek(a: string, v: string, start: Natural, stop: Natural) = 
   if stop > start:

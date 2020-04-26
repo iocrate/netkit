@@ -7,8 +7,9 @@
 import asyncdispatch
 import nativesockets
 import os
-import netkit/http/base
 import netkit/http/exception
+import netkit/http/spec
+import netkit/http/status
 import netkit/http/connection
 import netkit/http/reader
 import netkit/http/writer

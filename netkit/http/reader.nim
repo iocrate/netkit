@@ -13,10 +13,15 @@ import nativesockets
 import netkit/locks 
 import netkit/buffer/constants as buffer_constants
 import netkit/buffer/circular
-import netkit/http/base 
-import netkit/http/connection
-import netkit/http/constants as http_constants
+import netkit/http/limits 
 import netkit/http/exception
+import netkit/http/spec 
+import netkit/http/httpmethod 
+import netkit/http/version 
+import netkit/http/status
+import netkit/http/headerfield  
+import netkit/http/header 
+import netkit/http/connection
 import netkit/http/chunk 
 import netkit/http/metadata 
 

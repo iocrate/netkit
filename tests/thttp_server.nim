@@ -17,11 +17,7 @@ discard """
 import unittest
 import asyncnet
 import asyncdispatch
-import netkit/http/base
-import netkit/http/reader
-import netkit/http/writer
-import netkit/http/server as httpserver
-import netkit/http/exception
+import netkit/http
 
 suite "In-order IO":
   var server: AsyncHttpServer

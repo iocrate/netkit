@@ -10,8 +10,10 @@ import strutils
 import asyncdispatch
 import nativesockets
 import netkit/locks 
-import netkit/http/base 
 import netkit/http/exception
+import netkit/http/status 
+import netkit/http/headerfield 
+import netkit/http/header 
 import netkit/http/connection
 
 type

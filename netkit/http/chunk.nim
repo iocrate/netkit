@@ -172,8 +172,9 @@
 import strutils
 import strtabs
 import netkit/misc
-import netkit/http/base
-import netkit/http/constants as http_constants
+import netkit/http/spec
+import netkit/http/limits
+import netkit/http/headerfield
 
 type
   ChunkHeader* = object ## Represents the header of a chunk.
