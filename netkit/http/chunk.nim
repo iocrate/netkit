@@ -4,105 +4,170 @@
 #    See the file "LICENSE", included in this
 #    destribution, for details about the copyright.
 
-## HTTP 1.1 protocol specification supports chunked encoding. By adding a ``Transfer-Encoding: chunked`` 
-## field to the message header, the message body can be sent chunk by chunk without determining the total
-## size of the message body. Each data chunk needs to be encoded and decoded when it is sent and received.
-## This module provides tools for dealing with these types of encodings and decodings.
+## HTTP 1.1 supports chunked encoding, which allows HTTP messages to be broken up into several parts. 
+## Chunking is most often used by the server for responses, but clients can also chunk large requests.
+## By adding ``Transfer-Encoding: chunked`` to a message header, this message can be sent chunk by chunk. 
+## Each data chunk requires to be encoded and decoded when it is sent and received. This module provides 
+## tools for dealing with these types of encodings and decodings.
 ## 
 ## Overview
 ## ========================
 ## 
 ## .. container:: r-fragment
 ## 
-##   Data Chunk and Data Tail
+##   Format
 ##   ------------------------
 ## 
-##   The entire message body was split into zero or more data chunks and one data tail.
+##   If a ``Transfer-Encoding`` field with a value of ``"chunked"`` is specified in an HTTP message (either a 
+##   request sent by a client or the response from the server), the body of the message consists of an 
+##   unspecified number of chunks, a terminating chunk, trailer, and a final CRLF sequence (i.e. carriage 
+##   return followed by line feed).
 ## 
-##   Each data chunk include chunk-size (specify the size of the data chunk), chunk-extensions (optional, 
-##   specify the extensions), and chunk-data (the actual data). Generally, such a data chunk is represented 
-##   as a header and a body. The header include chunk-size and chunk-extensions, and the body is the chunk-data. 
+##   Each chunk starts with the number of octets of the data it embeds expressed as a hexadecimal number in 
+##   ASCII followed by optional parameters (chunk extension) and a terminating CRLF sequence, followed by 
+##   the chunk data. The chunk is terminated by CRLF.
 ## 
-##   The last part of the message body is the data tail, indicating the end of the message body. The data tail
-##   supports carring trailers to allow the sender to add additional meta-information.
+##   If chunk extensions are provided, the chunk size is terminated by a semicolon and followed by the parameters, 
+##   each also delimited by semicolons. Each parameter is encoded as an extension name followed by an optional 
+##   equal sign and value. These parameters could be used for a running message digest or digital signature, or to 
+##   indicate an estimated transfer progress, for instance.
+## 
+##   The terminating chunk is a regular chunk, with the exception that its length is zero. It is followed by the
+##   trailer, which consists of a (possibly empty) sequence of entity header fields. Normally, such header fields  
+##   would be sent in the message's header; however, it may be more efficient to determine them after processing   
+##   the entire message entity. In that case, it is useful to send those headers in the trailer.
+##
+##   Header fields that regulate the use of trailers are ``TE`` (used in requests), and ``Trailers`` (used in 
+##   responses).
+## 
+##   ..
+## 
+##     See `Chunked transfer encoding <https://en.wikipedia.org/wiki/Chunked_transfer_encoding>`_ for more information. 
 ## 
 ## .. container:: r-fragment
 ## 
-##   HTTP Message Example
+##   Example
 ##   ------------------------
 ## 
-##   The following example is a chunked HTTP message body:
+##   Here is an example of a body of a chunked message:
 ## 
 ##   .. code-block::http
 ## 
-##     5;\r\n                                      # chunk-size and chunk-extensions
-##     Hello\r\n                                   # chunk-data
+##     5;\r\n                                      # chunk-size and chunk-extensions (empty)
+##     Hello\r\n                                   # data
 ##     9; language=en; city=London\r\n             # chunk-size and chunk-extensions
-##     Developer\r\n                               # chunk-data
-##     0\r\n                                       # data tail ----------------------
+##     Developer\r\n                               # data
+##     0\r\n                                       # terminating chunk ---------------------
 ##     Expires: Wed, 21 Oct 2015 07:28:00 GMT\r\n  # trailer
-##     \r\n                                        # --------------------------------
+##     \r\n                                        # final CRLF-----------------------------
 ## 
 ## .. container:: r-fragment
 ## 
-##   Usage - encoding
+##   About \\n and \\L 
 ##   ------------------------
 ## 
-##   To implement the HTTP message body shown in the above example, you can use the following methods:
+##   Since ``\n`` cannot be represented as a character (but a string) in Nim language, we use 
+##   ``'\L'`` to represent a newline character here. 
 ## 
-##   .. code-block::http
-## 
-##     var message = ""
-## 
-##     message.add(encodeChunk("Hello"))
-##     message.add(encodeChunk("Developer", {
-##       "language": "en",
-##       "city": "London"
-##     }))
-##     message.add(encodeChunkEnd(initHeaderFields({
-##       "Expires": "Wed, 21 Oct 2015 07:28:00 GM"
-##     })))
-## 
-##   This example demonstrates the "string version of encodeChunk", this module also provides other efficient 
-##   encoding functions, you can view the specific description.
+## Usage
+## ========================
 ## 
 ## .. container:: r-fragment
 ## 
-##   Usage - parsing
+##   Encoding
 ##   ------------------------
 ## 
-##   To parse a character sequence that consisting of chunk-size and chunk-extensions: 
+##   To implement a chunked body shown in the above example:
 ## 
 ##   .. code-block::nim
+## 
+##     import netkit/http/base
+##     import netkit/http/chunk
+## 
+##     assert encodeChunk("Hello") == "5;\r\nHello\r\n"
+## 
+##     assert encodeChunk("Developer", {
+##       "language": "en",
+##       "city": "London"
+##     }) == "9; language=en; city=London\r\nDeveloper\r\n"
+## 
+##     assert encodeChunkEnd(initHeaderFields({
+##       "Expires": "Wed, 21 Oct 2015 07:28:00 GMT"
+##     })) == "0\r\nExpires: Wed, 21 Oct 2015 07:28:00 GMT\r\n\r\n"
+## 
+##   This example demonstrates the string version of the encoding procs. However, there is also a 
+##   more efficient solution.
+## 
+##   Encoding with pointer buffer
+##   --------------------------------
+## 
+##   Continuously reads data from a file and then encodes the data:
+## 
+##   .. code-block::nim
+## 
+##     import netkit/http/base
+##     import netkit/http/chunk
+##     
+##     var source: array[64, byte]
+##     var dest: array[128, byte]
+##     
+##     # open a large file
+##     var file = open("test.blob") 
+##     
+##     while true:
+##       let readLen = file.readBuffer(source.addr, 64)
+## 
+##       if readLen > 0:
+##         let encodeLen = encodeChunk(source.addr, readLen, dest.addr, 128)
+##         # handle dest, encodeLen ...
+## 
+##       # read EOF
+##       if readLen < 64: 
+##         echo encodeChunkEnd(initHeaderFields({
+##           "Expires": "Wed, 21 Oct 2015 07:28:00 GMT"
+##         }))
+##         break
+## 
+##   ..
+## 
+##     Consider using pointer buffer when you are dealing with large amounts of data and are very  
+##     concerned about memory consumption. 
+## 
+## .. container:: r-fragment
+## 
+##   Decoding
+##   ------------------------
+## 
+##   To parse a char sequence consisting of chunk-size and chunk-extensions: 
+## 
+##   .. code-block::nim
+## 
+##     import netkit/http/chunk
 ## 
 ##     let header = parseChunkHeader("1A; a1=v1; a2=v2") 
 ##     assert header.size = 26
 ##     assert header.extensions = "; a1=v1; a2=v2"
 ## 
-##   To parse a character sequence related to chunk-extensions ： 
+##   To parse a char sequence associated with chunk-extensions ： 
 ## 
 ##   .. code-block::nim
+## 
+##     import netkit/http/chunk
 ## 
 ##     let extensions = parseChunkExtensions("; a1=v1; a2=v2") 
 ##     assert extensions[0].name = "a1"
 ##     assert extensions[0].value = "v1"
-##     assert extensions[1].name = "a1"
-##     assert extensions[1].value = "v1"
+##     assert extensions[1].name = "a2"
+##     assert extensions[1].value = "v2"
 ## 
-##   To parse a group of character sequence related to tailers： 
+##   To parse a set of char sequence associated with tailers： 
 ## 
 ##   .. code-block::nim
 ## 
-##     let tailers = parseChunkHeader(@["Expires: Wed, 21 Oct 2015 07:28:00 GMT"]) 
+##     import netkit/http/chunk
+## 
+##     let tailers = parseChunkTrailers(@["Expires: Wed, 21 Oct 2015 07:28:00 GMT"]) 
 ##     assert tailers["Expires"][0] == "Wed, 21 Oct 2015 07:28:00 GMT"
-## 
-## .. container:: r-fragment
-## 
-##   About \n and \L 
-##   ------------------------
-## 
-##   Since ``\n`` cannot be represented as a character (but a string) in Nim language, we use 
-##   ``'\L'`` to represent a newline character. 
 
 import strutils
 import strtabs
@@ -111,13 +176,13 @@ import netkit/http/base
 import netkit/http/constants as http_constants
 
 type
-  ChunkHeader* = object ## Represents the header of a data chunk.
-    size*: Natural      ## Size of the data chunk.
-    extensions*: string ## Extensions of the data chunk.
+  ChunkHeader* = object ## Represents the header of a chunk.
+    size*: Natural      
+    extensions*: string 
 
-  ChunkExtension* = tuple ## Represents a chunk-extension.
-    name: string          ## The name of this extension.
-    value: string         ## The value of this extension
+  ChunkExtension* = tuple ## Represents a chunk extension.
+    name: string          
+    value: string  
 
 template seek(r: string, v: string, start: Natural, stop: Natural) = 
   if stop > start:
@@ -129,14 +194,14 @@ template seek(r: string, v: string, start: Natural, stop: Natural) =
   start = stop + 1
 
 proc parseChunkHeader*(s: string): ChunkHeader {.raises: [ValueError].} = 
-  ## Converts a string representing size and extensions into a ``ChunkHeader``. 
+  ## Converts a string to a ``ChunkHeader``. 
   ##
   ## Examples:
   ## 
   ## .. code-block::nim
   ## 
   ##   parseChunkHeader("64") # => (100, "")
-  ##   parseChunkHeader("64; name=value") # => (100, "name=value")
+  ##   parseChunkHeader("64; name=value") # => (100, "; name=value")
   result.size = 0
   var i = 0
   while i < s.len:
@@ -155,14 +220,13 @@ proc parseChunkHeader*(s: string): ChunkHeader {.raises: [ValueError].} =
     i.inc()
 
 proc parseChunkExtensions*(s: string): seq[ChunkExtension] = 
-  ## Converts a string representing extensions into a ``(name, value)`` pair seq. 
+  ## Converts a string representing extensions to a set of ``(name, value)`` pair. 
   ## 
   ## Examples: 
   ## 
   ## .. code-block::nim
   ## 
   ##   let extensions = parseChunkExtensions(";a1=v1;a2=v2") 
-  ##                  # => ("a1", "v1"), ("a2", "v2")
   ##   assert extensions[0].name == "a1"
   ##   assert extensions[0].value == "v1"
   ##   assert extensions[1].name == "a2"
@@ -216,8 +280,8 @@ proc parseChunkExtensions*(s: string): seq[ChunkExtension] =
   if key.len > 0 or value.len > 0:
     result.add((key, value))
 
-proc parseChunkTrailers*(ts: openarray[string]): HeaderFields = 
-  ## Converts a string array representing Trailer into a ``HeaderFields``. 
+proc parseChunkTrailers*(ts: openArray[string]): HeaderFields = 
+  ## Converts a string array representing trailers to a ``HeaderFields``. 
   ## 
   ## Examples: 
   ## 
@@ -262,7 +326,7 @@ proc toHex(x: Natural): string =
   for i in 16-m..15:
     result.add(s[i])
 
-proc toChunkExtensions(args: openarray[ChunkExtension]): string = 
+proc toChunkExtensions(args: openArray[ChunkExtension]): string = 
   ## ``("a1", "v1"), ("a2", "v2") => ";a1=v1;a2=v2"``  
   ## ``("a1", ""  ), ("a2", "v2") => ";a1;a2=v2"``
   for arg in args:
@@ -276,12 +340,11 @@ proc toChunkExtensions(args: openarray[ChunkExtension]): string =
 
 template encodeChunkImpl(
   source: pointer, 
-  ssize: Natural, 
   dest: pointer, 
-  dsize: Natural, 
+  size: Natural, 
   extensionsStr: untyped, 
   chunkSizeStr: string
-) = 
+): Natural = 
   copyMem(dest, chunkSizeStr.cstring, chunkSizeStr.len)
   var pos = chunkSizeStr.len
   when extensionsStr is string:
@@ -290,31 +353,22 @@ template encodeChunkImpl(
       pos = pos + extensionsStr.len
   cast[ptr char](dest.offset(pos))[] = CR
   cast[ptr char](dest.offset(pos + 1))[] = LF
-  copyMem(dest.offset(pos + 2), source, ssize)
-  pos = pos + 2 + ssize
+  copyMem(dest.offset(pos + 2), source, size)
+  pos = pos + 2 + size
   cast[ptr char](dest.offset(pos))[] = CR
   cast[ptr char](dest.offset(pos + 1))[] = LF
+  pos = pos + 2
+  pos
 
 proc encodeChunk*(
   source: pointer, 
-  ssize: Natural, 
   dest: pointer, 
-  dsize: Natural
-) = 
-  ## Uses ``Transfer-Encoding: chunked`` to encode a data chunk. ``source`` specifies the actual data, and ``ssize``
-  ## specifies the length of ``source``. The encoded data is copied to `` dest``, and ``dsize`` specifies the length 
-  ## of ``dest``. 
+  size: Natural
+): Natural = 
+  ## Encodes ``size`` bytes from the buffer ``source``, storing the results in the buffer ``dest``. The return 
+  ## value is the number of bytes of the results.
   ## 
-  ## Note that ``dsize`` must be at least ``21 + extensions.len`` larger than ``ssize``, otherwise, there 
-  ## will not be enough space to store the encoded data, causing an exception. 
-  ## 
-  ## This function uses two buffers ``source`` and ``dest`` to handle the encoding process. It is very useful if you 
-  ## need to process a large amount of data frequently and pay attention to the performance consumption during 
-  ## processing. By saving references to the two buffers, you don't need to create additional storage space to save 
-  ## the encoded data.
-  ## 
-  ## If you do not pay attention to the performance consumption during processing, or the amount of data is not large, 
-  ## it is recommended to use the following string version of ``encodeChunk``.
+  ## **Note:** the length of ``dest`` must be at least ``21`` bytes larger than ``source`` to hold the results. 
   ## 
   ## Examples:
   ## 
@@ -323,34 +377,22 @@ proc encodeChunk*(
   ##   let source = "Developer"
   ##   let dest = newString(source.len + 21)
   ##   encodeChunk(source.cstring, source.len, dest.cstring, dest.len)
-  ##   assert dest == "9\r\LDeveloper\r\L"
-  if dsize - ssize - 4 < LimitChunkSizeLen:
-    raise newException(OverflowError, "Dest size is not large enough")
-  let chunkSizeStr = ssize.toHex()  
+  ##   assert dest == "9\r\nDeveloper\r\n"
+  let chunkSizeStr = size.toHex()  
   assert chunkSizeStr.len <= LimitChunkSizeLen
-  encodeChunkImpl(source, ssize, dest, dsize, void, chunkSizeStr)
+  result = encodeChunkImpl(source, dest, size, void, chunkSizeStr)
 
 proc encodeChunk*(
   source: pointer, 
-  ssize: Natural, 
   dest: pointer, 
-  dsize: Natural, 
-  extensions = openarray[ChunkExtension]
-) = 
-  ## Uses ``Transfer-Encoding: chunked`` to encode a data chunk. ``source`` specifies the actual data, and ``ssize``
-  ## specifies the length of ``source``. The encoded data is copied to `` dest``, and ``dsize`` specifies the length 
-  ## of ``dest``. ``extensions`` specifies the chunk-extensions. 
+  size: Natural,
+  extensions = openArray[ChunkExtension]
+): Natural = 
+  ## Encodes ``size`` bytes from the buffer ``source``, storing the results in the buffer ``dest``. ``extensions`` 
+  ## specifies chunk extensions. The return value is the number of bytes of the results.
   ## 
-  ## Note that ``dsize`` must be at least ``21 + extensions.len`` larger than ``ssize``, otherwise, there 
-  ## will not be enough space to store the encoded data, causing an exception. 
-  ## 
-  ## This function uses two buffers ``source`` and ``dest`` to handle the encoding process. It is very useful if you 
-  ## need to process a large amount of data frequently and pay attention to the performance consumption during 
-  ## processing. By saving references to the two buffers, you don't need to create additional storage space to save 
-  ## the encoded data.
-  ## 
-  ## If you do not pay attention to the performance consumption during processing, or the amount of data is not large, 
-  ## it is recommended to use the following string version of ``encodeChunk``.
+  ## **Note:** the length of ``dest`` must be at least ``21 + extensions.len`` bytes larger than ``source`` to 
+  ## hold the results. 
   ## 
   ## Examples:
   ## 
@@ -360,75 +402,67 @@ proc encodeChunk*(
   ##   let extensions = "language=en; city=London"
   ##   let dest = newString(source.len + 21 + extensions.len)
   ##   encodeChunk(source.cstring, source.len, dest.cstring, dest.len, extensions)
-  ##   assert dest == "9; language=en; city=London\r\LDeveloper\r\L"
+  ##   assert dest == "9; language=en; city=London\r\nDeveloper\r\n"
   let extensionsStr = extensions.toChunkExtensions()
-  if dsize - ssize - extensionsStr.len - 4 < LimitChunkSizeLen:
-    raise newException(OverflowError, "Dest size is not large enough")
-  let chunkSizeStr = ssize.toHex()  
+  let chunkSizeStr = size.toHex()  
   assert chunkSizeStr.len <= LimitChunkSizeLen
-  encodeChunkImpl(source, ssize, dest, dsize, extensionsStr, chunkSizeStr)
+  result = encodeChunkImpl(source, dest, size, extensionsStr, chunkSizeStr)
 
 proc encodeChunk*(source: string): string =
-  ## Returns a data chunk encoded with ``Transfer-Encoding: chunked``. ``source`` specifies the actual data. 
-  ## This one has no metadata.
-  ## 
-  ## This is the string version of ``encodeChunk``, which is more convenient and simple to use.
+  ## Encodes ``source`` into a chunk. 
   ## 
   ## Examples:
   ## 
   ## .. code-block::nim
   ## 
-  ##   let out = encodeChunk("Developer")
-  ##   assert out == "9\r\LDeveloper\r\L"
+  ##   let dest = encodeChunk("Developer")
+  ##   assert dest == "9\r\nDeveloper\r\n"
   let chunkSizeStr = source.len.toHex()  
   assert chunkSizeStr.len <= LimitChunkSizeLen
   result = newString(chunkSizeStr.len + source.len + 4)
-  encodeChunkImpl(source.cstring, source.len, result.cstring, result.len, void, chunkSizeStr)
+  discard encodeChunkImpl(source.cstring, result.cstring, source.len, void, chunkSizeStr)
 
-proc encodeChunk*(source: string, extensions: openarray[ChunkExtension]): string = 
-  ## Returns a data chunk encoded with ``Transfer-Encoding: chunked``. ``source`` specifies the actual data, 
-  ## ``extensions`` specifies the chunk-extensions. 
-  ## 
-  ## This is the string version of ``encodeChunk``, which is more convenient and simple to use.
+proc encodeChunk*(source: string, extensions: openArray[ChunkExtension]): string = 
+  ## Encodes ``source`` into a chunk. ``extensions`` specifies chunk extensions. 
   ## 
   ## Examples:
   ## 
   ## .. code-block::nim
   ## 
-  ##   let out = encodeChunk("Developer", {
+  ##   let dest = encodeChunk("Developer", {
   ##     "language": "en",
   ##     "city": "London"
   ##   })
-  ##   assert out == "9; language=en; city=London\r\LDeveloper\r\L"
+  ##   assert dest == "9; language=en; city=London\r\nDeveloper\r\n"
   let extensionsStr = extensions.toChunkExtensions()
   let chunkSizeStr = source.len.toHex()  
   assert chunkSizeStr.len <= LimitChunkSizeLen
   result = newString(chunkSizeStr.len + extensionsStr.len + source.len + 4)
-  encodeChunkImpl(source.cstring, source.len, result.cstring, result.len, extensionsStr, chunkSizeStr)
+  discard encodeChunkImpl(source.cstring, result.cstring, source.len, extensionsStr, chunkSizeStr)
 
 proc encodeChunkEnd*(): string = 
-  ## Returns a data tail encoded with ``Transfer-Encoding: chunked``. This one has no metadata.
+  ## Returns a string consisting of a terminating chunk and a final CRLF sequence.
   ## 
   ## Examples: 
   ## 
   ## .. code-block::nim
   ## 
-  ##   let out = encodeChunkEnd()
-  ##   assert out == "0\r\L\r\L"
+  ##   let dest = encodeChunkEnd()
+  ##   assert dest == "0\r\n\r\n"
   result = "0\C\L\C\L"
 
 proc encodeChunkEnd*(trailers: HeaderFields): string = 
-  ## Returns a data tail encoded with ``Transfer-Encoding: chunked``. ``trailers`` specifies the carried metadata。
+  ## Returns a string consisting of a terminating chunk, trailer and a final CRLF sequence. ``trailers`` specifies 
+  ## the metadata carried.
   ## 
   ## Examples: 
   ## 
   ## .. code-block::nim
   ## 
-  ##   let out = encodeChunkEnd(initHeaderFields({
+  ##   let dest = encodeChunkEnd(initHeaderFields({
   ##     "Expires": "Wed, 21 Oct 2015 07:28:00 GM"
   ##   }))
-  ##   assert out == "0\r\LExpires: Wed, 21 Oct 2015 07:28:00 GM\r\L\r\L"
+  ##   assert dest == "0\r\nExpires: Wed, 21 Oct 2015 07:28:00 GM\r\n\r\n"
   result.add("0\C\L")
   result.add($trailers)
   result.add("\C\L")
-  

@@ -54,7 +54,4 @@ proc `=destroy`(a: var Opt) =
 
 # GC_fullCollect()
 
-test "marks":
-  var a = "abc"
-  check a.len == 3
-
+echo "\r\n" == "\r\L"
