@@ -11,13 +11,14 @@ const Path = require('path')
 const JsDom = require('jsdom')
 
 const DOC_DIR = Path.resolve(__dirname, '../../build/doc')
+const DOCK_HACK_JS = Path.resolve(__dirname, 'dochack.js')
 
 class DocPolisher {
   constructor(document) {
     this.document = document
   }
 
-  paintCSS() {
+  polishCSS() {
     this.document.head.insertAdjacentHTML("beforeend", `<style>
     h1 {
       border-bottom: none;
@@ -77,6 +78,15 @@ class DocPolisher {
     }
   </style>`)
   }
+
+  polishJS() {
+    const scripts = this.document.querySelectorAll("script")
+    for (let i = 0, len = scripts.length; i < len; i++) {
+      if (scripts[i].src === "dochack.js") {
+        scripts[i].src = "/dochack.js"
+      }
+    }
+  }
   
   removeChildTexts(elem) {
     var childNodes = elem.childNodes
@@ -91,7 +101,7 @@ class DocPolisher {
     }
   }
   
-  paintEnums() {
+  polishEnums() {
     const keywordElems = this.document.querySelectorAll("pre > .Keyword")
     for (let i = 0, len = keywordElems.length; i < len; i++) {
       const elem = keywordElems[i]
@@ -129,11 +139,13 @@ class DocManager {
       console.log('Polishing:', file)
       const content = Fs.readFileSync(file, 'utf8')
       const dom = new JsDom.JSDOM(content)
-      const painter = new DocPolisher(dom.window.document)
-      painter.paintCSS()
-      painter.paintEnums()
+      const polisher = new DocPolisher(dom.window.document)
+      polisher.polishCSS()
+      polisher.polishJS()
+      polisher.polishEnums()
       Fs.writeFileSync(file, dom.serialize(), 'utf8')
     }
+    Fs.copyFileSync(DOCK_HACK_JS, Path.join(this.rootDir, 'dochack.js'))
   }
 
   * files() {
