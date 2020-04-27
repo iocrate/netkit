@@ -4,12 +4,12 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-## This module defines exceptions related to HTTP operations.
+## This module contains a few possible errors associated with HTTP operations.
 
 import netkit/http/status
 
 type
-  HttpError* = object of CatchableError ## Indicates a error related to HTTP protocol.
+  HttpError* = object of CatchableError ## Indicates a error associated with a HTTP operation.
     code*: range[Http400..Http505] 
     
   ReadAbortedError* = object of CatchableError ## Indicates that the read operation is aborted before completion. 

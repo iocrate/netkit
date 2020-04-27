@@ -18,7 +18,17 @@ const
   HttpVersion20* = "HTTP/2.0"
 
 proc parseHttpVersion*(s: string): HttpVersion  {.raises: [ValueError].} =
-  ## Convert a string to HTTP version.
+  ## Converts a string to HTTP version. A ``ValueError`` is raised when ``s`` is not a valid version. Currently
+  ## only `"HTTP/1.0"` and `"HTTP/1.1"` are valid versions.
+  ## 
+  ## Examples:
+  ## 
+  ## .. code-block::nim
+  ## 
+  ##   let version = parseHttpVersion("HTTP/1.1")
+  ##   assert version.orig == "HTTP/1.1"
+  ##   assert version.major == 1
+  ##   assert version.minor == 1
   if s.len != 8 or s[6] != '.':
     raise newException(ValueError, "Invalid Http Version")
   let major = s[5].ord - 48

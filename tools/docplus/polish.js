@@ -108,19 +108,29 @@ class DocPolisher {
       if (elem.innerHTML === 'enum') {
         this.removeChildTexts(elem.parentElement)
   
-        const others = elem.parentElement.querySelectorAll('.Other')
-        for (let i = 0, len = others.length; i < len; i++) {
-          if (others[i].innerHTML == ',') {
-            others[i].innerHTML = others[i].innerHTML + '\n  '
+        const children = elem.parentElement.children
+        for (let i = 0, len = children.length; i < len; i++) {
+          if (children[i].classList.contains('Other')) {
+            if (children[i].innerHTML == '=') {
+              children[i].innerHTML = ' ' + children[i].innerHTML + ' '
+            }
+            if (children[i].innerHTML == ',') {
+              let j = i + 1
+              if (j < len) {
+                if (children[j].classList.contains('Comment')) {
+                  children[j].innerHTML = '  ' + children[j].innerHTML + '\n  '
+                }
+              }
+              children[i].innerHTML = children[i].innerHTML + '\n  '
+            }
+          } else {
+            let j = i + 1
+            if (j < len) {
+              if (children[j].classList.contains('Comment')) {
+                children[j].innerHTML = '\n    ' + children[j].innerHTML + '\n  '
+              }
+            }
           }
-          if (others[i].innerHTML == '=') {
-            others[i].innerHTML = ' ' + others[i].innerHTML + ' '
-          }
-        }
-  
-        const comments = elem.parentElement.querySelectorAll('.Comment')
-        for (let i = 0, len = comments.length; i < len; i++) {
-          comments[i].innerHTML = '  ' + comments[i].innerHTML + '\n  '
         }
   
         elem.innerHTML = elem.innerHTML + '\n  '

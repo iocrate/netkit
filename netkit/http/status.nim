@@ -5,6 +5,19 @@
 #    distribution, for details about the copyright.
 
 ## This module contains HTTP status code.
+## 
+## Overview
+## ========================
+## 
+## In HTTP/1.0 and since, the first line of the HTTP response is called the status line and includes a numeric 
+## status code (such as "404") and a textual reason phrase (such as "Not Found"). The way the user agent handles 
+## the response depends primarily on the code, and secondarily on the other response header fields. Custom
+## status codes can be used, for if the user agent encounters a code it does not recognize, it can use the first
+## digit of the code to determine the general class of the response.
+## 
+## .. 
+## 
+##   See `Hypertext Transfer Protocol <https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol>`_ for more information.
 
 type
   HttpCode* = enum ## HTTP status code. 
@@ -57,7 +70,14 @@ type
     Http505 = "505 HTTP Version Not Supported"
 
 proc parseHttpCode*(code: int): HttpCode  {.raises: [ValueError].} =
-  ## Convert an integer to a status code. 
+  ## Converts an integer to a status code. A ``ValueError`` is raised when ``code`` is not a valid code.
+  ## 
+  ## Examples:
+  ## 
+  ## .. code-block::nim
+  ## 
+  ##   assert parseHttpCode(100) == Http100
+  ##   assert parseHttpCode(200) == Http200
   case code
   of 100: Http100
   of 101: Http101

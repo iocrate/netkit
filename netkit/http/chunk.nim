@@ -81,8 +81,8 @@
 ## 
 ##   .. code-block::nim
 ## 
-##     import netkit/http/base
 ##     import netkit/http/chunk
+##     import netkit/http/headerfield
 ## 
 ##     assert encodeChunk("Hello") == "5;\r\nHello\r\n"
 ## 
@@ -105,8 +105,8 @@
 ## 
 ##   .. code-block::nim
 ## 
-##     import netkit/http/base
 ##     import netkit/http/chunk
+##     import netkit/http/headerfield
 ##     
 ##     var source: array[64, byte]
 ##     var dest: array[128, byte]

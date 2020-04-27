@@ -4,7 +4,7 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-## 
+## This module contains a few information about HTTP Specification. 
 
 # Tip
 # ---
@@ -29,16 +29,18 @@ const
   WSP* = {SP, HTAB}
 
 proc checkFieldName*(s: string) {.raises: [ValueError].} = 
-  ## `RFC5234 <https://tools.ietf.org/html/rfc5234>`_
+  ## Checks if ``s`` is a valid name of a HTTP header field. 
+  ##
+  ## `HTTP RFC 5234 <https://tools.ietf.org/html/rfc5234>`_
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ## 
   ##   DIGIT          =  %x30-39            ; 0-9
   ##   ALPHA          =  %x41-5A / %x61-7A  ; A-Z / a-z
   ## 
-  ## `RFC7230 <https://tools.ietf.org/html/rfc7230>`_
+  ## `HTTP RFC 7230 <https://tools.ietf.org/html/rfc7230>`_
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ## 
   ##   field-name     =  token
   ##   token          =  1*tchar
@@ -62,17 +64,19 @@ proc checkFieldName*(s: string) {.raises: [ValueError].} =
       raise newException(ValueError, "Invalid field name")
 
 proc checkFieldValue*(s: string) {.raises: [ValueError].} = 
-  ## `RFC5234 <https://tools.ietf.org/html/rfc5234>`_
+  ## Checks if ``s`` is a valid value of a HTTP header field. 
   ## 
-  ## ..code-block::nim
+  ## `HTTP RFC 5234 <https://tools.ietf.org/html/rfc5234>`_
+  ## 
+  ## .. code-block::nim
   ## 
   ##   HTAB           =  %x09       ; horizontal tab
   ##   SP             =  %x20       ; ' '
   ##   VCHAR          =  %x21-7E    ; visible (printing) characters
   ## 
-  ## `RFC7230 <https://tools.ietf.org/html/rfc7230>`_
+  ## `HTTP RFC 7230 <https://tools.ietf.org/html/rfc7230>`_
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ## 
   ##   field-value    =  \*( field-content / obs-fold )
   ##   field-content  =  field-vchar [ 1\*( SP / HTAB ) field-vchar ]

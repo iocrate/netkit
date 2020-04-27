@@ -4,8 +4,8 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-## This module defines some constants related to HTTP operations. Some of them support redefinition 
-## through the `` --define`` instruction during compilation. 
+## This module defines some constants associated with HTTP operations. Some of them support redefinition 
+## through the ``--define`` instruction during compilation. 
 
 import netkit/checks
 
@@ -38,7 +38,7 @@ const LimitChunkHeaderLen* {.intdefine.}: Natural = 1*1024
   ## 
   ## According to the HTTP protocol, the size and extensions parts of this kind of data are in this form:
   ## 
-  ## ..code-block:http
+  ## .. code-block::http
   ## 
   ##   7\r\n; foo=value1; bar=value2\r\n 
  
@@ -48,15 +48,17 @@ const LimitChunkDataLen* {.intdefine.}: Natural = 1*1024
   ## 
   ## According to the HTTP protocol, the data part of this kind of data are in this form:
   ## 
-  ## ..code-block:http
+  ## .. code-block::http
   ## 
   ##   Hello World\r\n 
 
 const LimitChunkTrailerLen* {.intdefine.}: Natural = 8*1024 
   ## Specifies the maximum number of bytes that will be allowed on the medatada part of a message that is encoded 
-  ## by ``Transfer-Encoding: chunked``. In fact, these metadata is some ``Trailer`` header fields. For example:
+  ## by ``Transfer-Encoding: chunked``. In fact, these metadata are some ``Trailer``. 
   ## 
-  ## ..code-block:http
+  ## Examples:
+  ## 
+  ## .. code-block::http
   ## 
   ##   HTTP/1.1 200 OK 
   ##   Transfer-Encoding: chunked
