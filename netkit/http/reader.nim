@@ -4,7 +4,17 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
+## This module provides an abstraction of read operations related to HTTP.
 ## 
+## Overview
+## ========================
+## 
+## A server reads the incoming request from a client, and a client reads the returned response from a 
+## server.
+## 
+## ``HttpReader`` is a base object for read operations, ``ServerRequest`` and ``ClientResponse`` 
+## inherit from it. ``ServerRequest`` represents a incoming request from a client, and ``ClientResponse``
+## represents a returned response from a server.
 
 import strutils
 import strtabs
@@ -26,7 +36,7 @@ import netkit/http/chunk
 import netkit/http/metadata 
 
 type
-  HttpReader* = ref object of RootObj ##
+  HttpReader* = ref object of RootObj ## An abstraction of read operations related to HTTP.
     conn: HttpConnection
     lock: AsyncLock
     header*: HttpHeader
@@ -36,8 +46,8 @@ type
     chunked: bool
     readable: bool
 
-  ServerRequest* = ref object of HttpReader ## 
-  ClientResponse* = ref object of HttpReader ## 
+  ServerRequest* = ref object of HttpReader ## Represents a incoming request from a client.
+  ClientResponse* = ref object of HttpReader ## Represents a returned response from a server.
 
 proc init(reader: HttpReader, conn: HttpConnection, onEnd: proc () {.gcsafe, closure.}) = 
   reader.conn = conn
@@ -49,39 +59,43 @@ proc init(reader: HttpReader, conn: HttpConnection, onEnd: proc () {.gcsafe, clo
   reader.readable = true
 
 proc newServerRequest*(conn: HttpConnection, onEnd: proc () {.gcsafe, closure.}): ServerRequest = 
-  ##
+  ## Creates a new ``ServerRequest``.
   new(result)
   result.init(conn, onEnd)
   result.header = HttpHeader(kind: HttpHeaderKind.Request)
 
 proc newClientResponse*(conn: HttpConnection, onEnd: proc () {.gcsafe, closure.}): ClientResponse = 
-  ##
+  ## Creates a new ``ClientResponse``.
   new(result)
   result.init(conn, onEnd)
   result.header = HttpHeader(kind: HttpHeaderKind.Response)
 
 proc reqMethod*(req: ServerRequest): HttpMethod {.inline.} = 
-  ##  
+  ## Returns the request method. 
   req.header.reqMethod
 
 proc url*(req: ServerRequest): string {.inline.} = 
-  ## 
+  ## Returns the url. 
   req.header.url
 
+proc status*(res: ClientResponse): HttpCode {.inline.} = 
+  ## Returns the status code. 
+  res.header.statusCode
+
 proc version*(reader: HttpReader): HttpVersion {.inline.} = 
-  ## 
+  ## Returns the HTTP version. 
   reader.header.version
 
 proc fields*(reader: HttpReader): HeaderFields {.inline.} = 
-  ## 
+  ## Returns the header fields. 
   reader.header.fields
 
 proc metadata*(reader: HttpReader): HttpMetadata {.inline.} =
-  ## 
+  ## Returns the metadata. 
   reader.metadata
 
 proc ended*(reader: HttpReader): bool {.inline.} =
-  ## 
+  ## Returns ``true`` if the underlying connection has been disconnected or no more data can be read.
   reader.conn.closed or not reader.readable
 
 proc normalizeContentLength(reader: HttpReader) =
@@ -122,6 +136,7 @@ proc normalizeTransforEncoding(reader: HttpReader) =
 
 proc normalizeSpecificFields*(reader: HttpReader) =
   # TODO: more normalized header fields
+  ## Normalizes a few special header fields.
   reader.normalizeContentLength()
   reader.normalizeTransforEncoding()    
 
@@ -219,12 +234,13 @@ template readChunk(reader: HttpReader): string =
   data
 
 proc read*(reader: HttpReader, buf: pointer, size: range[int(LimitChunkDataLen)..high(int)]): Future[Natural] {.async.} =
-  ## Reads up to ``size`` bytes from the request, storing the results in the ``buf``. 
+  ## Reads up to ``size`` bytes, storing the results in the ``buf``. 
   ## 
   ## The return value is the number of bytes actually read. This might be less than ``size``.
-  ## A value of zero indicates ``eof``, i.e. at the end of the request.
+  ## A value of zero indicates ``EOF``, i.e. no more data can be read.
   ## 
-  ## If the return future is failed, ``OsError`` or ``ReadAbortedError`` may be raised.
+  ## If a system error occurs during reading, an ``OsError``  will be raised. If the connection is  
+  ## disconnected before successful reading, a ``ReadAbortedError`` will be raised.
   await reader.lock.acquire()
   try:
     if not reader.ended:
@@ -236,11 +252,12 @@ proc read*(reader: HttpReader, buf: pointer, size: range[int(LimitChunkDataLen).
     reader.lock.release()
 
 proc read*(reader: HttpReader): Future[string] {.async.} =
-  ## Reads up to ``size`` bytes from the request, storing the results as a string. 
+  ## Reads up to ``size`` bytes, storing the results as a string. 
   ## 
   ## If the return value is ``""``, that indicates ``eof``, i.e. at the end of the request.
   ## 
-  ## If the return future is failed, ``OsError`` or ``ReadAbortedError`` may be raised.
+  ## If a system error occurs during reading, an ``OsError``  will be raised. If the connection is  
+  ## disconnected before successful reading, a ``ReadAbortedError`` will be raised.
   await reader.lock.acquire()
   try:
     if not reader.ended:
@@ -252,9 +269,10 @@ proc read*(reader: HttpReader): Future[string] {.async.} =
     reader.lock.release()
 
 proc readAll*(reader: HttpReader): Future[string] {.async.} =
-  ## Reads all bytes from the request, storing the results as a string. 
+  ## Reads all bytes, storing the results as a string. 
   ## 
-  ## If the return future is failed, ``OsError`` or ``ReadAbortedError`` may be raised.
+  ## If a system error occurs during reading, an ``OsError``  will be raised. If the connection is  
+  ## disconnected before successful reading, a ``ReadAbortedError`` will be raised.
   await reader.lock.acquire()
   try:
     if reader.chunked:
@@ -268,7 +286,7 @@ proc readAll*(reader: HttpReader): Future[string] {.async.} =
     reader.lock.release()
 
 proc readDiscard*(reader: HttpReader): Future[void] {.async.} =
-  ## Reads all bytes from the request, discarding the results. 
+  ## Reads all bytes, discarding the results. 
   ## 
   ## If the return future is failed, ``OsError`` or ``ReadAbortedError`` may be raised.
   await reader.lock.acquire()
