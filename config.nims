@@ -53,7 +53,7 @@ task docs, "Gen docs":
     args.add("--git.url:https://github.com/iocrate/netkit")
     args.add(fmt"--out:{BuildDocEnDir}")
     # args.add("netkit.nim")
-    args.add("netkit/http/headerfield.nim")
+    args.add("netkit/http/connection.nim")
     exec(args.join(" "))
 
   # TODO: support zh-version
