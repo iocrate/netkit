@@ -76,6 +76,15 @@ class DocPolisher {
       border-left: 1px solid rgb(216,216,216);
       margin: 40px 0;
     }
+
+    .r-ol {
+      padding-left: 1em;
+    }
+
+    p {
+      margin-top: 20px;
+      margin-bottom: 20px;
+    }
   </style>`)
   }
 

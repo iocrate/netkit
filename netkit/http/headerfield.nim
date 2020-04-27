@@ -4,188 +4,264 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-## The HTTP protocol defines various header fields, and the values of these header fields have a variable format: 
+## This module contains a definition of HTTP header fields. A distinct table, ``HeaderFields``, which 
+## represents the set of header fields of a message.
 ## 
-## 1. Represented by a single line; a single value; no-parameters
+## Overview
+## ========================
 ## 
-##    For example:
+## HTTP header fields are components of the header section of request and response messages. They define 
+## the operating parameters of an HTTP transaction. 
+## 
+## Header field names are case-insensitive. Most HTTP header field values are defined using common syntax 
+## components (token, quoted-string, and comment) separated by whitespace or specific delimiting characters. 
+## 
+## .. container::r-fragment
+## 
+##   Formatting rules 
+##   ----------------
+## 
+##   The format of the value of each header field varies widely. There are five different formatting rules:
+## 
+##   1. Represented as a single line, a single value, no-parameters
+## 
+##   .. container::r-ol
+## 
+##      For example:
 ##    
-##    ..code-block::http
+##      .. code-block::http
 ## 
-##      Content-Length: 0
+##        Content-Length: 0
 ## 
-## 2. Represented by a single line; a single value with optional parameters separated by ``;``
+##   2. Represented as a single line, a single value, optional parameters separated by ``';'``
 ## 
-##    For example:
+##   .. container::r-ol
+## 
+##      For example:  
 ##    
-##    ..code-block::http
+##      .. code-block::http
 ## 
-##      Content-Type: application/json
+##        Content-Type: application/json
 ## 
-##    or: 
+##      or: 
 ##    
-##    ..code-block::http
+##      .. code-block::http
 ## 
-##      Content-Type: application/json; charset=utf8
+##        Content-Type: application/json; charset=utf8
 ## 
-## 3. Represented by a single line; multiple values separated by ``;``; no-parameters 
+##   3. Represented as a single line, multiple values separated by ``';'``, no-parameters 
 ## 
-##    For example:
+##   .. container::r-ol
+## 
+##      For example:
 ##    
-##    ..code-block::http
+##      .. code-block::http
 ## 
-##      Cookie: SID=123abc; language=en
+##        Cookie: SID=123abc; language=en
 ## 
-## 4. Represented by a single line or multiple lines; multiple values separated by ``,``; each value has
-##    optional parameters separated by ``;``
+##   4. Represented as a single line or multiple lines, multiple values separated by ``','``, each value has
+##   optional parameters separated by ``';'``
 ## 
-##    An example of a single line:
+##   .. container::r-ol
+## 
+##      A single line:
 ##    
-##    ..code-block::http
+##      .. code-block::http
 ## 
-##      Accept: text/html; q=1; level=1, text/plain
+##        Accept: text/html; q=1; level=1, text/plain
 ## 
-##    An example of multiple lines:
+##      Multiple lines:
 ##    
-##    ..code-block::http
+##      .. code-block::http
 ## 
-##      Accept: text/html; q=1; level=1
-##      Accept: text/plain
+##        Accept: text/html; q=1; level=1
+##        Accept: text/plain
 ## 
-## 5. ``Set-Cookie`` a special case, represented by multiple lines; each line is a value that separated by ``;``; 
-##    no-parameters
+##   5. ``Set-Cookie`` is a special case, represented as multiple lines, each line is a value that separated by ``';'``, 
+##   no-parameters
 ## 
-##    ..code-block::http
+##   .. container::r-ol
 ## 
-##      Set-Cookie: SID=123abc; path=/
-##      Set-Cookie: language=en; path=/
+##      .. code-block::http
 ## 
-## To simplify these complex representations, this module provides some special tools. These tools combine the 
-## above 5 situations into 2 rules: single-line-rule and multiple-lines-rule.
+##        Set-Cookie: SID=123abc; path=/
+##        Set-Cookie: language=en; path=/
 ## 
-## Usage - single-line-rule
-## -------------------------
+##   To simplify these complex representations, this module provides two special tools, ``parseSingleRule`` and 
+##   ``parseMultiRule``, which combine the above 5 rules into 2 rules: **single-line-rule** (SLR) and 
+##   **multiple-lines-rule** (MLR).
 ## 
-## Uses ``parseSingleRule`` to parse the header fields that allow single line, which follows the 1,2,3 rules listed 
-## above, and returns a set of ``(key, value)`` pairs.  The following are examples of the use of various rules: 
+## Usage
+## ========================
 ## 
-## 1. Represented by a single line; a single value; no-parameters
+## .. container:: r-fragment
 ## 
-##    ..code-block::nim
+##   Access fields
+##   -------------------------
+## 
+##   .. code-block::nim
+## 
+##     import netkit/http/headerfield  
 ##      
-##      let fields = initHeaderFields({
-##        "Content-Length": @["0"]
-##      })
-##      let values = fields.parseSingleRule("Content-Length")
-##      assert values[0].key = "0"
+##     let fields = initHeaderFields({
+##       "Host": @["www.iocrate.com"],
+##       "Content-Length": @["16"],
+##       "Content-Type": @["application/json; charset=utf8"],
+##       "Cookie": @["SID=123; language=en"],
+##       "Accept": @["text/html; q=1; level=1", "text/plain"]
+##     })
+##     
+##     fields.add("Connection", "keep-alive")
+##     fields.add("Accept", "text/*")
 ## 
-##    The returned result should have at most one item, and the ``key`` of the first item indicates the value of this
-##    header field.
+##     assert fields["Content-Length"][0] = "16"
+##     assert fields["content-length"][0] = "16"
+##     assert fields["Accept"][0] = "text/html; q=1; level=1"
+##     assert fields["Accept"][1] = "text/plain"
+##     assert fields["Accept"][2] = "text/*"
 ## 
-##    Note: When using this proc, you must ensure that this field is a single line representation. If you use this proc 
-##          to handle multi-lines fields like ``Accept``, you may lose values. If more than one value is found, an 
-##          exception will be raise.
+## .. container:: r-fragment
 ## 
-## 2. Represented by a single line; a single value with optional parameters separated by ``;``
+##   Access values by SLR
+##   --------------------
 ## 
-##    ..code-block::nim
+##   Uses ``parseSingleRule`` to parse the header fields, which follows the 1,2,3 rules listed above, and returns a set of 
+##   ``(key, value)`` pairs.  
+## 
+##   1. Represented as a single line, a single value, no-parameters
+## 
+##   .. container::r-ol
+## 
+##      .. code-block::nim
 ##      
-##      let fields = initHeaderFields({
-##        "Content-Type": @["application/json; charset=utf8"]
-##      })
-##      let values = fields.parseSingleRule("Content-Type")
-##      assert values[0].key = "application/json"
-##      assert values[1].key = "charset"
-##      assert values[1].value = "utf8"
+##        let fields = initHeaderFields({
+##          "Content-Length": @["0"]
+##        })
+##        let values = fields.parseSingleRule("Content-Length")
+##        assert values[0].key = "0"
 ## 
-##    If the returned result is not empty, the ``key`` of the first item indicates the value of this header field, and the 
-##    remaining items indicates the parameters of this value.
-## 
-##    Note: When using this proc, you must ensure that this field is a single line representation. If you use this proc 
-##          to handle multi-lines fields like ``Accept``, you may lose values. If more than one value is found, an 
-##          exception will be raise.
-## 
-## 3. Represented by a single line; multiple values separated by ``;``; no-parameters 
-## 
-##    ..code-block::nim
+##      The returned result should have at most one item, and the ``key`` of the first item indicates the value of this
+##      header field, if any.
 ##      
-##      let fields = initHeaderFields({
-##        "Cookie": @["SID=123abc; language=en"]
-##      })
-##      let values = fields.parseSingleRule("Cookie")
-##      assert values[0].key = "SID"
-##      assert values[0].value = "123abc"
-##      assert values[1].key = "language"
-##      assert values[1].value = "en"
-## 
-##    If the returned result is not empty, then each item indicates a value -- a ``(key, value)`` pair.
-## 
-##    Note: When using this proc, you must ensure that this field is a single line representation. If you use this proc 
-##          to handle multi-lines fields like ``Accept``, you may lose values. If more than one value is found, an 
-##          exception will be raise.
-## 
-## Usage - multiple-lines-rule
-## ----------------------------
-## 
-## Uses ``parseMultiRule`` to parse the header fields that allow multiple lines, which follows the 4,5 rules listed 
-## above, and returns a set of ``seq[(key, value)]``.  The following are examples of the use of various rules: 
-## 
-## 4. Represented by a single line or multiple lines; multiple values separated by ``,``; each value has
-##    optional parameters separated by ``;``
-## 
-##    ..code-block::nim
+##      .. 
 ##      
-##      let fields = initHeaderFields({
-##        "Accept": @["text/html; q=1; level=1, text/plain"]
-##      })
-##      let values = fields.parsMultiRule("Accept")
-##      assert values[0][0].key = "text/html"
-##      assert values[0][1].key = "q"
-##      assert values[0][1].value = "1"
-##      assert values[0][2].key = "level"
-##      assert values[0][2].value = "1"
-##      assert values[1][0].key = "text/plain"
+##        Note: When using this proc, you must ensure that the values is represented as a single line. If the values is represented 
+##        as multiple-lines like ``Accept``, there may lose values. If more than one value is found, an exception will be raised.
 ## 
-##    the same below：
+##   2. Represented as a single line, a single value, optional parameters separated by ``';'``
 ## 
-##    ..code-block::nim
+##   .. container::r-ol
+## 
+##      .. code-block::nim
 ##      
-##      let fields = initHeaderFields({
-##        "Accept": @["text/html; q=1; level=1", "text/plain"]
-##      })
-##      let values = fields.parsMultiRule("Accept")
+##        let fields = initHeaderFields({
+##          "Content-Type": @["application/json; charset=utf8"]
+##        })
+##        let values = fields.parseSingleRule("Content-Type")
+##        assert values[0].key = "application/json"
+##        assert values[1].key = "charset"
+##        assert values[1].value = "utf8"
 ## 
-##    If the returned result is not empty, then each item indicates a value. The ``key`` of the first 
-##    item of each seq indicates the value itself, and the other items indicate parameters of that value.
-## 
-##    Note: When using this proc, you must ensure that this field is  allowed to represented as multiple lines. 
-##          If you use this proc to handle a single-line field like ``Date``, you may get wrong results. Because ``Date`` 
-##          takes ``,'' as part of its value, for example, ``Date: Thu, 23 Apr 2020 07:41:15 GMT``.
-## 
-## 5. ``Set-Cookie`` a special case, represented by multiple lines; each line is a value that separated by ``;``; 
-##    no-parameters
-## 
-##    ..code-block::nim
+##      If the returned result is not empty, the ``key`` of the first item indicates the value of this header field, and the 
+##      other items indicates the parameters of this value.
 ##      
-##      let fields = initHeaderFields({
-##        "Set-Cookie": @["SID=123abc; path=/", "language=en; path=/"]
-##      })
-##      let values = fields.parsMultiRule("Content-Type")
-##      assert values[0][0].key = "SID"
-##      assert values[0][0].value = "123abc"
-##      assert values[0][1].key = "path"
-##      assert values[0][1].value = "/"
-##      assert values[1][0].key = "language"
-##      assert values[1][0].value = "en"
-##      assert values[1][1].key = "path"
-##      assert values[1][1].value = "/"
+##      .. 
+##      
+##        Note: When using this proc, you must ensure that the values is represented as a single line. If the values is represented 
+##        as multiple-lines like ``Accept``, there may lose values. If more than one value is found, an exception will be raised.
+## 
+##   3. Represented as a single line, multiple values separated by ``';'``, no-parameters 
+## 
+##   .. container::r-ol
+## 
+##      .. code-block::nim
+##      
+##        let fields = initHeaderFields({
+##          "Cookie": @["SID=123abc; language=en"]
+##        })
+##        let values = fields.parseSingleRule("Cookie")
+##        assert values[0].key = "SID"
+##        assert values[0].value = "123abc"
+##        assert values[1].key = "language"
+##        assert values[1].value = "en"
+## 
+##      If the returned result is not empty, then each item indicates a value, that mean a ``(key, value)`` pair.
+##      
+##      .. 
+##      
+##        Note: When using this proc, you must ensure that the values is represented as a single line. If the values is represented 
+##        as multiple-lines like ``Accept``, there may lose values. If more than one value is found, an exception will be raised.
+## 
+## .. container:: r-fragment
+## 
+##   Access values by MLR
+##   --------------------
+## 
+##   Uses ``parseMultiRule`` to parse the header fields, which follows the 4,5 rules listed above, and returns a set of ``seq[(key, value)]``.  
+## 
+##   4. Represented as a single line or multiple lines, multiple values separated by ``','``, each value has
+##   optional parameters separated by ``';'``
+## 
+##   .. container::r-ol
+## 
+##      .. code-block::nim
+##      
+##        let fields = initHeaderFields({
+##          "Accept": @["text/html; q=1; level=1, text/plain"]
+##        })
+##        let values = fields.parseMultiRule("Accept")
+##        assert values[0][0].key = "text/html"
+##        assert values[0][1].key = "q"
+##        assert values[0][1].value = "1"
+##        assert values[0][2].key = "level"
+##        assert values[0][2].value = "1"
+##        assert values[1][0].key = "text/plain"
+## 
+##      the same below：
+## 
+##      .. code-block::nim
+##      
+##        let fields = initHeaderFields({
+##          "Accept": @["text/html; q=1; level=1", "text/plain"]
+##        })
+##        let values = fields.parseMultiRule("Accept")
+## 
+##      If the returned result is not empty, then each item indicates a value. The ``key`` of the first 
+##      item of each seq indicates the value itself, and the other items indicate parameters of that value.
+## 
+##      ..
+## 
+##        Note: When using this proc, you must ensure that the values is represented as multiple lines. 
+##        If the values is represented as a single-line field like ``Date``, you may get wrong results. Because ``Date`` 
+##        takes ``','`` as part of its value, for example, ``Date: Thu, 23 Apr 2020 07:41:15 GMT``.
+## 
+##   5. ``Set-Cookie`` is a special case, represented as multiple lines, each line is a value that separated by ``';'``, 
+##   no-parameters
+## 
+##   .. container::r-ol
+## 
+##      .. code-block::nim
+##      
+##        let fields = initHeaderFields({
+##          "Set-Cookie": @["SID=123abc; path=/", "language=en; path=/"]
+##        })
+##        let values = fields.parseMultiRule("Content-Type")
+##        assert values[0][0].key = "SID"
+##        assert values[0][0].value = "123abc"
+##        assert values[0][1].key = "path"
+##        assert values[0][1].value = "/"
+##        assert values[1][0].key = "language"
+##        assert values[1][0].value = "en"
+##        assert values[1][1].key = "path"
+##        assert values[1][1].value = "/"
 ##    
-##    If the returned result is not empty, then each item indicates a value.
+##      If the returned result is not empty, then each item indicates a value.
 ## 
-##    Note: When using this proc, you must ensure that this field is  allowed to represented as multiple lines. 
-##          If you use this proc to handle a single-line field like ``Date``, you may get wrong results. Because ``Date`` 
-##          takes ``,'' as part of its value, for example, ``Date: Thu, 23 Apr 2020 07:41:15 GMT``.
-
+##      ..
+## 
+##        Note: When using this proc, you must ensure that the values is represented as multiple lines. 
+##        If the values is represented as a single-line field like ``Date``, you may get wrong results. Because ``Date`` 
+##        takes ``','`` as part of its value, for example, ``Date: Thu, 23 Apr 2020 07:41:15 GMT``.
 
 # Multiple Header Fields with The Same Field Name
 # -----------------------------------------------
@@ -230,7 +306,7 @@
 #
 #   `RFC5234 <https://tools.ietf.org/html/rfc5234>`_
 # 
-#   ..code-block::nim
+#   .. code-block::nim
 # 
 #     DIGIT          =  %x30-39            ; 0-9
 #     ALPHA          =  %x41-5A / %x61-7A  ; A-Z / a-z
@@ -243,7 +319,7 @@
 #
 #   `RFC7230 <https://tools.ietf.org/html/rfc7230>`_
 # 
-#   ..code-block::nim
+#   .. code-block::nim
 # 
 #     field-value    =  *( field-content / obs-fold )
 #     field-content  =  field-vchar [ 1*( SP / HTAB ) field-vchar ]
@@ -427,7 +503,7 @@ proc getOrDefault*(
     return default
 
 proc `$`*(fields: HeaderFields): string =
-  ## Converts this fields into a string that follows the HTTP Protocol.
+  ## Converts this fields to a string that follows the HTTP Protocol.
   for key, value in Table[string, seq[string]](fields).pairs():
     for v in value:
       result.add(key)
@@ -495,7 +571,7 @@ proc parseSingleRule(v: string, res: var seq[tuple[key: string, value: string]])
   if key.len > 0 or value.len > 0:
     res.add((key, value))
 
-proc parsMultiRule(v: string, res: var seq[seq[tuple[key: string, value: string]]]) = 
+proc parseMultiRule(v: string, res: var seq[seq[tuple[key: string, value: string]]]) = 
   # delemeters: ``= ; " ,``
   var start = 0
   var stop = 0
@@ -564,24 +640,16 @@ proc parsMultiRule(v: string, res: var seq[seq[tuple[key: string, value: string]
   if item.len > 0:
     res.add(item)
 
-proc parseSingleRule*(fields: HeaderFields, name: string, default = ""): seq[tuple[key: string, value: string]] {.raises: [ValueError].} =
-  ## Uses the "single-line-rule" to parse the field value named ``name`` and returns a set of ``(key, value)`` pair. 
-  ## 
-  ## Note: When using this proc, you must ensure that this field is a single line representation. If you use this proc 
-  ##       to handle multi-lines fields like ``Accept``, you may lose values. If more than one value is found, an 
-  ##       exception will be raise.
+proc parseSingleRule*(fields: HeaderFields, name: string): seq[tuple[key: string, value: string]] {.raises: [ValueError].} =
+  ## Parses the field value that matches **single-line-rule**. 
   if fields.contains(name):
     var v = fields[name]
     if v.len > 1:
         raise newException(ValueError, "Multiple values are not allowed")
     v[0].parseSingleRule(result)    
 
-proc parsMultiRule*(fields: HeaderFields, name: string, default = ""): seq[seq[tuple[key: string, value: string]]] =
-  ## Uses the "multiple-lines-rule" to parse the field value named ``name`` and returns a set of ``seq(key, value)`` pair.
-  ## 
-  ## Note: When using this proc, you must ensure that this field is  allowed to represented as multiple lines. 
-  ##       If you use this proc to handle a single-line field like ``Date``, you may get wrong results. Because ``Date`` 
-  ##       takes ``,'' as part of its value, for example, ``Date: Thu, 23 Apr 2020 07:41:15 GMT``. 
+proc parseMultiRule*(fields: HeaderFields, name: string, default = ""): seq[seq[tuple[key: string, value: string]]] =
+  ## Parses the field value that matches **multiple-lines-rule**. 
   if fields.contains(name):
     for v in fields[name]:
-      v.parsMultiRule(result)
+      v.parseMultiRule(result)
