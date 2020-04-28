@@ -50,19 +50,19 @@ task docs, "Gen docs":
   #
   #   nim docs [-d:lang=zh|en]
   const lang {.strdefine.} = ""
-  withDir ProjectDir:
-    var dirs: seq[tuple[build: string, source: string]] = @[]
-    case lang
-    of "":
-      dirs.add((DocBuildEnDir, ProjectDir))
-      dirs.add((DocBuildZhDir, DocSourceZhDir))
-    of "en":
-      dirs.add((DocBuildEnDir, ProjectDir))
-    of "zh":
-      dirs.add((DocBuildZhDir, DocSourceZhDir))
-    else:
-      discard
-    for dir in dirs:
+  var dirs: seq[tuple[build: string, source: string]] = @[]
+  case lang
+  of "":
+    dirs.add((DocBuildEnDir, ProjectDir))
+    dirs.add((DocBuildZhDir, DocSourceZhDir))
+  of "en":
+    dirs.add((DocBuildEnDir, ProjectDir))
+  of "zh":
+    dirs.add((DocBuildZhDir, DocSourceZhDir))
+  else:
+    discard
+  for dir in dirs:  
+    withDir dir.source:
       rmDir(dir.build)
       mkDir(dir.build)
       var args: seq[string] = @["nim", "doc2"]

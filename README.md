@@ -10,10 +10,61 @@ Netkit is not intended to be a high-level productivity development tool, ut rath
 
 **Now, Netkit is under active development.**
 
-Test
+[Documentation - BTW: temporary, requires a more friendly homepage](https://iocrate.github.io/netkit/)
+[Documentation zh - BTW: temporary, requires a more friendly homepage](https://iocrate.github.io/netkit/zh/)
+
+Run Test
 ---------
 
-Run test: there is an automatic test script. Check config.nims for details. ``$ nim test <file_name> `` tests the specified file, for example, ``$ nim test tbuffer`` tests the file **tests/tbuffer.nim**. ``$ nimble test `` tests all test files in the **tests** directory.
+There is a script that automatically runs tests. Check config.nims for details. ``$ nim test <file_name>`` tests the specified file, for example, ``$ nim test tbuffer`` tests the file **tests/tbuffer.nim**. ``$ nimble test`` tests all test files in the **tests** directory.
+
+Make Documentation
+-------------------
+
+There is a script that automatically generate documentation. Check config.nims for details. ``$ nim docs -d:lang=en`` generates documentation for the source code, an English version. ``$ nimble docs -d:lang=zh`` generates a Chinese version of the documentation. ``$ nim docs`` generates both English version and Chinese version for the documentation.
+
+The code comments are written in English. The Chinese version of these comments is placed in ``${projectDir}/doc/zh/source``.
+
+TODO List
+-----------------------
+
+[x] buffer
+    [x] circular
+    [x] vector
+[ ] tcp
+[ ] udp
+[ ] http
+    [x] limits
+    [x] exception
+    [x] spec
+    [x] httpmethod
+    [x] version
+    [x] status
+    [x] headerfield
+    [x] header
+    [x] chunk
+    [x] metadata
+    [x] cookie
+    [x] parser
+    [x] connection
+    [x] reader
+    [x] writer
+    [x] server
+    [ ] client
+    [ ] clientpool
+[ ] websocket
+[ ] 编写文档主页，提供更加友好的文档管理
+[ ] 增强 docpolisher 的功能，为文档添加 github 链接和返回上一页、返回主页的功能
+
+Contributing to Netkit
+-----------------------
+
+- Write and make more Chinese and English documents
+- Add more strict unit tests
+- Add benchmark or stress test
+- Add code to support new features
+- Fix bugs
+- Fix errors in documentation
 
 A little demonstration
 -----------------------
