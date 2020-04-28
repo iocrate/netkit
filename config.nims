@@ -24,10 +24,10 @@ task test, "Run my tests":
   #
   var targets: seq[string] = @[]
   var flag = false
-  for i in 0..system.paramCount():
+  for i in 0..os.paramCount():
     if flag:
-      targets.add(system.paramStr(i).replace('.', AltSep).split(','))
-    elif system.paramStr(i) == "test":
+      targets.add(os.paramStr(i).replace('.', AltSep).split(','))
+    elif os.paramStr(i) == "test":
       flag = true
   for t in targets:
     withDir ProjectDir:
