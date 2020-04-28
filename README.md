@@ -28,33 +28,33 @@ The code comments are written in English. The Chinese version of these comments 
 TODO List
 -----------------------
 
-[x] buffer
-    [x] circular
-    [x] vector
-[ ] tcp
-[ ] udp
-[ ] http
-    [x] limits
-    [x] exception
-    [x] spec
-    [x] httpmethod
-    [x] version
-    [x] status
-    [x] headerfield
-    [x] header
-    [x] chunk
-    [x] metadata
-    [x] cookie
-    [x] parser
-    [x] connection
-    [x] reader
-    [x] writer
-    [x] server
-    [ ] client
-    [ ] clientpool
-[ ] websocket
-[ ] 编写文档主页，提供更加友好的文档管理
-[ ] 增强 docpolisher 的功能，为文档添加 github 链接和返回上一页、返回主页的功能
+- [x] buffer
+    - [x] circular
+    - [x] vector
+- [ ] tcp
+- [ ] udp
+- [ ] http
+    - [x] limits
+    - [x] exception
+    - [x] spec
+    - [x] httpmethod
+    - [x] version
+    - [x] status
+    - [x] headerfield
+    - [x] header
+    - [x] chunk
+    - [x] metadata
+    - [x] cookie
+    - [x] parser
+    - [x] connection
+    - [x] reader
+    - [x] writer
+    - [x] server
+    - [ ] client
+    - [ ] clientpool
+- [ ] websocket
+- [ ] Write document page and provide more friendly document management.
+- [ ] Enhance the function of docpolisher, add github link to the document and add return link of the previous page and the home page. 
 
 Contributing to Netkit
 -----------------------
