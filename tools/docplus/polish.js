@@ -10,7 +10,6 @@ const Fs = require('fs')
 const Path = require('path')
 const JsDom = require('jsdom')
 
-const DOC_DIR = Path.resolve(__dirname, '../../build/doc')
 const DOCK_HACK_JS = Path.resolve(__dirname, 'dochack.js')
 
 class DocPolisher {
@@ -168,6 +167,14 @@ class DocManager {
   }
 
   * files() {
+    const stat = Fs.statSync(this.rootDir)
+    if (stat.isDirectory()) {
+    } else if (stat.isFile && (Path.extname(this.rootDir) === '.html' || Path.extname(this.rootDir) === '.htm')) {
+      yield this.rootDir
+      return
+    } else {
+      return
+    }
     const dirs = [this.rootDir]
     for (let dir of dirs) {
       const names = Fs.readdirSync(dir)
@@ -184,8 +191,6 @@ class DocManager {
   }
 }
 
-if (typeof process.env.DOC_PAINTE_DIRNAME === 'string') {
-  new DocManager(Path.join(DOC_DIR, process.env.DOC_PAINTE_DIRNAME)).run()
-} else {
-  new DocManager(Path.join(DOC_DIR)).run()
-}
+if (typeof process.env.DOC_PLUS_ROOT === 'string') {
+  new DocManager(process.env.DOC_PLUS_ROOT).run()
+} 
