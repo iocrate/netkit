@@ -14,7 +14,7 @@ import netkit/http/headerfield
 import netkit/http/header
 import netkit/http/chunk
 import netkit/http/metadata
-import netkit/http/cookie
+import netkit/http/cookies
 import netkit/http/parser
 import netkit/http/connection
 import netkit/http/reader
@@ -31,7 +31,7 @@ export headerfield
 export header
 export chunk
 export metadata
-export cookie
+export cookies
 export parser
 export connection
 export reader
