@@ -10,7 +10,8 @@ Netkit 不打算成为高阶生产力开发工具，而是作为一个可靠效�
 
 **这个软件包正在积极开发中。**
 
-[文档 - PS:临时的，需要更友好的主页]()
+[文档 (英文) - PS:临时的，需要更友好的主页](https://iocrate.github.io/netkit.html)
+[文档 (中文) - PS:临时的，需要更友好的主页](https://iocrate.github.io/zh/netkit.html)
 
 运行测试
 ---------

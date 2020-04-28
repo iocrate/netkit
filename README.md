@@ -10,8 +10,8 @@ Netkit is not intended to be a high-level productivity development tool, ut rath
 
 **Now, Netkit is under active development.**
 
-[Documentation - BTW: temporary, requires a more friendly homepage](https://iocrate.github.io/netkit/)
-[Documentation zh - BTW: temporary, requires a more friendly homepage](https://iocrate.github.io/netkit/zh/)
+[Documentation - BTW: temporary, requires a more friendly homepage](https://iocrate.github.io/netkit.html)
+[Documentation zh - BTW: temporary, requires a more friendly homepage](https://iocrate.github.io/zh/netkit.html)
 
 Run Test
 ---------
