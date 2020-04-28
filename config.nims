@@ -71,6 +71,7 @@ task docs, "Gen docs":
       args.add("--project")
       args.add("--index:on")
       args.add("--git.url:https://github.com/iocrate/netkit")
+      args.add("--git.commit:master")
       args.add(fmt"--out:{dir.build}")
       args.add(fmt"--path:.")
       args.add(dir.source / "netkit.nim")
