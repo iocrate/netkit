@@ -84,6 +84,12 @@ class DocPolisher {
       margin-top: 20px;
       margin-bottom: 20px;
     }
+
+    img[align=center] {
+      display: block;
+      margin-left: auto;
+      margin-right: auto;
+    }
   </style>`)
   }
 
