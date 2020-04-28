@@ -7,252 +7,269 @@ discard """
   exitcode: 0
   timeout:  60.0
 """
-import unittest
 import options
 import strformat
 import times
-import netkit/http/cookie
+import netkit/http/cookies
 
-suite "SetCookie":
+# SetCookie
+block:
   let
     username = "admin"
     password = "root"
 
-  test "name-value":
-    let cookie = initCookie(username, password)
-    check:
-      cookie.name == username
-      cookie.value == password
-      cookie.expires.len == 0
-      cookie.maxAge.isNone
-      cookie.domain.len == 0
-      cookie.path.len == 0
-      not cookie.secure
-      not cookie.httpOnly
-      cookie.samesite == Lax
-      setCookie(cookie) == fmt"{username}={password}; SameSite=Lax"
-      $cookie == setCookie(cookie)
+  # name-value
+  block:
+    let 
+      cookie = initCookie(username, password)
 
-  test "domain":
+    doAssert cookie.name == username
+    doAssert cookie.value == password
+    doAssert cookie.expires.len == 0
+    doAssert cookie.maxAge.isNone
+    doAssert cookie.domain.len == 0
+    doAssert cookie.path.len == 0
+    doAssert not cookie.secure
+    doAssert not cookie.httpOnly
+    doAssert cookie.samesite == Lax
+    doAssert setCookie(cookie) == fmt"{username}={password}; SameSite=Lax"
+    doAssert $cookie == setCookie(cookie)
+
+  # domain
+  block:
     let 
       domain = "www.netkit.com"
       cookie = initCookie(username, password, domain = domain)
-    check:
-      cookie.name == username
-      cookie.value == password
-      cookie.expires.len == 0
-      cookie.maxAge.isNone
-      cookie.domain == domain
-      cookie.path.len == 0
-      not cookie.secure
-      not cookie.httpOnly
-      cookie.samesite == Lax
-      setCookie(cookie) == fmt"{username}={password}; Domain={cookie.domain}; SameSite=Lax"
-      $cookie == setCookie(cookie)
 
-  test "path":
+    doAssert cookie.name == username
+    doAssert cookie.value == password
+    doAssert cookie.expires.len == 0
+    doAssert cookie.maxAge.isNone
+    doAssert cookie.domain == domain
+    doAssert cookie.path.len == 0
+    doAssert not cookie.secure
+    doAssert not cookie.httpOnly
+    doAssert cookie.samesite == Lax
+    doAssert setCookie(cookie) == fmt"{username}={password}; Domain={cookie.domain}; SameSite=Lax"
+    doAssert $cookie == setCookie(cookie)
+
+  # path
+  block:
     let 
       path = "/index"
       cookie = initCookie(username, password, path = path)
-    check:
-      cookie.name == username
-      cookie.value == password
-      cookie.expires.len == 0
-      cookie.maxAge.isNone
-      cookie.domain.len == 0
-      cookie.path == path
-      not cookie.secure
-      not cookie.httpOnly
-      cookie.samesite == Lax
-      setCookie(cookie) == fmt"{username}={password}; Path={cookie.path}; SameSite=Lax"
-      $cookie == setCookie(cookie)
 
-  test "maxAge":
+    doAssert cookie.name == username
+    doAssert cookie.value == password
+    doAssert cookie.expires.len == 0
+    doAssert cookie.maxAge.isNone
+    doAssert cookie.domain.len == 0
+    doAssert cookie.path == path
+    doAssert not cookie.secure
+    doAssert not cookie.httpOnly
+    doAssert cookie.samesite == Lax
+    doAssert setCookie(cookie) == fmt"{username}={password}; Path={cookie.path}; SameSite=Lax"
+    doAssert $cookie == setCookie(cookie)
+
+  # maxAge
+  block:
     let 
       maxAge = 10
       cookie = initCookie(username, password, maxAge = some(maxAge))
-    check:
-      cookie.name == username
-      cookie.value == password
-      cookie.expires.len == 0
-      cookie.maxAge.isSome
-      cookie.domain.len == 0
-      cookie.path.len == 0
-      not cookie.secure
-      not cookie.httpOnly
-      cookie.samesite == Lax
-      setCookie(cookie) == fmt"{username}={password}; Max-Age={maxAge}; SameSite=Lax"
-      $cookie == setCookie(cookie)
+    
+    doAssert cookie.name == username
+    doAssert cookie.value == password
+    doAssert cookie.expires.len == 0
+    doAssert cookie.maxAge.isSome
+    doAssert cookie.domain.len == 0
+    doAssert cookie.path.len == 0
+    doAssert not cookie.secure
+    doAssert not cookie.httpOnly
+    doAssert cookie.samesite == Lax
+    doAssert setCookie(cookie) == fmt"{username}={password}; Max-Age={maxAge}; SameSite=Lax"
+    doAssert $cookie == setCookie(cookie)
   
-  test "expires string":
+  # expires string
+  block:
     let 
       expires = "Mon, 6 Apr 2020 12:55:00 GMT"
       cookie = initCookie(username, password, expires)
-    check:
-      cookie.name == username
-      cookie.value == password
-      cookie.expires == expires
-      cookie.maxAge.isNone
-      cookie.domain.len == 0
-      cookie.path.len == 0
-      not cookie.secure
-      not cookie.httpOnly
-      cookie.samesite == Lax
-      setCookie(cookie) == fmt"{username}={password}; Expires={expires}; SameSite=Lax"
-      $cookie == setCookie(cookie)
+
+    doAssert cookie.name == username
+    doAssert cookie.value == password
+    doAssert cookie.expires == expires
+    doAssert cookie.maxAge.isNone
+    doAssert cookie.domain.len == 0
+    doAssert cookie.path.len == 0
+    doAssert not cookie.secure
+    doAssert not cookie.httpOnly
+    doAssert cookie.samesite == Lax
+    doAssert setCookie(cookie) == fmt"{username}={password}; Expires={expires}; SameSite=Lax"
+    doAssert $cookie == setCookie(cookie)
     
-  test "expires DateTime":
+  # expires DateTime
+  block:
     let 
       dt = initDateTime(6, mApr, 2020, 13, 3, 0, 0, utc())
       expires = format(dt, "ddd',' dd MMM yyyy HH:mm:ss 'GMT'")
       cookie = initCookie(username, password, expires)
-    check:
-      cookie.name == username
-      cookie.value == password
-      cookie.expires == expires
-      cookie.maxAge.isNone
-      cookie.domain.len == 0
-      cookie.path.len == 0
-      not cookie.secure
-      not cookie.httpOnly
-      cookie.samesite == Lax
-      setCookie(cookie) == fmt"{username}={password}; Expires={expires}; SameSite=Lax"
-      $cookie == setCookie(cookie)
 
-  test "secure":
-    let 
+    doAssert cookie.name == username
+    doAssert cookie.value == password
+    doAssert cookie.expires == expires
+    doAssert cookie.maxAge.isNone
+    doAssert cookie.domain.len == 0
+    doAssert cookie.path.len == 0
+    doAssert not cookie.secure
+    doAssert not cookie.httpOnly
+    doAssert cookie.samesite == Lax
+    doAssert setCookie(cookie) == fmt"{username}={password}; Expires={expires}; SameSite=Lax"
+    doAssert $cookie == setCookie(cookie)
+
+  # secure
+  block:
+    let
       secure = true
       cookie = initCookie(username, password, secure = secure)
-    check:
-      cookie.name == username
-      cookie.value == password
-      cookie.expires.len == 0
-      cookie.maxAge.isNone
-      cookie.domain.len == 0
-      cookie.path.len == 0
-      cookie.secure
-      not cookie.httpOnly
-      cookie.samesite == Lax
-      setCookie(cookie) == fmt"{username}={password}; Secure; SameSite=Lax"
-      $cookie == setCookie(cookie)
 
-  test "http-only":
+    doAssert cookie.name == username
+    doAssert cookie.value == password
+    doAssert cookie.expires.len == 0
+    doAssert cookie.maxAge.isNone
+    doAssert cookie.domain.len == 0
+    doAssert cookie.path.len == 0
+    doAssert cookie.secure
+    doAssert not cookie.httpOnly
+    doAssert cookie.samesite == Lax
+    doAssert setCookie(cookie) == fmt"{username}={password}; Secure; SameSite=Lax"
+    doAssert $cookie == setCookie(cookie)
+
+  # http-only
+  block:
     let 
       httpOnly = true
       cookie = initCookie(username, password, httpOnly = httpOnly)
-    check:
-      cookie.name == username
-      cookie.value == password
-      cookie.expires.len == 0
-      cookie.maxAge.isNone
-      cookie.domain.len == 0
-      cookie.path.len == 0
-      not cookie.secure
-      cookie.httpOnly
-      cookie.samesite == Lax
-      setCookie(cookie) == fmt"{username}={password}; HttpOnly; SameSite=Lax"
-      $cookie == setCookie(cookie)
 
-  test "sameSite":
+    doAssert cookie.name == username
+    doAssert cookie.value == password
+    doAssert cookie.expires.len == 0
+    doAssert cookie.maxAge.isNone
+    doAssert cookie.domain.len == 0
+    doAssert cookie.path.len == 0
+    doAssert not cookie.secure
+    doAssert cookie.httpOnly
+    doAssert cookie.samesite == Lax
+    doAssert setCookie(cookie) == fmt"{username}={password}; HttpOnly; SameSite=Lax"
+    doAssert $cookie == setCookie(cookie)
+
+  # sameSite
+  block:
     let 
       sameSite = Strict 
       cookie = initCookie(username, password, sameSite = sameSite)
-    check:
-      cookie.name == username
-      cookie.value == password
-      cookie.expires.len == 0
-      cookie.maxAge.isNone
-      cookie.domain.len == 0
-      cookie.path.len == 0
-      not cookie.secure
-      not cookie.httpOnly
-      cookie.samesite == sameSite
-      setCookie(cookie) == fmt"{username}={password}; SameSite={sameSite}"
-      $cookie == setCookie(cookie)
+    
+    doAssert cookie.name == username
+    doAssert cookie.value == password
+    doAssert cookie.expires.len == 0
+    doAssert cookie.maxAge.isNone
+    doAssert cookie.domain.len == 0
+    doAssert cookie.path.len == 0
+    doAssert not cookie.secure
+    doAssert not cookie.httpOnly
+    doAssert cookie.samesite == sameSite
+    doAssert setCookie(cookie) == fmt"{username}={password}; SameSite={sameSite}"
+    doAssert $cookie == setCookie(cookie)
 
 
-suite "Parse":
-  test "parse cookie from string":
+# Parse
+block:
+  # parse cookie from string
+  block:
     let 
       text = "admin=root; Domain=www.netkit.com; Secure; HttpOnly"
       cookie = initCookie(text)
-    check:
-      cookie.name == "admin"
-      cookie.value == "root"
-      cookie.domain == "www.netkit.com"
-      cookie.secure
-      cookie.httpOnly
-      cookie.sameSite == None
-      setCookie(cookie) == text
-      $cookie == setCookie(cookie)
+    
+    doAssert cookie.name == "admin"
+    doAssert cookie.value == "root"
+    doAssert cookie.domain == "www.netkit.com"
+    doAssert cookie.secure
+    doAssert cookie.httpOnly
+    doAssert cookie.sameSite == None
+    doAssert setCookie(cookie) == text
+    doAssert $cookie == setCookie(cookie)
 
-  test "parse samesite":
+  # parse samesite
+  block:
     let 
       expectedLax =  "foo=bar; SameSite=Lax"
       expectedStrict =  "foo=bar; SameSite=Strict"
       expectedNone = "foo=bar"
 
-    check:
-      $initCookie("foo=bar; SameSite=Lax") == expectedLax
-      $initCookie("foo=bar; SameSite=LAX") == expectedLax
-      $initCookie("foo=bar; SameSite=lax") == expectedLax
-      $initCookie("foo=bar; SAMESITE=Lax") == expectedLax
-      $initCookie("foo=bar; samesite=Lax") == expectedLax
-      
-      $initCookie("foo=bar; SameSite=Strict") == expectedStrict
-      $initCookie("foo=bar; SameSite=STRICT") == expectedStrict
-      $initCookie("foo=bar; SameSite=strict") == expectedStrict
-      $initCookie("foo=bar; SAMESITE=Strict") == expectedStrict
-      $initCookie("foo=bar; samesite=Strict") == expectedStrict
 
-      $initCookie("foo=bar; SameSite=None") == expectedNone
-      $initCookie("foo=bar; SameSite=NONE") == expectedNone
-      $initCookie("foo=bar; SameSite=none") == expectedNone
-      $initCookie("foo=bar; SAMESITE=None") == expectedNone
-      $initCookie("foo=bar; samesite=None") == expectedNone
+    doAssert $initCookie("foo=bar; SameSite=Lax") == expectedLax
+    doAssert $initCookie("foo=bar; SameSite=LAX") == expectedLax
+    doAssert $initCookie("foo=bar; SameSite=lax") == expectedLax
+    doAssert $initCookie("foo=bar; SAMESITE=Lax") == expectedLax
+    doAssert $initCookie("foo=bar; samesite=Lax") == expectedLax
 
-  test "parse error":
-    expect MissingValueError:
+    doAssert $initCookie("foo=bar; SameSite=Strict") == expectedStrict
+    doAssert $initCookie("foo=bar; SameSite=STRICT") == expectedStrict
+    doAssert $initCookie("foo=bar; SameSite=strict") == expectedStrict
+    doAssert $initCookie("foo=bar; SAMESITE=Strict") == expectedStrict
+    doAssert $initCookie("foo=bar; samesite=Strict") == expectedStrict
+
+    doAssert $initCookie("foo=bar; SameSite=None") == expectedNone
+    doAssert $initCookie("foo=bar; SameSite=NONE") == expectedNone
+    doAssert $initCookie("foo=bar; SameSite=none") == expectedNone
+    doAssert $initCookie("foo=bar; SAMESITE=None") == expectedNone
+    doAssert $initCookie("foo=bar; samesite=None") == expectedNone
+
+  # parse error
+  block:
+    doAssertRaises(MissingValueError):
       discard initCookie("bar")
 
-    expect MissingValueError:
+    doAssertRaises(MissingValueError):
       discard initCookie("=bar")
 
-    expect MissingValueError:
+    doAssertRaises(MissingValueError):
       discard initCookie(" =bar")
 
-    expect MissingValueError:
+    doAssertRaises(MissingValueError):
       discard initCookie("foo=")
 
-  test "parse pair":
-    check $initCookie("foo", "bar=baz") == "foo=bar=baz; SameSite=Lax"
-
-    check:
-      initCookie("foo=bar=baz").name == "foo"
-      initCookie("foo=bar=baz").value == "bar=baz"
-
-    check:
-      $initCookie("foo=bar") == "foo=bar"
-      $initCookie(" foo = bar ") == "foo = bar "
-      $initCookie(" foo=bar ;Path=") == "foo=bar "
-      $initCookie(" foo=bar ; Path= ") == "foo=bar "
-      $initCookie(" foo=bar ; Ignored ") == "foo=bar "
-
-    check:
-      $initCookie("foo=bar; HttpOnly") != "foo=bar"
-      $initCookie("foo=bar;httpOnly") != "foo=bar"
-
-    check:
-      $initCookie("foo=bar; secure") == "foo=bar; Secure"
-      $initCookie(" foo=bar;Secure") == "foo=bar; Secure"
-      $initCookie(" foo=bar;SEcUrE=anything") == "foo=bar; Secure"
-      $initCookie(" foo=bar;httponyl;SEcUrE") == "foo=bar; Secure"
+  # parse pair
+  block:
+    doAssert $initCookie("foo", "bar=baz") == "foo=bar=baz; SameSite=Lax"
 
 
-suite "CookieJar":
-  test "parse":
+    doAssert initCookie("foo=bar=baz").name == "foo"
+    doAssert initCookie("foo=bar=baz").value == "bar=baz"
+
+
+    doAssert $initCookie("foo=bar") == "foo=bar"
+    doAssert $initCookie(" foo = bar ") == "foo = bar "
+    doAssert $initCookie(" foo=bar ;Path=") == "foo=bar "
+    doAssert $initCookie(" foo=bar ; Path= ") == "foo=bar "
+    doAssert $initCookie(" foo=bar ; Ignored ") == "foo=bar "
+
+
+    doAssert $initCookie("foo=bar; HttpOnly") != "foo=bar"
+    doAssert $initCookie("foo=bar;httpOnly") != "foo=bar"
+
+
+    doAssert $initCookie("foo=bar; secure") == "foo=bar; Secure"
+    doAssert $initCookie(" foo=bar;Secure") == "foo=bar; Secure"
+    doAssert $initCookie(" foo=bar;SEcUrE=anything") == "foo=bar; Secure"
+    doAssert $initCookie(" foo=bar;httponyl;SEcUrE") == "foo=bar; Secure"
+
+
+# CookieJar
+block:
+  # parse
+  block:
     var cookieJar = initCookieJar()
     cookieJar.parse("username=netkit; password=root")
-    check:
-      cookieJar["username"] == "netkit"
-      cookieJar["password"] == "root"
+
+    doAssert cookieJar["username"] == "netkit"
+    doAssert cookieJar["password"] == "root"
