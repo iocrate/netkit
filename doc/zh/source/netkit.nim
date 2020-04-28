@@ -5,13 +5,11 @@
 #    distribution, for details about the copyright.
 
 import netkit/buffer
-import netkit/checks
 import netkit/http
 import netkit/locks
 import netkit/misc
 
 export buffer
-export checks
 export http
 export locks
 export misc

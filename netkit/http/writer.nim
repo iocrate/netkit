@@ -20,8 +20,6 @@ import asyncdispatch
 import nativesockets
 import netkit/locks 
 import netkit/http/exception
-import netkit/http/httpmethod 
-import netkit/http/version 
 import netkit/http/status 
 import netkit/http/headerfield 
 import netkit/http/header 
