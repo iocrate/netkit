@@ -65,7 +65,7 @@ proc next*(b: var VectorBuffer): (pointer, Natural) =
   ## Gets the next safe storage region. The return value indicates the pointer and length of the storage 
   ## region. After that, you can use the returned pointer and length to store data manually.
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ##     
   ##   var source = "Hello World"
   ##   var (regionPtr, regionLen) = b.next()
@@ -82,7 +82,7 @@ proc pack*(b: var VectorBuffer, size: Natural): Natural =
   ## 
   ## Whenever ``next()`` is called, ``pack()`` should be called immediately.
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ##     
   ##   var source = "Hello World"
   ##   var (regionPtr, regionLen) = b.next()
@@ -100,7 +100,7 @@ proc add*(b: var VectorBuffer, source: pointer, size: Natural): Natural =
   ## When you focus on performance, consider using ``next ()``, ``pack ()`` combination calls; 
   ## when you focus on convenience of the invocation, use ``put ()``.
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ##     
   ##   var source = "Hello World"
   ##   var n = b.put(source.cstring, source.len)

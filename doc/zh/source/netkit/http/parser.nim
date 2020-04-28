@@ -4,76 +4,171 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-## 这个模块实现了一个增量的 HTTP 解析器， 同时支持解析请求消息和响应消息。 这个解析器是增量的， 意味着可以持续解析
-## 消息而不管该消息是一次性传递还是分成多次传递。 这使得该解析器特别适合复杂的 IO 传输环境。 
+## This module implements an incremental HTTP parser. This parser supports parsing both request 
+## messages and response messages. 
 ## 
-## 使用 - 解析消息头部
-## ------------------------------
+## This parser is incremental, meaning that the message can be parsed continuously regardless 
+## of whether the message is delivered at once or divided into multiple parts. This makes the 
+## parser particularly suitable for complex IO transfer environments.
 ## 
-## ..code-block::nim
+## Usage
+## ========================
 ## 
-##   var parser = initHttpParser()
-##   var buffer = initMarkableCircularBuffer()
-##   var header = HttpHeader(kind: HttpHeaderKind.Request)
-##   var finished = false
+## .. container:: r-fragment
 ## 
-##   while not finished:
-##     put data to buffer ...
-##     finished = parser.parseHttpHeader(buffer, header)
+##   Parse message header
+##   ------------------------------
+## 
+##   For example:
+## 
+##   .. code-block::nim 
+## 
+##     import netkit/http/parser
+##     import netkit/http/header
+##     import netkit/buffer/circular
+## 
+##     var parser = initHttpParser()
+##     var buffer = initMarkableCircularBuffer()
+##     var header = HttpHeader(kind: HttpHeaderKind.Request)
+##     var finished = false
+## 
+##     while not finished:
+##       put data to buffer ...
+##       finished = parser.parseHttpHeader(buffer, header)
+## 
+##   Another example:
+## 
+##   .. code-block::nim 
+## 
+##     import netkit/http/parser
+##     import netkit/http/header
+##     import netkit/buffer/circular
+## 
+##     var parser = initHttpParser()
+##     var buffer = initMarkableCircularBuffer()
+##     var header = HttpHeader(kind: HttpHeaderKind.Request)
 ##     
-## 使用 - 解析 chunked 数据块的头部
-## ------------------------------
+##     # parse first
+##     let messageRequestLine = "GET / HTTP/1.1\r\n"
+##     buffer.add(messageRequestLine.cstring, messageRequestLine.len)
+##     assert parser.parseHttpHeader(buffer, header) == false
+##     buffer.del(messageRequestLine.len)
+##     
+##     # parse second
+##     let messageHeaderFields = "Host: www.iocrate.com\r\n\r\n"
+##     buffer.add(messageHeaderFields.cstring, messageHeaderFields.len)
+##     assert parser.parseHttpHeader(buffer, header) == true
+##     buffer.del(messageHeaderFields.len)
+##     
+##     assert header.reqMethod == HttpGet
+##     assert header.url == "/"
+##     assert header.version.orig == "HTTP/1.1"
+##     assert header.fields["Host"][0] == "www.iocrate.com"
 ## 
-## 关于 ``Transfer-Encoding: chunked`` 和 chunked 编码数据块请参看 chunk 模块和 metadata 模块。 
+## .. container:: r-fragment
+##     
+##   Parse chunk header
+##   ------------------------------
 ## 
-## ..code-block::nim
+##   For example:
 ## 
-##   var parser = initHttpParser()
-##   var buffer = initMarkableCircularBuffer()
-##   var header: ChunkHeader
-##   var finished = false
+##   .. code-block::nim
 ## 
-##   while not finished:
-##     put data to buffer ...
-##     finished = parser.parseChunkHeader(buffer, header)
+##     import netkit/http/parser
+##     import netkit/http/chunk
+##     import netkit/buffer/circular
 ## 
-## 使用 - 解析 chunked 数据块的尾部
-## ------------------------------
+##     var parser = initHttpParser()
+##     var buffer = initMarkableCircularBuffer()
+##     var header: ChunkHeader
+##     var finished = false
 ## 
-## 关于 ``Transfer-Encoding: chunked`` 和 chunked 编码数据块请参看 chunk 模块和 metadata 模块。 
+##     while not finished:
+##       put data to buffer ...
+##       finished = parser.parseChunkHeader(buffer, header)
 ## 
-## ..code-block::nim
+##   Another example:
 ## 
-##   var parser = initHttpParser()
-##   var buffer = initMarkableCircularBuffer()
-##   var trailers: seq[string]
-##   var finished = false
+##   .. code-block::nim 
 ## 
-##   while not finished:
-##     put data to buffer ...
-##     finished = parser.parseChunkEnd(buffer, trailers)
-
-# ==============  ==========   ======  ============================================
-# Name            工具          用途    描述
-# ==============  ==========   ======  ============================================
-# Parsing         Parser       解析     将一个字符序列转换成一个对象树
-# Unparsing       Unparser     反向解析  将一个对象树转换成一个字符序列
-# Serialization   Serializer   序列化    将一个对象树转换成一个字符序列
-# Deserialization Deserializer 反序列化  将一个字符序列转换成一个对象树
-# Encoding        Encoder      编码     将一个字符序列进行扰码或者变换转换成另一个字符序列
-# Decoding        Decoder      解码     将一个经过扰码或者变换的字符序列转换成原始的字符序列
-# ==============  ==========   ======  ============================================
+##     import netkit/http/parser
+##     import netkit/http/chunk
+##     import netkit/buffer/circular
+## 
+##     var parser = initHttpParser()
+##     var buffer = initMarkableCircularBuffer()
+##     var header: ChunkHeader
+##     
+##     # parse first
+##     let s = "9; language=en; city=London\r\n"
+##     buffer.add(s.cstring, s.len)
+##     assert parser.parseChunkHeader(buffer, header) == true
+##     buffer.del(s.len)
+##     
+##     assert header.size == 9
+##     assert header.extensions == "; language=en; city=London"
+## 
+##   See **chunk** module and **metadata** module for more information about chunked encoding.
+## 
+## .. container:: r-fragment
+## 
+##   Parse chunk tail
+##   ------------------------------
+## 
+##   For example:
+## 
+##   .. code-block::nim
+## 
+##     import netkit/http/parser
+##     import netkit/http/chunk
+##     import netkit/buffer/circular
+## 
+##     var parser = initHttpParser()
+##     var buffer = initMarkableCircularBuffer()
+##     var trailers: seq[string]
+##     var finished = false
+## 
+##     while not finished:
+##       put data to buffer ...
+##       finished = parser.parseChunkEnd(buffer, trailers)
+##  
+##   Another example:
+## 
+##   .. code-block::nim 
+## 
+##     import netkit/http/parser
+##     import netkit/http/chunk
+##     import netkit/buffer/circular
+## 
+##     var parser = initHttpParser()
+##     var buffer = initMarkableCircularBuffer()
+##     var trailers: seq[string]
+##     
+##     # parse first
+##     let s = "\0\r\nExpires": "Wed, 21 Oct 2015 07:28:00 GMT\r\n\r\n"
+##     buffer.add(s.cstring, s.len)
+##     assert parser.parseChunkEnd(buffer, trailers) == true
+##     buffer.del(s.len)
+##     
+##     assert trailers[0] == "Expires": "Wed, 21 Oct 2015 07:28:00 GMT"
+## 
+##   See **chunk** module and **metadata** module for more information about terminating chunk and trailers.
 
 import uri
 import strutils
 import netkit/buffer/circular
-import netkit/http/constants as http_constants
-import netkit/http/base
+import netkit/http/limits
 import netkit/http/exception
+import netkit/http/spec
+import netkit/http/httpmethod
+import netkit/http/version
+import netkit/http/status
+import netkit/http/headerfield
+import netkit/http/header
 import netkit/http/chunk
 
 type
-  HttpParser* = object ## HTTP 消息解析器。 
+  HttpParser* = object ## HTTP message parser.
     secondaryBuffer: string
     currentLineLen: Natural
     currentFieldName: string
@@ -90,28 +185,42 @@ type
   MarkProcessState {.pure.} = enum
     Unknown, Token, Crlf
 
-proc initHttpParser*(): HttpParser = discard
-  ## 初始化一个 ``HttpParser`` 对象。 
+proc initHttpParser*(): HttpParser =
+  ## Initialize a ``HttpParser``.
+  discard
 
 proc clear*(p: var HttpParser) = discard
-  ## 重置 ``p`` 以清空所有的状态。 
+  ## Reset this parser to clear all status. 
   ## 
-  ## 既然 ``HttpParser`` 是一个增量解释器， 在解析过程会保存各种各样的状态数据。 这个函数重置所有状态， 以便于开始一个新的解析过程。 
-
+  ## Since ``HttpParser`` is an incremental, various state will be saved during the parsing process. 
+  ## This proc resets all states in order to start a new parsing process.
+  ## 
 proc parseHttpHeader*(p: var HttpParser, buf: var MarkableCircularBuffer, header: var HttpHeader): bool = discard
-  ## 解析消息头部。 ``buf`` 指定缓冲区， 该缓冲区存储了要被解析的数据； ``header`` 指定解析完成时输出的消息头部对象。
+  ## Parses the header of a HTTP message. ``buf`` specifies a circular buffer, which stores the data to be parsed. ``header`` 
+  ## specifies the message header object that output when the parsing is complete. Returns ``true`` if the parsing is complete.
   ## 
-  ## 根据 ``header`` 的 ``kind`` 属性值不同， 采取不同解析。 当 ``kind=Request`` 时， 则将消息作为请求解析； 当 ``kind=Response``
-  ## 时， 则将消息作为响应解析。
+  ## Depending on the value of the ``kind`` attribute of ``header``, different resolutions are taken. When ``kind=Request``, 
+  ## a message is parsed as a request. When ``kind=Response``, a message is parsed as a request.
   ## 
-  ## 这个过程是增量进行的， 也就是说， 下一次解析会从上一次解析继续。 
+  ## This process is performed incrementally, that is, the next parsing will continue from the previous 
+  ## position.
 
-proc parseChunkHeader*(p: var HttpParser, buf: var MarkableCircularBuffer, header: var ChunkHeader): bool = discard
-  ## 解析经过 chunked 编码的数据块尺寸和扩展。 
+proc parseChunkHeader*(
+  p: var HttpParser, 
+  buf: var MarkableCircularBuffer,
+  header: var ChunkHeader
+): bool = discard
+  ## Parse the size and extensions of a data chunk that encoded by ``Transfor-Encoding: chunked``.
   ## 
-  ## 这个过程是增量进行的， 也就是说， 下一次解析会从上一次解析继续。 
+  ## This process is performed incrementally, that is, the next parsing will continue from the previous 
+  ## position.
 
-proc parseChunkEnd*(p: var HttpParser, buf: var MarkableCircularBuffer, trailers: var seq[string]): bool = discard
-  ## 解析经过 chunked 编码的数据结尾。 
+proc parseChunkEnd*(
+  p: var HttpParser, 
+  buf: var MarkableCircularBuffer, 
+  trailers: var seq[string]
+): bool = discard
+  ## Parse the tail of a message that encoded by ``Transfor-Encoding: chunked``.
   ## 
-  ## 这个过程是增量进行的， 也就是说， 下一次解析会从上一次解析继续。 
+  ## This process is performed incrementally, that is, the next parsing will continue from the previous 
+  ## position.

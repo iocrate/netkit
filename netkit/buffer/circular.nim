@@ -39,7 +39,7 @@ proc next*(b: var CircularBuffer): (pointer, Natural) =
   ## Gets the next safe storage region. The return value indicates the pointer and length of the storage 
   ## region. After that, you can use the returned pointer and length to store data manually.
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ##     
   ##   var source = "Hello World"
   ##   var (regionPtr, regionLen) = b.next()
@@ -57,7 +57,7 @@ proc pack*(b: var CircularBuffer, size: Natural): Natural =
   ## 
   ## Whenever ``next()`` is called, ``pack()`` should be called immediately.
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ##     
   ##   var source = "Hello World"
   ##   var (regionPtr, regionLen) = b.next()
@@ -81,7 +81,7 @@ proc add*(b: var CircularBuffer, source: pointer, size: Natural): Natural =
   ## When you focus on performance, consider using ``next ()``, ``pack ()`` combination calls; 
   ## when you focus on convenience of the invocation, use ``put ()``.
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ##     
   ##   var source = "Hello World"
   ##   var n = b.put(source.cstring, source.len)
@@ -191,7 +191,7 @@ iterator marks*(b: var MarkableCircularBuffer): char =
   ## Note that the marking is performed incrementally, that is, when the marking operation is called next time, it will 
   ## continue from the position where it last ended.
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ##     
   ##   var s = "Hello World\R\L"
   ##   var n = b.put(s.cstring, s.len)

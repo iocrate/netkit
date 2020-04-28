@@ -9,7 +9,7 @@
 ## ``CircularBuffer`` 内部使用一个固定长度的数组作为存储容器， 并在存储数据的时候执行循环存储。 即， 当到达尾部时， 缓冲区查看另一
 ## 端是否仍有空闲空间， 如果有的话， 则使用这些空闲空间继续存储数据， 直到全满为止。 某一个时刻， 其存储状态类似： 
 ##
-## ..code-block::nim
+## .. code-block::nim
 ##
 ##   ``[   空   |---data---|   空  ]``
 ##
@@ -115,7 +115,7 @@ proc next*(b: var CircularBuffer): (pointer, Natural) = discard
   ## 获取下一个安全的可存储区域。 返回值表示可存储区域的指针和可存储长度。 每次操作只能获得一块， 之后， 
   ## 您可以利用返回的指针和长度手动存储数据。比如： 
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ##     
   ##   var source = "Hello World"
   ##   var (regionPtr, regionLen) = b.next()
@@ -130,7 +130,7 @@ proc pack*(b: var CircularBuffer, size: Natural): Natural = discard
   ## 
   ## 每当调用 ``next()`` 时， 都应当立刻调用 ``pack()`` 。 
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ##     
   ##   var source = "Hello World"
   ##   var (regionPtr, regionLen) = b.next()
@@ -144,7 +144,7 @@ proc add*(b: var CircularBuffer, source: pointer, size: Natural): Natural = disc
   ## 
   ## 当您对性能非常看重时， 考虑使用 ``next()`` ``pack()`` 组合调用；当您对调用便捷比较看重时， 使用 ``put()`` 。 
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ##     
   ##   var source = "Hello World"
   ##   var n = b.put(source.cstring, source.len)
@@ -177,7 +177,7 @@ iterator marks*(b: var MarkableCircularBuffer): char = discard
   ## 
   ## ``MarkableCircularBuffer`` 提供了多个名称带有 mark 的标记迭代器和函数。 
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ##     
   ##   var s = "Hello World\R\L"
   ##   var n = b.put(s.cstring, s.len)

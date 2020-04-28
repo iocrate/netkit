@@ -46,7 +46,7 @@ proc next*(b: var VectorBuffer): (pointer, Natural) = discard
   ## 获取下一个安全的可存储区域。 返回值表示可存储区域的指针和可存储长度。  之后， 您可以利用返回的指针和长度手动
   ## 存储数据。 比如： 
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ##     
   ##   var source = "Hello World"
   ##   var (regionPtr, regionLen) = b.next()
@@ -61,7 +61,7 @@ proc pack*(b: var VectorBuffer, size: Natural): Natural = discard
   ## 
   ## 每当调用 ``next()`` 时， 都应当立刻调用 ``pack()`` 。 
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ##     
   ##   var source = "Hello World"
   ##   var (regionPtr, regionLen) = b.next()
@@ -75,7 +75,7 @@ proc add*(b: var VectorBuffer, source: pointer, size: Natural): Natural = discar
   ## 
   ## 当您对性能非常看重时， 考虑使用 ``next()`` ``pack()`` 组合调用；当您对调用便捷比较看重时， 使用 ``put()`` 。 
   ## 
-  ## ..code-block::nim
+  ## .. code-block::nim
   ##     
   ##   var source = "Hello World"
   ##   var n = b.put(source.cstring, source.len)

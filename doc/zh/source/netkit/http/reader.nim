@@ -4,7 +4,17 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
+## This module provides an abstraction of read operations related to HTTP.
 ## 
+## Overview
+## ========================
+## 
+## A server reads the incoming request from a client, and a client reads the returned response from a 
+## server.
+## 
+## ``HttpReader`` is a base object for read operations, ``ServerRequest`` and ``ClientResponse`` 
+## inherit from it. ``ServerRequest`` represents a incoming request from a client, and ``ClientResponse``
+## represents a returned response from a server.
 
 import strutils
 import strtabs
@@ -13,15 +23,20 @@ import nativesockets
 import netkit/locks 
 import netkit/buffer/constants as buffer_constants
 import netkit/buffer/circular
-import netkit/http/base 
-import netkit/http/connection
-import netkit/http/constants as http_constants
+import netkit/http/limits 
 import netkit/http/exception
+import netkit/http/spec 
+import netkit/http/httpmethod 
+import netkit/http/version 
+import netkit/http/status
+import netkit/http/headerfield  
+import netkit/http/header 
+import netkit/http/connection
 import netkit/http/chunk 
 import netkit/http/metadata 
 
 type
-  HttpReader* = ref object of RootObj ##
+  HttpReader* = ref object of RootObj ## An abstraction of read operations related to HTTP.
     conn: HttpConnection
     lock: AsyncLock
     header*: HttpHeader
@@ -31,57 +46,64 @@ type
     chunked: bool
     readable: bool
 
-  ServerRequest* = ref object of HttpReader ## 
-  ClientResponse* = ref object of HttpReader ## 
+  ServerRequest* = ref object of HttpReader ## Represents a incoming request from a client.
+  ClientResponse* = ref object of HttpReader ## Represents a returned response from a server.
 
 proc newServerRequest*(conn: HttpConnection, onEnd: proc () {.gcsafe, closure.}): ServerRequest = discard
-  ##
+  ## Creates a new ``ServerRequest``.
 
 proc newClientResponse*(conn: HttpConnection, onEnd: proc () {.gcsafe, closure.}): ClientResponse = discard
-  ##
-
+  ## Creates a new ``ClientResponse``.
+  
 proc reqMethod*(req: ServerRequest): HttpMethod {.inline.} = discard
-  ## 获取请求方法。 
-
+  ## Returns the request method. 
+  
 proc url*(req: ServerRequest): string {.inline.} = discard
-  ## 获取请求的 URL 字符串。 
-
-proc version*(req: HttpReader): HttpVersion {.inline.} = discard
-  ## 获取请求的 HTTP 版本号码。 
-
-proc fields*(req: HttpReader): HeaderFields {.inline.} = discard
-  ## 获取请求头对象。 每个头字段值是一个字符串序列。 
-
+  ## Returns the url. 
+ 
+proc status*(res: ClientResponse): HttpCode {.inline.} = discard
+  ## Returns the status code. 
+ 
+proc version*(reader: HttpReader): HttpVersion {.inline.} = discard
+  ## Returns the HTTP version. 
+  
+proc fields*(reader: HttpReader): HeaderFields {.inline.} = discard
+  ## Returns the header fields. 
+  
 proc metadata*(reader: HttpReader): HttpMetadata {.inline.} = discard
-  ## 
-
+  ## Returns the metadata. 
+  
 proc ended*(reader: HttpReader): bool {.inline.} = discard
-  ## 
+  ## Returns ``true`` if the underlying connection has been disconnected or no more data can be read.
 
 proc normalizeSpecificFields*(reader: HttpReader) = discard
-  ## 
+  # TODO: more normalized header fields
+  ## Normalizes a few special header fields.
 
-proc read*(reader: HttpReader, buf: pointer, size: range[int(LimitChunkDataLen)..high(int)]): Future[Natural] = discard
-  ## Reads up to ``size`` bytes from the request, storing the results in the ``buf``. 
+proc read*(reader: HttpReader, buf: pointer, size: range[int(LimitChunkDataLen)..high(int)]): Future[Natural] {.async.} = discard
+  ## Reads up to ``size`` bytes, storing the results in the ``buf``. 
   ## 
   ## The return value is the number of bytes actually read. This might be less than ``size``.
-  ## A value of zero indicates ``eof``, i.e. at the end of the request.
+  ## A value of zero indicates ``EOF``, i.e. no more data can be read.
   ## 
-  ## If the return future is failed, ``OsError`` or ``ReadAbortedError`` may be raised.
+  ## If a system error occurs during reading, an ``OsError``  will be raised. If the connection is  
+  ## disconnected before successful reading, a ``ReadAbortedError`` will be raised.
 
-proc read*(reader: HttpReader): Future[string] = discard
-  ## Reads up to ``size`` bytes from the request, storing the results as a string. 
+proc read*(reader: HttpReader): Future[string] {.async.} = discard
+  ## Reads up to ``size`` bytes, storing the results as a string. 
   ## 
   ## If the return value is ``""``, that indicates ``eof``, i.e. at the end of the request.
   ## 
-  ## If the return future is failed, ``OsError`` or ``ReadAbortedError`` may be raised.
+  ## If a system error occurs during reading, an ``OsError``  will be raised. If the connection is  
+  ## disconnected before successful reading, a ``ReadAbortedError`` will be raised.
 
-proc readAll*(reader: HttpReader): Future[string] = discard
-  ## Reads all bytes from the request, storing the results as a string. 
+proc readAll*(reader: HttpReader): Future[string] {.async.} = discard
+  ## Reads all bytes, storing the results as a string. 
   ## 
-  ## If the return future is failed, ``OsError`` or ``ReadAbortedError`` may be raised.
-  ## 
-proc readDiscard*(reader: HttpReader): Future[void] = discard
-  ## Reads all bytes from the request, discarding the results. 
+  ## If a system error occurs during reading, an ``OsError``  will be raised. If the connection is  
+  ## disconnected before successful reading, a ``ReadAbortedError`` will be raised.
+  
+proc readDiscard*(reader: HttpReader): Future[void] {.async.} = discard
+  ## Reads all bytes, discarding the results. 
   ## 
   ## If the return future is failed, ``OsError`` or ``ReadAbortedError`` may be raised.

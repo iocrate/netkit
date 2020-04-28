@@ -7,8 +7,9 @@
 import asyncdispatch
 import nativesockets
 import os
-import netkit/http/base
 import netkit/http/exception
+import netkit/http/spec
+import netkit/http/status
 import netkit/http/connection
 import netkit/http/reader
 import netkit/http/writer
@@ -26,13 +27,10 @@ type
   RequestHandler* = proc (req: ServerRequest, res: ServerResponse): Future[void] {.closure, gcsafe.}
 
 proc newAsyncHttpServer*(): AsyncHttpServer = discard
-  ## 
 
 proc `onRequest=`*(server: AsyncHttpServer, handler: RequestHandler) = discard
-  ## 
 
 proc close*(server: AsyncHttpServer) = discard
-  ## 
 
 proc serve*(
   server: AsyncHttpServer, 
@@ -42,7 +40,4 @@ proc serve*(
 ) {.async.} = discard
   ## Starts the process of listening for incoming HTTP connections on the
   ## specified ``address`` and ``port``.
-  
-
-
-
+  ## 
