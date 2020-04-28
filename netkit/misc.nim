@@ -7,3 +7,8 @@
 template offset*(p: pointer, n: int): pointer = 
   ## 
   cast[pointer](cast[ByteAddress](p) + n)
+
+template checkDefNatural*(value: static[Natural], name: static[string]): untyped = 
+  ## 
+  when value < 0:
+    {.fatal: "The value of '" & name & "' by ``--define`` must be greater than or equal to 0!".}

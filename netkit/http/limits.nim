@@ -7,7 +7,7 @@
 ## This module defines some constants associated with HTTP operations. Some of them support redefinition 
 ## through the ``--define`` instruction during compilation. 
 
-import netkit/checks
+import netkit/misc
 
 const LimitStartLineLen* {.intdefine.}: Natural = 8*1024 
   ## Specifies the maximum number of bytes that will be allowed on the HTTP start-line. This limitation

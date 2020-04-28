@@ -4,7 +4,7 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-import netkit/checks
+import netkit/misc
 
 const BufferSize* {.intdefine.}: Natural = 8*1024 
   ## Describes the number of bytes for a buffer. You can override this value at 
