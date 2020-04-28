@@ -48,8 +48,9 @@ task docs, "Gen docs":
   #
   # run the following command:
   #
-  #   nim docs [-d:lang=zh|en]
+  #   nim docs [-d:lang=zh|en] [-d:module=netkit/buffer/constants]
   const lang {.strdefine.} = ""
+  const module {.strdefine.} = ""
   var dirs: seq[tuple[build: string, source: string]] = @[]
   case lang
   of "":
@@ -65,15 +66,19 @@ task docs, "Gen docs":
     withDir dir.source:
       rmDir(dir.build)
       mkDir(dir.build)
-      var args: seq[string] = @["cd", dir.source,  "&", "nim", "doc2"]
+      var args: seq[string] = @["nim", "doc2"]
       args.add("--verbosity:0")
       args.add("--hints:off")
-      args.add("--project")
-      args.add("--index:on")
-      args.add("--git.url:https://github.com/iocrate/netkit")
-      args.add("--git.commit:master")
-      args.add(fmt"--out:{dir.build}")
       args.add(fmt"--path:.")
-      args.add(dir.source / "netkit.nim")
+      if module.len == 0:
+        args.add("--project")
+        args.add("--index:on")
+        args.add("--git.url:https://github.com/iocrate/netkit")
+        args.add("--git.commit:master")
+        args.add(fmt"--out:{dir.build}")
+        args.add(dir.source / "netkit.nim")
+      else:
+        args.add(fmt"--out:{dir.build / module}.html")
+        args.add(dir.source / module)
       exec(args.join(" "))
       exec(fmt"DOC_PLUS_ROOT={dir.build} {DocPolisher}")
