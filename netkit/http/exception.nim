@@ -9,7 +9,7 @@
 import netkit/http/status
 
 type
-  HttpError* = object of CatchableError ## Indicates a error associated with a HTTP operation.
+  HttpError* = object of CatchableError ## Indicates an error associated with a HTTP operation.
     code*: range[Http400..Http505] 
     
   ReadAbortedError* = object of CatchableError ## Indicates that the read operation is aborted before completion. 
