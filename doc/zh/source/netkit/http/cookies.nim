@@ -1,7 +1,6 @@
-## This module provides the ``Cookie`` type, which directly maps to Set-Cookie HTTP response headers, 
-## and the ``CookieJar`` type which contains many cookies.
-## 
-## Overview
+## 该模块实现了 ``Cookie`` 类型，``Cookie`` 会直接映射为 Set-Cookie HTTP 响应头，
+## 还实现了 ``CookieJar`` 类型，``CookieJar`` 用于存储多个 cookie 信息。
+## 概述
 ## ========================
 ## 
 ## ``Cookie`` type is used to generate Set-Cookie HTTP response headers. 
@@ -16,7 +15,7 @@ import options, times, strtabs, parseutils, strutils
 
 
 type
-  SameSite* {.pure.} = enum ## The SameSite cookie attribute.
+  SameSite* {.pure.} = enum ## Cookie 属性 SameSite
     None, Lax, Strict
 
   Cookie* = object ## Cookie type represents Set-Cookie HTTP response headers.
@@ -38,15 +37,15 @@ type
 proc initCookie*(name, value: string, expires = "", maxAge: Option[int] = none(int), 
                  domain = "", path = "",
                  secure = false, httpOnly = false, sameSite = Lax): Cookie {.inline.} =
-  ## Initiates Cookie object.
-  runnableExamples:
-    let
-      username = "admin"
-      message = "ok"
-      cookie = initCookie(username, message)
-    
-    doAssert cookie.name == username
-    doAssert cookie.value == message
+  ## 初始化 Cookie 对象。
+  ## .. code-block::nim
+  ##   let
+  ##     username = "admin"
+  ##     message = "ok"
+  ##     cookie = initCookie(username, message)
+  ##   
+  ##   doAssert cookie.name == username
+  ##   doAssert cookie.value == message
 
   result = Cookie(name: name, value: value, expires: expires, 
                   maxAge: maxAge, domain: domain, path: path,
@@ -55,26 +54,26 @@ proc initCookie*(name, value: string, expires = "", maxAge: Option[int] = none(i
 proc initCookie*(name, value: string, expires: DateTime|Time, 
                  maxAge: Option[int] = none(int), domain = "", path = "", secure = false, httpOnly = false,
                  sameSite = Lax): Cookie {.inline.} =
-  ## Initiates Cookie object.
-  runnableExamples:
-    import times
-
-
-    let
-      username = "admin"
-      message = "ok"
-      expires = now()
-      cookie = initCookie(username, message, expires)
-    
-    doAssert cookie.name == username
-    doAssert cookie.value == message
+  ## 初始化 Cookie 对象。
+  ## .. code-block::nim
+  ##   import times
+  ## 
+  ## 
+  ##   let
+  ##     username = "admin"
+  ##     message = "ok"
+  ##     expires = now()
+  ##     cookie = initCookie(username, message, expires)
+  ##   
+  ##   doAssert cookie.name == username
+  ##   doAssert cookie.value == message
 
   result = initCookie(name, value, format(expires.utc,
                       "ddd',' dd MMM yyyy HH:mm:ss 'GMT'"), maxAge, domain, path, secure,
                       httpOnly, sameSite)
 
 proc parseParams(cookie: var Cookie, key: string, value: string) {.inline.} =
-  ## Parse Cookie attributes from key-value pairs.
+  ## 从键值对中解析 ``cookie`` 属性。
   case key.toLowerAscii
   of "expires":
     if value.len != 0:
@@ -106,7 +105,7 @@ proc parseParams(cookie: var Cookie, key: string, value: string) {.inline.} =
     discard
 
 proc initCookie*(text: string): Cookie {.inline.} =
-  ## Initiates Cookie object from strings.
+  ## 从字符串中读取 ``Cookie`` 对象。
   runnableExamples:
     doAssert initCookie("foo=bar=baz").name == "foo"
     doAssert initCookie("foo=bar=baz").value == "bar=baz"
