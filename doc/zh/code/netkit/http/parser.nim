@@ -4,22 +4,19 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-## This module implements an incremental HTTP parser. This parser supports parsing both request 
-## messages and response messages. 
+## 这个模块实现了一个增量的 HTTP 消息解析器。该解析器支持解析请求消息和响应消息。
 ## 
-## This parser is incremental, meaning that the message can be parsed continuously regardless 
-## of whether the message is delivered at once or divided into multiple parts. This makes the 
-## parser particularly suitable for complex IO transfer environments.
+## 解析器是增量的，这表示可以连续解析消息，而不管消息是一次交付还是分成多个部分。这使得该解析器特别适合复杂的 IO 传输环境。
 ## 
-## Usage
+## 用法
 ## ========================
 ## 
 ## .. container:: r-fragment
 ## 
-##   Parse message header
+##   解析消息头
 ##   ------------------------------
 ## 
-##   For example:
+##   例子：
 ## 
 ##   .. code-block::nim 
 ## 
@@ -36,7 +33,7 @@
 ##       put data to buffer ...
 ##       finished = parser.parseHttpHeader(buffer, header)
 ## 
-##   Another example:
+##   另一个例子：
 ## 
 ##   .. code-block::nim 
 ## 
@@ -48,13 +45,13 @@
 ##     var buffer = initMarkableCircularBuffer()
 ##     var header = HttpHeader(kind: HttpHeaderKind.Request)
 ##     
-##     # parse first
+##     # 第一次解析
 ##     let messageRequestLine = "GET / HTTP/1.1\r\n"
 ##     buffer.add(messageRequestLine.cstring, messageRequestLine.len)
 ##     assert parser.parseHttpHeader(buffer, header) == false
 ##     buffer.del(messageRequestLine.len)
 ##     
-##     # parse second
+##     # 第二次解析
 ##     let messageHeaderFields = "Host: www.iocrate.com\r\n\r\n"
 ##     buffer.add(messageHeaderFields.cstring, messageHeaderFields.len)
 ##     assert parser.parseHttpHeader(buffer, header) == true
@@ -67,10 +64,10 @@
 ## 
 ## .. container:: r-fragment
 ##     
-##   Parse chunk header
+##   解析 chunked 编码消息的块的头部
 ##   ------------------------------
 ## 
-##   For example:
+##   例子：
 ## 
 ##   .. code-block::nim
 ## 
@@ -87,7 +84,7 @@
 ##       put data to buffer ...
 ##       finished = parser.parseChunkHeader(buffer, header)
 ## 
-##   Another example:
+##   另一个例子：
 ## 
 ##   .. code-block::nim 
 ## 
@@ -99,7 +96,6 @@
 ##     var buffer = initMarkableCircularBuffer()
 ##     var header: ChunkHeader
 ##     
-##     # parse first
 ##     let s = "9; language=en; city=London\r\n"
 ##     buffer.add(s.cstring, s.len)
 ##     assert parser.parseChunkHeader(buffer, header) == true
@@ -112,10 +108,10 @@
 ## 
 ## .. container:: r-fragment
 ## 
-##   Parse chunk tail
+##    解析 chunked 编码消息的尾部
 ##   ------------------------------
 ## 
-##   For example:
+##   例子：
 ## 
 ##   .. code-block::nim
 ## 
@@ -132,7 +128,7 @@
 ##       put data to buffer ...
 ##       finished = parser.parseChunkEnd(buffer, trailers)
 ##  
-##   Another example:
+##   另一个例子：
 ## 
 ##   .. code-block::nim 
 ## 
@@ -144,7 +140,6 @@
 ##     var buffer = initMarkableCircularBuffer()
 ##     var trailers: seq[string]
 ##     
-##     # parse first
 ##     let s = "\0\r\nExpires": "Wed, 21 Oct 2015 07:28:00 GMT\r\n\r\n"
 ##     buffer.add(s.cstring, s.len)
 ##     assert parser.parseChunkEnd(buffer, trailers) == true
@@ -152,7 +147,7 @@
 ##     
 ##     assert trailers[0] == "Expires": "Wed, 21 Oct 2015 07:28:00 GMT"
 ## 
-##   See **chunk** module and **metadata** module for more information about terminating chunk and trailers.
+##   看看 **chunk** 模块和 **metadata** 模块了解更多关于 terminating chunk and trailers 的信息。
 
 import uri
 import strutils
@@ -168,7 +163,7 @@ import netkit/http/header
 import netkit/http/chunk
 
 type
-  HttpParser* = object ## HTTP message parser.
+  HttpParser* = object ## HTTP 消息解析器。
     secondaryBuffer: string
     currentLineLen: Natural
     currentFieldName: string
@@ -186,41 +181,35 @@ type
     Unknown, Token, Crlf
 
 proc initHttpParser*(): HttpParser =
-  ## Initialize a ``HttpParser``.
+  ## 初始化一个 ``HttpParser`` 。
   discard
 
 proc clear*(p: var HttpParser) = discard
-  ## Reset this parser to clear all status. 
+  ## 重置解析器以清除所有状态。 
   ## 
-  ## Since ``HttpParser`` is an incremental, various state will be saved during the parsing process. 
-  ## This proc resets all states in order to start a new parsing process.
-  ## 
+  ## 由于解析器是增量的，因此在解析过程中将保存许多状态。此函数将重置所有状态，以开始新的解析过程。
+  
 proc parseHttpHeader*(p: var HttpParser, buf: var MarkableCircularBuffer, header: var HttpHeader): bool = discard
-  ## Parses the header of a HTTP message. ``buf`` specifies a circular buffer, which stores the data to be parsed. ``header`` 
-  ## specifies the message header object that output when the parsing is complete. Returns ``true`` if the parsing is complete.
+  ## 解析 HTTP 消息的头部。 ``buf`` 指定一个循环缓冲区，存储被解析的数据。 ``header`` 指定解析完成时输出的消息标头对象。 如果解析完成，则返回 ``true`` 。
   ## 
-  ## Depending on the value of the ``kind`` attribute of ``header``, different resolutions are taken. When ``kind=Request``, 
-  ## a message is parsed as a request. When ``kind=Response``, a message is parsed as a request.
+  ## 根据 ``header`` 的 ``kind`` 属性值，采用不同的解析方案。当 ``kind = Request`` 时，消息被解析为请求。当 ``kind = Response`` 时，消息被解析为响应。
   ## 
-  ## This process is performed incrementally, that is, the next parsing will continue from the previous 
-  ## position.
+  ## 此过程是增量执行的，也就是说，下一次解析将从上一次结束的位置继续。
 
 proc parseChunkHeader*(
   p: var HttpParser, 
   buf: var MarkableCircularBuffer,
   header: var ChunkHeader
 ): bool = discard
-  ## Parse the size and extensions of a data chunk that encoded by ``Transfor-Encoding: chunked``.
+  ## 解析通过 chunked 编码消息的块的头部（大小和扩展名）。
   ## 
-  ## This process is performed incrementally, that is, the next parsing will continue from the previous 
-  ## position.
+  ## 此过程是增量执行的，也就是说，下一次解析将从上一次结束的位置继续。
 
 proc parseChunkEnd*(
   p: var HttpParser, 
   buf: var MarkableCircularBuffer, 
   trailers: var seq[string]
 ): bool = discard
-  ## Parse the tail of a message that encoded by ``Transfor-Encoding: chunked``.
+  ## 解析通过 chunked 编码消息的尾部（终止块、trailers、final CRLF）。
   ## 
-  ## This process is performed incrementally, that is, the next parsing will continue from the previous 
-  ## position.
+  ## 此过程是增量执行的，也就是说，下一次解析将从上一次结束的位置继续。

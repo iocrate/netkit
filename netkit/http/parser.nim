@@ -99,7 +99,6 @@
 ##     var buffer = initMarkableCircularBuffer()
 ##     var header: ChunkHeader
 ##     
-##     # parse first
 ##     let s = "9; language=en; city=London\r\n"
 ##     buffer.add(s.cstring, s.len)
 ##     assert parser.parseChunkHeader(buffer, header) == true
@@ -144,7 +143,6 @@
 ##     var buffer = initMarkableCircularBuffer()
 ##     var trailers: seq[string]
 ##     
-##     # parse first
 ##     let s = "\0\r\nExpires": "Wed, 21 Oct 2015 07:28:00 GMT\r\n\r\n"
 ##     buffer.add(s.cstring, s.len)
 ##     assert parser.parseChunkEnd(buffer, trailers) == true
