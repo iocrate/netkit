@@ -93,7 +93,7 @@ type
   HttpHeaderKind* {.pure.} = enum ## HTTP 消息的类型。
     Request, Response
 
-  HttpHeader* = object ## Represents the header of a HTTP message. Each message must contain only one header.
+  HttpHeader* = object ## 表示 HTTP 消息头。每条消息只能有一个头部。
     case kind*: HttpHeaderKind
     of HttpHeaderKind.Request:
       reqMethod*: HttpMethod
@@ -104,9 +104,9 @@ type
     fields*: HeaderFields 
 
 proc toResponseStr*(H: HttpHeader): string = discard
-  ## Returns a header of a response message. 
+  ## 返回一个字符串，表示 HTTP 响应消息的头部， ``H`` 指定头部的内容。
   ## 
-  ## Examples:
+  ## 例子：
   ## 
   ## .. code-block::nim
   ## 
@@ -126,9 +126,9 @@ proc toResponseStr*(H: HttpHeader): string = discard
   ##   assert toResponseStr(Http200) = "200 OK HTTP/1.1\r\nHost: www.iocrate.com\r\n\r\n"
 
 proc toResponseStr*(code: HttpCode): string = discard
-  ## Returns a header of a response message, ``code`` specifies the status code. The header fields is empty.
+  ## 返回一个字符串，表示 HTTP 响应消息的头部， ``code`` 指定头部的状态码。注意，返回的头部不包含头字段。
   ## 
-  ## Examples:
+  ## 例子：
   ## 
   ## .. code-block::nim
   ## 
@@ -138,9 +138,9 @@ proc toResponseStr*(code: HttpCode): string = discard
   ##   assert toResponseStr(Http200) = "200 OK HTTP/1.1\r\n\r\n"
 
 proc toRequestStr*(H: HttpHeader): string = discard
-  ## Returns a header of a request message. 
+  ## 返回一个字符串，表示 HTTP 请求消息的头部， ``H`` 指定头部的内容。
   ## 
-  ## Examples:
+  ## 例子：
   ## 
   ## .. code-block::nim
   ## 
