@@ -440,6 +440,23 @@ proc del*(fields: var HeaderFields, name: string) = discard
   ##   fields.del("Cookie")
   ##   fields.del("Accept")
 
+proc hasKey*(fields: HeaderFields, name: string): bool =
+  ## Returns true if this fields contains the specified ``name``. 
+  ## Alias of ``hasKey`` for use with the ``in`` operator.
+  ## 
+  ## Examples: 
+  ## 
+  ## .. code-block::nim
+  ## 
+  ##   let fields = initHeaderFields({
+  ##     "Content-Length": "16"
+  ##   })
+  ##   assert fields.hasKey("Content-Length") == true
+  ##   assert fields.hasKey("content-length") == true
+  ##   assert fields.hasKey("ContentLength") == false
+  ##   assert "content-length" in fields
+  Table[string, seq[string]](fields).hasKey(name.toLowerAscii())
+
 proc contains*(fields: HeaderFields, name: string): bool = discard
   ## Returns true if this fields contains the specified ``name``. 
   ## 

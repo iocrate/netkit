@@ -460,8 +460,24 @@ proc del*(fields: var HeaderFields, name: string) =
   ##   fields.del("Accept")
   Table[string, seq[string]](fields).del(name.toLowerAscii())
 
+proc hasKey*(fields: HeaderFields, name: string): bool =
+  ## Returns true if this fields contains the specified ``name``. 
+  ## 
+  ## Examples: 
+  ## 
+  ## .. code-block::nim
+  ## 
+  ##   let fields = initHeaderFields({
+  ##     "Content-Length": "16"
+  ##   })
+  ##   assert fields.hasKey("Content-Length") == true
+  ##   assert fields.hasKey("content-length") == true
+  ##   assert fields.hasKey("ContentLength") == false
+  Table[string, seq[string]](fields).hasKey(name.toLowerAscii())
+
 proc contains*(fields: HeaderFields, name: string): bool =
   ## Returns true if this fields contains the specified ``name``. 
+  ## Alias of ``hasKey`` for use with the ``in`` operator.
   ## 
   ## Examples: 
   ## 
@@ -473,6 +489,7 @@ proc contains*(fields: HeaderFields, name: string): bool =
   ##   assert fields.contains("Content-Length") == true
   ##   assert fields.contains("content-length") == true
   ##   assert fields.contains("ContentLength") == false
+  ##   assert "content-length" in fields
   Table[string, seq[string]](fields).contains(name.toLowerAscii())
 
 proc len*(fields: HeaderFields): int = 
