@@ -4,9 +4,8 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-# TODO: 翻译 doc/source/buffer/circular.nim 的注释， 将英文版追加到本文件
-# TODO: 更多单元测试， 测试稳定性和安全性
-# TODO: Benchmark Test
+## This module implements a growable buffer ``VectorBuffer``. The buffer can grow exponentially as needed until
+## it reaches a critical value. When the critical value is reached, continued growth will cause an exception.
 
 import netkit/misc
 import netkit/buffer/constants
@@ -23,26 +22,26 @@ proc initVectorBuffer*(
   minCapacity: Natural = BufferSize,
   maxCapacity: Natural = BufferSize * 8
 ): VectorBuffer = 
-  ## Initializes an ``VectorBuffer`` object. 
+  ## Initializes an ``VectorBuffer`` . 
   result.capacity = minCapacity
   result.minCapacity = minCapacity
   result.maxCapacity = maxCapacity
   result.value = newSeqOfCap[byte](minCapacity)
 
 proc capacity*(b: VectorBuffer): Natural = 
-  ## Gets the capacity of the buffer.
+  ## Returns the capacity of this buffer.
   b.capacity
 
 proc minCapacity*(b: VectorBuffer): Natural = 
-  ## Gets the minimum capacity of the buffer.
+  ## Returns the minimum capacity of this buffer.
   b.minCapacity
 
 proc maxCapacity*(b: VectorBuffer): Natural = 
-  ## Gets the maximum capacity of the buffer.
+  ## Returns the maximum capacity of this buffer.
   b.maxCapacity
 
 proc len*(b: VectorBuffer): Natural = 
-  ## Gets the length of the data currently stored in the buffer.
+  ## Returns the length of the data currently stored in this buffer.
   b.endPos
 
 proc reset*(b: var VectorBuffer): Natural = 
@@ -51,8 +50,8 @@ proc reset*(b: var VectorBuffer): Natural =
   b.endPos = 0
   b.value = newSeqOfCap[byte](b.capacity)
 
-proc expand*(b: var VectorBuffer) = 
-  ## Expands the capacity of the buffer. If it exceeds the maximum capacity, an exception is thrown.
+proc expand*(b: var VectorBuffer) {.raises: [OverflowError].} = 
+  ## Expands the capacity of the buffer. If it exceeds the maximum capacity, an exception is raised.
   let newCapacity = b.capacity * 2
   if newCapacity > b.maxCapacity:
     raise newException(OverflowError, "capacity overflow")
@@ -62,48 +61,52 @@ proc expand*(b: var VectorBuffer) =
   b.value = move newValue
 
 proc next*(b: var VectorBuffer): (pointer, Natural) = 
-  ## Gets the next safe storage region. The return value indicates the pointer and length of the storage 
-  ## region. After that, you can use the returned pointer and length to store data manually.
+  ## Gets the next safe storage space. The return value includes the address and length of the storable 
+  ## space. 
+  ## 
+  ## Examples:
   ## 
   ## .. code-block::nim
   ##     
   ##   var source = "Hello World"
-  ##   var (regionPtr, regionLen) = b.next()
+  ##   var (regionPtr, regionLen) = buffer.next()
   ##   var length = min(regionLen, s.len)
   ##   copyMem(regionPtr, source.cstring, length) 
   result[0] = b.value.addr.offset(b.endPos)
   result[1] = b.capacity - b.endPos
 
 proc pack*(b: var VectorBuffer, size: Natural): Natural = 
-  ## Tells the buffer that packing ``size`` lengths of data. Returns the actual length packed.
+  ## Tells the buffer that ``size`` bytes from the current storage location are promoted to data. Returns the actual 
+  ## length promoted.
   ## 
-  ## When ``next()`` is called, Although data has been written inside the buffer, but the buffer cannot tell how 
-  ## much valid data has been written. ``pack ()`` tells the buffer how much valid data is actually written.
+  ## When ``next()`` is called, data is written to the storage space inside the buffer, but the buffer cannot know 
+  ## how much data was written. ``pack ()`` tells the buffer the length of the data written.
   ## 
   ## Whenever ``next()`` is called, ``pack()`` should be called immediately.
+  ## 
+  ## Examples:
   ## 
   ## .. code-block::nim
   ##     
   ##   var source = "Hello World"
-  ##   var (regionPtr, regionLen) = b.next()
+  ##   var (regionPtr, regionLen) = buffer.next()
   ##   var length = min(regionLen, s.len)
   ##   copyMem(regionPtr, source.cstring, length) 
-  ##   var n = b.pack(length)
+  ##   var n = buffer.pack(length)
   result = min(size, b.capacity - b.endPos) 
   b.endPos = b.endPos + result
 
 proc add*(b: var VectorBuffer, source: pointer, size: Natural): Natural = 
-  ## Copies up to `` size`` lengths of data from `` source``. Returns the actual length copied. This 
-  ## is a simplified version of the `` next () `` `` pack () `` combination call. The difference is
-  ## that an additional copy operation is made instead of writing directly to the buffer.
+  ## Copies up to ``size`` lengths of data from ``source`` and store the data in the buffer. Returns the actual length 
+  ## copied. This is a simplified version of the ``next`` ``pack`` combination call. The difference is that an  
+  ## additional copy operation is made instead of writing directly to the buffer.
   ## 
-  ## When you focus on performance, consider using ``next ()``, ``pack ()`` combination calls; 
-  ## when you focus on convenience of the invocation, use ``put ()``.
+  ## Examples:
   ## 
   ## .. code-block::nim
   ##     
   ##   var source = "Hello World"
-  ##   var n = b.put(source.cstring, source.len)
+  ##   var n = buffer.add(source.cstring, source.len)
   result = min(size, b.capacity - b.endPos)
   copyMem(b.value.addr.offset(b.endPos), source, result)
   b.endPos = b.endPos + result

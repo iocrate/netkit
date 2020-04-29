@@ -200,7 +200,7 @@ import netkit/buffer/constants
 
 type 
   CircularBuffer* = object of RootObj                
-    ## A circular buffer. 
+    ## A circular buffer. Note that the maximum length of its storage space is ``BufferSize``.
     value: array[0..BufferSize, byte]
     startPos: Natural                                #  0..n-1 
     endPos: Natural                                  #  0..n-1 
@@ -266,8 +266,8 @@ proc pack*(b: var CircularBuffer, size: Natural): Natural =
     b.endPos = b.endMirrorPos mod BufferSize
 
 proc add*(b: var CircularBuffer, source: pointer, size: Natural): Natural = 
-  ## Copies up to `` size`` lengths of data from `` source`` and store the data in the buffer. Returns the actual length 
-  ## copied. This is a simplified version of the `` next () `` `` pack () `` combination call. The difference is that an  
+  ## Copies up to ``size`` lengths of data from ``source`` and store the data in the buffer. Returns the actual length 
+  ## copied. This is a simplified version of the ``next`` ``pack`` combination call. The difference is that an  
   ## additional copy operation is made instead of writing directly to the buffer.
   ## 
   ## Examples:
@@ -290,8 +290,8 @@ proc add*(b: var CircularBuffer, source: pointer, size: Natural): Natural =
     discard b.pack(d)
 
 proc add*(b: var CircularBuffer, c: char): Natural = 
-  ## Stores a character `` c`` in the buffer and returns the actual stored length. If the storage space is full, it will 
-  ## return `` 0``, otherwise `` 1``.
+  ## Stores a character ``c`` in the buffer and returns the actual stored length. If the storage space is full, it will 
+  ## return ``0``, otherwise ``1``.
   let region = b.next()
   result = min(region[1], 1)
   if result > 0:
