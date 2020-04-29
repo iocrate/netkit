@@ -187,22 +187,22 @@ proc close*(conn: HttpConnection) {.inline.} = discard
 proc closed*(conn: HttpConnection): bool {.inline.} = discard
   ## 判断连接是否已经关闭。
 
-proc readHttpHeader*(conn: HttpConnection, header: ptr HttpHeader): Future[void] {.async.} = discard
+proc readHttpHeader*(conn: HttpConnection, header: ptr HttpHeader): Future[void] = discard
   ## 读取一个消息头部。 
   ## 
   ## 如果读过程中出现系统错误，则会触发 ``OSError`` 异常；如果在成功读取之前连接断开，则会触发 ``ReadAbortedError`` 异常。
 
-proc readChunkHeader*(conn: HttpConnection, header: ptr ChunkHeader): Future[void] {.async.} = discard
+proc readChunkHeader*(conn: HttpConnection, header: ptr ChunkHeader): Future[void] = discard
   ## 读取一个 chunked 编码的块的头部。 
   ## 
   ## 如果读过程中出现系统错误，则会触发 ``OSError`` 异常；如果在成功读取之前连接断开，则会触发 ``ReadAbortedError`` 异常。
 
-proc readChunkEnd*(conn: HttpConnection, trailer: ptr seq[string]): Future[void] {.async.} = discard
+proc readChunkEnd*(conn: HttpConnection, trailer: ptr seq[string]): Future[void] = discard
   ## 读取一个 chunked 编码终止块 (terminating chunk)、trailers、和 final CRLF。 
   ## 
   ## 如果读过程中出现系统错误，则会触发 ``OSError`` 异常；如果在成功读取之前连接断开，则会触发 ``ReadAbortedError`` 异常。
 
-proc readData*(conn: HttpConnection, buf: pointer, size: Natural): Future[Natural] {.async.} = discard 
+proc readData*(conn: HttpConnection, buf: pointer, size: Natural): Future[Natural] = discard 
   ## 读取数据直到 ``size`` 字节，读取的数据填充在 ``buf`` ，返回实际读取的字节数。如果返回值不等于 ``size`` ，说明
   ## 出现错误或者连接已经断开。如果出现错误或连接已经断开，则立刻返回；否则，将一直等待读取，直到 ``size`` 字节。 
   ## 

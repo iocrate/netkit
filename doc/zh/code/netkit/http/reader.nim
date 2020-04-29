@@ -77,26 +77,26 @@ proc ended*(reader: HttpReader): bool {.inline.} = discard
 proc normalizeSpecificFields*(reader: HttpReader) = discard
   ## 规范化一些特殊的头字段。
 
-proc read*(reader: HttpReader, buf: pointer, size: range[int(LimitChunkDataLen)..high(int)]): Future[Natural] {.async.} = discard
+proc read*(reader: HttpReader, buf: pointer, size: range[int(LimitChunkDataLen)..high(int)]): Future[Natural] = discard
   ## 读取数据直到 ``size`` 字节，读取的数据填充在 ``buf`` 。
   ## 
   ## 返回值是实际读取的字节数。这个值可能小于 ``size``。 ``0`` 值表示 ``EOF`` ，即无法读取更多数据。
   ## 
   ## 如果读过程中出现系统错误，则会触发 ``OSError`` 异常；如果在成功读取之前连接断开，则会触发 ``ReadAbortedError`` 异常。
 
-proc read*(reader: HttpReader): Future[string] {.async.} = discard
+proc read*(reader: HttpReader): Future[string] = discard
   ## 读取数据直到 ``size`` 字节，读取的数据以字符串返回。
   ## 
   ## 如果返回值是 ``""``， 表示 ``EOF`` ，即无法读取更多数据。
   ## 
   ## 如果读过程中出现系统错误，则会触发 ``OSError`` 异常；如果在成功读取之前连接断开，则会触发 ``ReadAbortedError`` 异常。
 
-proc readAll*(reader: HttpReader): Future[string] {.async.} = discard
+proc readAll*(reader: HttpReader): Future[string] = discard
   ## 读取所有可读的数据，以字符串返回。
   ## 
   ## 如果读过程中出现系统错误，则会触发 ``OSError`` 异常；如果在成功读取之前连接断开，则会触发 ``ReadAbortedError`` 异常。
   
-proc readDiscard*(reader: HttpReader): Future[void] {.async.} = discard
+proc readDiscard*(reader: HttpReader): Future[void] = discard
   ## 读取所有可读的数据，并丢掉这些数据。
   ## 
   ## 如果读过程中出现系统错误，则会触发 ``OSError`` 异常；如果在成功读取之前连接断开，则会触发 ``ReadAbortedError`` 异常。

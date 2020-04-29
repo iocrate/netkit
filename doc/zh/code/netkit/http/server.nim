@@ -42,5 +42,5 @@ proc serve*(
   port: Port,
   address: string = "",
   domain = AF_INET
-) {.async.} = discard
+): Future[void] = discard
   ## 启动服务器，侦听 ``address`` 和 ``port`` 传入的 HTTP 连接。

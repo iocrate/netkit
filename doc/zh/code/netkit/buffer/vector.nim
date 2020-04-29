@@ -4,7 +4,7 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-## 本模块实现了一个可增长的缓冲区 ``VectorBuffer``。该缓冲区可以根据需要成倍增长，直到某个临界值。当到达
+## 本模块实现了一个可增长的缓冲区 ``VectorBuffer`` 。该缓冲区可以根据需要成倍增长，直到某个临界值。当到达
 ## 临界值时，继续增长将引起异常。
 
 import netkit/misc
