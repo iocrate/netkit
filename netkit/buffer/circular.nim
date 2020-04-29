@@ -193,6 +193,7 @@
 ##     assert buffer.len == str.len
 ##     
 ##     var foo = buffer.get(3)
+##     var delLen = buffer.del(3)
 ##     assert foo == "foo"
 
 import netkit/misc
