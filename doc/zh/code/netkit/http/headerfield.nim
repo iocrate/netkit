@@ -4,81 +4,76 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-## This module contains a definition of HTTP header fields. A distinct table, ``HeaderFields``, which 
-## represents the set of header fields of a message.
+## 这个模块包含 HTTP 头部字段的定义。 ``HeaderFields`` 使用一个 distinct table 实现，表示头部字段的集合。
 ## 
-## Overview
+## 概述
 ## ========================
 ## 
-## HTTP header fields are components of the header section of request and response messages. They define 
-## the operating parameters of an HTTP transaction. 
+## HTTP 头字段是请求消息头部和响应消息头部的组件，负责定义 HTTP 传输的操作参数。
 ## 
-## Header field names are case-insensitive. Most HTTP header field values are defined using common syntax 
-## components (token, quoted-string, and comment) separated by whitespace or specific delimiting characters. 
+## 头字段的名字忽略大小写。许多头字段的值，则使用空白或者特殊的分隔符拆分成多个组件。
 ## 
 ## .. container::r-fragment
 ## 
-##   Formatting rules 
+##   格式规则 
 ##   ----------------
 ## 
-##   The format of the value of each header field varies widely. There are five different formatting rules:
+##   头字段的值，其格式差异很大。有五种不同的格式规则：
 ## 
-##   1. Represented as a single line, a single value, no-parameters
+##   1. 表示为单行；单个值；无参数
 ## 
 ##   .. container::r-ol
 ## 
-##      For example:
+##      例子：
 ##    
 ##      .. code-block::http
 ## 
 ##        Content-Length: 0
 ## 
-##   2. Represented as a single line, a single value, optional parameters separated by ``';'``
+##   2. 表示为单行；单个值；以 ``';'`` 分隔的可选参数
 ## 
 ##   .. container::r-ol
 ## 
-##      For example:  
+##      例子：  
 ##    
 ##      .. code-block::http
 ## 
 ##        Content-Type: application/json
 ## 
-##      or: 
+##      或者：
 ##    
 ##      .. code-block::http
 ## 
 ##        Content-Type: application/json; charset=utf8
 ## 
-##   3. Represented as a single line, multiple values separated by ``';'``, no-parameters 
+##   3. 表示为单行；多个值，之间用 ``';'`` 分隔；无参数
 ## 
 ##   .. container::r-ol
 ## 
-##      For example:
+##      例子：
 ##    
 ##      .. code-block::http
 ## 
 ##        Cookie: SID=123abc; language=en
 ## 
-##   4. Represented as a single line or multiple lines, multiple values separated by ``','``, each value has
-##   optional parameters separated by ``';'``
+##   4. 表示为单行或多行；多个值，之间用 ``';'`` 分隔；每个值具有可选参数，以 ``';'`` 分隔
 ## 
 ##   .. container::r-ol
 ## 
-##      A single line:
+##      单行：
 ##    
 ##      .. code-block::http
 ## 
 ##        Accept: text/html; q=1; level=1, text/plain
 ## 
-##      Multiple lines:
+##      多行：
 ##    
 ##      .. code-block::http
 ## 
 ##        Accept: text/html; q=1; level=1
 ##        Accept: text/plain
 ## 
-##   5. ``Set-Cookie`` is a special case, represented as multiple lines, each line is a value that separated by ``';'``, 
-##   no-parameters
+##   5. ``Set-Cookie`` 是一种特殊情况，用多行表示；每行都是以 ``';'`` 分隔的值；无参数
 ## 
 ##   .. container::r-ol
 ## 
@@ -87,16 +82,15 @@
 ##        Set-Cookie: SID=123abc; path=/
 ##        Set-Cookie: language=en; path=/
 ## 
-##   To simplify these complex representations, this module provides two special tools, ``parseSingleRule`` and 
-##   ``parseMultiRule``, which combine the above 5 rules into 2 rules: **single-line-rule** (SLR) and 
-##   **multiple-lines-rule** (MLR).
+##   为了简化这些复杂的表示形式，该模块提供了两个特殊工具 ``parseSingleRule`` 和 ``parseMultiRule`` ，
+##   将上述 5 条规则组合为 2 条规则 **single-line-rule** (SLR) 和 **multiple-lines-rule** (MLR)。
 ## 
-## Usage
+## 用法
 ## ========================
 ## 
 ## .. container:: r-fragment
 ## 
-##   Access fields
+##   访问头字段
 ##   -------------------------
 ## 
 ##   .. code-block::nim
@@ -122,13 +116,12 @@
 ## 
 ## .. container:: r-fragment
 ## 
-##   Access values by SLR
+##   基于 SLR 访问值
 ##   --------------------
 ## 
-##   Uses ``parseSingleRule`` to parse the header fields, which follows the 1,2,3 rules listed above, and returns a set of 
-##   ``(key, value)`` pairs.  
+##   使用 ``parseSingleRule`` 解析头字段，该头字段遵循上面列出的 1,2,3 规则，并返回一组 ``(key, value)`` 对。
 ## 
-##   1. Represented as a single line, a single value, no-parameters
+##   1. 表示为单行；单个值；无参数
 ## 
 ##   .. container::r-ol
 ## 
@@ -140,15 +133,13 @@
 ##        let values = fields.parseSingleRule("Content-Length")
 ##        assert values[0].key = "0"
 ## 
-##      The returned result should have at most one item, and the ``key`` of the first item indicates the value of this
-##      header field, if any.
+##      返回的结果最多包含一项，并且第一项的 ``key`` 表示头字段的值（如果有）。
 ##      
 ##      .. 
 ##      
-##        Note: When using this proc, you must ensure that the values is represented as a single line. If the values is represented 
-##        as multiple-lines like ``Accept``, there may lose values. If more than one value is found, an exception will be raised.
+##        注意：使用此 proc 时，必须确保这些值以单行表示。如果值可表示为多行（如 ``Accept``），则可能会丢失值。如果发现存在多个值，将引发异常。
 ## 
-##   2. Represented as a single line, a single value, optional parameters separated by ``';'``
+##   2. 表示为单行；单个值；以 ``';'`` 分隔的可选参数
 ## 
 ##   .. container::r-ol
 ## 
@@ -162,15 +153,13 @@
 ##        assert values[1].key = "charset"
 ##        assert values[1].value = "utf8"
 ## 
-##      If the returned result is not empty, the ``key`` of the first item indicates the value of this header field, and the 
-##      other items indicates the parameters of this value.
+##      如果返回的结果不为空，则第一项的 ``key`` 表示此头字段的值，其他项表示值的参数。
 ##      
 ##      .. 
 ##      
-##        Note: When using this proc, you must ensure that the values is represented as a single line. If the values is represented 
-##        as multiple-lines like ``Accept``, there may lose values. If more than one value is found, an exception will be raised.
+##        注意：使用此 proc 时，必须确保这些值以单行表示。如果值可表示为多行（如 ``Accept``），则可能会丢失值。如果发现存在多个值，将引发异常。
 ## 
-##   3. Represented as a single line, multiple values separated by ``';'``, no-parameters 
+##   3. 表示为单行；多个值，之间用 ``';'`` 分隔；无参数
 ## 
 ##   .. container::r-ol
 ## 
@@ -185,22 +174,20 @@
 ##        assert values[1].key = "language"
 ##        assert values[1].value = "en"
 ## 
-##      If the returned result is not empty, then each item indicates a value, that mean a ``(key, value)`` pair.
+##      如果返回的结果不为空，则每个项表示一个值。
 ##      
 ##      .. 
 ##      
-##        Note: When using this proc, you must ensure that the values is represented as a single line. If the values is represented 
-##        as multiple-lines like ``Accept``, there may lose values. If more than one value is found, an exception will be raised.
+##        注意：使用此 proc 时，必须确保这些值以单行表示。如果值可表示为多行（如 ``Accept``），则可能会丢失值。如果发现存在多个值，将引发异常。
 ## 
 ## .. container:: r-fragment
 ## 
-##   Access values by MLR
+##   基于 MLR 访问值
 ##   --------------------
 ## 
-##   Uses ``parseMultiRule`` to parse the header fields, which follows the 4,5 rules listed above, and returns a set of ``seq[(key, value)]``.  
+##   使用 ``parseMultiRule`` 解析头字段，该头字段遵循上面列出的 4,5 规则，并返回一组 ``seq[(key，value)]`` 。
 ## 
-##   4. Represented as a single line or multiple lines, multiple values separated by ``','``, each value has
-##   optional parameters separated by ``';'``
+##   4. 表示为单行或多行；多个值，之间用 ``';'`` 分隔；每个值具有可选参数，以 ``';'`` 分隔
 ## 
 ##   .. container::r-ol
 ## 
@@ -217,7 +204,7 @@
 ##        assert values[0][2].value = "1"
 ##        assert values[1][0].key = "text/plain"
 ## 
-##      the same below：
+##      以下相同：
 ## 
 ##      .. code-block::nim
 ##      
@@ -226,17 +213,14 @@
 ##        })
 ##        let values = fields.parseMultiRule("Accept")
 ## 
-##      If the returned result is not empty, then each item indicates a value. The ``key`` of the first 
-##      item of each seq indicates the value itself, and the other items indicate parameters of that value.
+##      如果返回的结果不为空，则每个项均指示一个值。每个项第一项的 ``key`` 表示值本身，其他项表示值的参数。
 ## 
 ##      ..
 ## 
-##        Note: When using this proc, you must ensure that the values is represented as multiple lines. 
-##        If the values is represented as a single-line field like ``Date``, you may get wrong results. Because ``Date`` 
-##        takes ``','`` as part of its value, for example, ``Date: Thu, 23 Apr 2020 07:41:15 GMT``.
+##        注意：使用此 proc 时，必须确保值可表示为多行。如果值是那些诸如 ``Date`` 之类的单行值，则可能会得到错误的结果。 
+##        因为 ``Date`` 将 ``,`` 视为值的一部分，例如 ``Date: Thu, 23 Apr 2020 07:41:15 GMT`` 。
 ## 
-##   5. ``Set-Cookie`` is a special case, represented as multiple lines, each line is a value that separated by ``';'``, 
-##   no-parameters
+##   5. ``Set-Cookie`` 是一种特殊情况，用多行表示；每行都是以 ``';'`` 分隔的值；无参数
 ## 
 ##   .. container::r-ol
 ## 
@@ -255,91 +239,12 @@
 ##        assert values[1][1].key = "path"
 ##        assert values[1][1].value = "/"
 ##    
-##      If the returned result is not empty, then each item indicates a value.
+##      如果返回的结果不为空，则每个项均指示一个值。
 ## 
 ##      ..
 ## 
-##        Note: When using this proc, you must ensure that the values is represented as multiple lines. 
-##        If the values is represented as a single-line field like ``Date``, you may get wrong results. Because ``Date`` 
-##        takes ``','`` as part of its value, for example, ``Date: Thu, 23 Apr 2020 07:41:15 GMT``.
-
-# Multiple Header Fields with The Same Field Name
-# -----------------------------------------------
-#
-# `RFC 7230-3.2.2 <https://tools.ietf.org/html/rfc7230#section-3.2.2>`_
-#
-# A sender MUST NOT generate multiple header fields with the same field name in a message unless either the entire 
-# field value for that header field is defined as a comma-separated list [i.e., #(values)] or the header field is a
-# well-known exception (as noted below).
-#
-# A recipient MAY combine multiple header fields with the same field name into one "field-name: field-value" pair, 
-# without changing the semantics of the message, by appending each subsequent field value to the combined field value
-# in order, separated by a comma. The order in which header fields with the same field name are received is therefore 
-# significant to the interpretation of the combined field value; a proxy MUST NOT change the order of these field values 
-# when forwarding a message.
-#
-# Note: In practice, the "Set-Cookie" header field ([RFC6265]) often appears multiple times in a response message and
-#       does not use the list syntax, violating the above requirements on multiple header fields with the same name.
-#       Since it cannot be combined into a single field-value, recipients ought to handle "Set-Cookie" as a special case 
-#       while processing header fields. 
-#
-# ASCII
-# -----
-#
-# - https://zh.wikipedia.org/wiki/ASCII 
-# - https://zh.wikipedia.org/wiki/EASCII
-#
-# ASCII 0~255 一共 256 个字符。 0~31 和 127 是控制字符； 32~126 是可视字符； 128~255 是扩展字符。 一个 char 是 8 位， 可表示 0~255。 
-#
-# Field Value Components
-# ----------------------
-# 
-# ..
-# 
-#   `RFC7230 <https://tools.ietf.org/html/rfc7230>`_
-# 
-#   Most HTTP header field values are defined using common syntax components (token, quoted-string, and comment) 
-#   separated by whitespace or specific delimiting characters. Delimiters are chosen from the set of US-ASCII
-#   visual characters not allowed in a token (DQUOTE and "(),/:;<=>?@[\]{}").
-# 
-# ..
-#
-#   `RFC5234 <https://tools.ietf.org/html/rfc5234>`_
-# 
-#   .. code-block::nim
-# 
-#     DIGIT          =  %x30-39            ; 0-9
-#     ALPHA          =  %x41-5A / %x61-7A  ; A-Z / a-z
-#     DQUOTE         =  %x22       ; '"'
-#     HTAB           =  %x09       ; horizontal tab
-#     SP             =  %x20       ; ' '
-#     VCHAR          =  %x21-7E    ; visible (printing) characters
-# 
-# ..
-#
-#   `RFC7230 <https://tools.ietf.org/html/rfc7230>`_
-# 
-#   .. code-block::nim
-# 
-#     field-value    =  *( field-content / obs-fold )
-#     field-content  =  field-vchar [ 1*( SP / HTAB ) field-vchar ]
-#     field-vchar    =  VCHAR / obs-text
-#     obs-text       =  %x80-FF
-#     obs-fold       =  CRLF 1*( SP / HTAB )  ; obsolete line folding  
-# 
-#     token          =  1*tchar
-#     tchar          =  "!" / "#" / "$" / "%" / "&" / "'" / "*"
-#                    /  "+" / "-" / "." / "^" / "_" / "`" / "|" / "~"
-#                    /  DIGIT / ALPHA
-#                    ;  any VCHAR, except delimiters
-#
-#     quoted-pair    =  "\" ( HTAB / SP / VCHAR / obs-text )
-# 
-#     quoted-string  =  DQUOTE *( qdtext / quoted-pair ) DQUOTE
-#     qdtext         =  HTAB / SP /%x21 / %x23-5B / %x5D-7E / obs-text
-# 
-#     comment        = "(" *( ctext / quoted-pair / comment ) ")"
-#     ctext          = HTAB / SP / %x21-27 / %x2A-5B / %x5D-7E / obs-text
+##        注意：使用此 proc 时，必须确保值可表示为多行。如果值是那些诸如 ``Date`` 之类的单行值，则可能会得到错误的结果。 
+##        因为 ``Date`` 将 ``,`` 视为值的一部分，例如 ``Date: Thu, 23 Apr 2020 07:41:15 GMT`` 。
 
 import tables
 import strutils
@@ -349,12 +254,12 @@ type
   HeaderFields* = distinct Table[string, seq[string]] ## Represents the header fields of a HTTP message.
 
 proc initHeaderFields*(): HeaderFields = discard
-  ## Initializes a ``HeaderFields``.
+  ## 初始化一个 ``HeaderFields`` 。
 
 proc initHeaderFields*(pairs: openarray[tuple[name: string, value: seq[string]]]): HeaderFields = discard
-  ## Initializes a ``HeaderFields``. ``pairs`` is a container consisting of ``(key, value)`` tuples.
+  ## 初始化一个 ``HeaderFields`` ， ``pairs`` 指定一组 ``(name, value)`` 对。
   ## 
-  ## The following example demonstrates how to deal with a single value, such as ``Content-Length``:
+  ## 下面的示例演示如何处理单值字段，例如 ``Content-Length`` ：
   ## 
   ## .. code-block::nim
   ## 
@@ -364,8 +269,7 @@ proc initHeaderFields*(pairs: openarray[tuple[name: string, value: seq[string]]]
   ##     "Cookie": @["SID=123; language=en"]
   ##   })
   ## 
-  ## The following example demonstrates how to deal with ``Set-Cookie`` or a comma-separated list of values
-  ## such as ``Accept``: 
+  ## 下面的示例演示如何处理 Set-Cookie 或以逗号分隔的多值字段（例如 ``Accept`` ）：
   ## 
   ##   .. code-block::nim
   ## 
@@ -375,9 +279,9 @@ proc initHeaderFields*(pairs: openarray[tuple[name: string, value: seq[string]]]
   ##     })
 
 proc initHeaderFields*(pairs: openarray[tuple[name: string, value: string]]): HeaderFields = discard
-  ## Initializes a ``HeaderFields``. ``pairs`` is a container consisting of ``(key, value)`` tuples.
+  ## 初始化一个 ``HeaderFields``. ``pairs`` 指定一组 ``(name, value)`` 对。
   ## 
-  ## The following example demonstrates how to deal with a single value, such as ``Content-Length``:
+  ## 下面的示例演示如何处理单值字段，例如 ``Content-Length`` ：
   ## 
   ## .. code-block::nim
   ## 
@@ -388,13 +292,12 @@ proc initHeaderFields*(pairs: openarray[tuple[name: string, value: string]]): He
   ##   })
 
 proc clear*(fields: var HeaderFields) = discard
-  ## Resets this fields so that it is empty.
+  ## 重置头字段，清空里面的数据。
 
 proc `[]`*(fields: HeaderFields, name: string): seq[string] {.raises: [KeyError].} = discard
-  ## Returns the value of the field associated with ``name``. If ``name`` is not in this fields, the 
-  ## ``KeyError`` exception is raised. 
+  ## 返回名字为 ``name`` 的字段值。如果此字段中没有 ``name`` ，则会引发 ``KeyError`` 异常。
   ## 
-  ## Examples: 
+  ## 例子：
   ## 
   ## .. code-block::nim
   ## 
@@ -404,9 +307,9 @@ proc `[]`*(fields: HeaderFields, name: string): seq[string] {.raises: [KeyError]
   ##   assert fields["Content-Length"][0] == "16"
 
 proc `[]=`*(fields: var HeaderFields, name: string, value: seq[string]) = discard
-  ## Sets ``value`` to the field associated with ``name``. Replaces any existing value.
+  ## 设置名字为 ``name`` 的字段值。如果字段已经存在，则替换已有的值。
   ## 
-  ## Examples: 
+  ## 例子：
   ## 
   ## .. code-block::nim
   ## 
@@ -416,9 +319,9 @@ proc `[]=`*(fields: var HeaderFields, name: string, value: seq[string]) = discar
   ##   fields["Content-Length"] == @["100"]
 
 proc add*(fields: var HeaderFields, name: string, value: string) = discard
-  ## Adds ``value`` to the field associated with ``name``. If ``name`` does not exist then create a new one.
+  ## 添加一个字段，名字为 ``name``，值为 ``value``。如果字段不存在，则创建一个。
   ## 
-  ## Examples: 
+  ## 例子：
   ## 
   ## .. code-block::nim
   ## 
@@ -430,9 +333,9 @@ proc add*(fields: var HeaderFields, name: string, value: string) = discard
   ##   fields.add("Accept", "audio/basic")
 
 proc del*(fields: var HeaderFields, name: string) = discard
-  ## Deletes the field associated with ``name``. 
+  ## 删除名字为 ``name`` 的字段。
   ## 
-  ## Examples: 
+  ## 例子：
   ## 
   ## .. code-block::nim
   ## 
@@ -441,10 +344,9 @@ proc del*(fields: var HeaderFields, name: string) = discard
   ##   fields.del("Accept")
 
 proc hasKey*(fields: HeaderFields, name: string): bool = discard
-  ## Returns true if this fields contains the specified ``name``. 
-  ## Alias of ``hasKey`` for use with the ``in`` operator.
+  ## 判断是否含有名字为 ``name`` 的字段。
   ## 
-  ## Examples: 
+  ## 例子：
   ## 
   ## .. code-block::nim
   ## 
@@ -457,9 +359,9 @@ proc hasKey*(fields: HeaderFields, name: string): bool = discard
   ##   assert "content-length" in fields
 
 proc contains*(fields: HeaderFields, name: string): bool = discard
-  ## Returns true if this fields contains the specified ``name``. 
+  ## 判断是否含有名字为 ``name`` 的字段。
   ## 
-  ## Examples: 
+  ## 例子：
   ## 
   ## .. code-block::nim
   ## 
@@ -471,27 +373,26 @@ proc contains*(fields: HeaderFields, name: string): bool = discard
   ##   assert fields.contains("ContentLength") == false
 
 proc len*(fields: HeaderFields): int = discard
-  ## Returns the number of names in this fields.
+  ## 返回包含的字段数量。
 
 iterator pairs*(fields: HeaderFields): tuple[name, value: string] = discard
-  ## Yields each ``(name, value)`` pair.
+  ## 迭代所有字段。
 
 iterator names*(fields: HeaderFields): string = discard
-  ## Yields each field name.
+  ## 迭代所有字段的名字。
 
 proc getOrDefault*(
   fields: HeaderFields, 
   name: string,
   default = @[""]
 ): seq[string] = discard
-  ## Returns the value of the field associated with ``name``. If ``name`` is not in this fields, then 
-  ## ``default`` is returned.
+  ## 返回名字为 ``name`` 的字段值。如果字段不存在，则返回 ``default`` 。
 
 proc `$`*(fields: HeaderFields): string = discard
-  ## Converts this fields to a string that follows the HTTP Protocol.
+  ## 把字段转换为一个遵循 HTTP 规范的字符串。
 
 proc parseSingleRule*(fields: HeaderFields, name: string): seq[tuple[key: string, value: string]] {.raises: [ValueError].} = discard
-  ## Parses the field value that matches **single-line-rule**. 
+  ## 解析名字为 ``name`` 的字段值，该值匹配 **single-line-rule** 规则。
     
 proc parseMultiRule*(fields: HeaderFields, name: string, default = ""): seq[seq[tuple[key: string, value: string]]] = discard
-  ## Parses the field value that matches **multiple-lines-rule**. 
+  ## 解析名字为 ``name`` 的字段值，该值匹配 **multiple-lines-rule** 规则。 
