@@ -4,17 +4,15 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-## This module provides an abstraction of read operations related to HTTP.
+## 这个模块定义 HTTP 相关的读操作的抽象。
 ## 
-## Overview
+## 概述
 ## ========================
 ## 
-## A server reads the incoming request from a client, and a client reads the returned response from a 
-## server.
+## 服务器从客户端读取传入的请求，而客户端从服务器读取返回的响应。
 ## 
-## ``HttpReader`` is a base object for read operations, ``ServerRequest`` and ``ClientResponse`` 
-## inherit from it. ``ServerRequest`` represents a incoming request from a client, and ``ClientResponse``
-## represents a returned response from a server.
+## ``HttpReader`` 是读操作的基对象， ``ServerRequest`` 和 ``ClientResponse`` 继承自该对象。 ``ServerRequest`` 表示来自客户端的请求，
+## ``ClientResponse`` 表示来自服务器的响应。
 
 import strutils
 import strtabs
@@ -36,7 +34,7 @@ import netkit/http/chunk
 import netkit/http/metadata 
 
 type
-  HttpReader* = ref object of RootObj ## An abstraction of read operations related to HTTP.
+  HttpReader* = ref object of RootObj ## 表示 HTTP 相关的读操作。
     conn: HttpConnection
     lock: AsyncLock
     header*: HttpHeader
@@ -46,64 +44,59 @@ type
     chunked: bool
     readable: bool
 
-  ServerRequest* = ref object of HttpReader ## Represents a incoming request from a client.
-  ClientResponse* = ref object of HttpReader ## Represents a returned response from a server.
+  ServerRequest* = ref object of HttpReader ## 表示来自客户端的请求。
+  ClientResponse* = ref object of HttpReader ## 表示来自服务器的响应。
 
 proc newServerRequest*(conn: HttpConnection, onEnd: proc () {.gcsafe, closure.}): ServerRequest = discard
-  ## Creates a new ``ServerRequest``.
+  ## 创建一个新的 ``ServerRequest`` 。
 
 proc newClientResponse*(conn: HttpConnection, onEnd: proc () {.gcsafe, closure.}): ClientResponse = discard
-  ## Creates a new ``ClientResponse``.
+  ## 创建一个新的 ``ClientResponse`` 。
   
 proc reqMethod*(req: ServerRequest): HttpMethod {.inline.} = discard
-  ## Returns the request method. 
+  ## 返回请求方法。
   
 proc url*(req: ServerRequest): string {.inline.} = discard
-  ## Returns the url. 
+  ## 返回 url。
  
 proc status*(res: ClientResponse): HttpCode {.inline.} = discard
-  ## Returns the status code. 
+  ## 返回状态码。
  
 proc version*(reader: HttpReader): HttpVersion {.inline.} = discard
-  ## Returns the HTTP version. 
+  ## 返回 HTTP 版本。
   
 proc fields*(reader: HttpReader): HeaderFields {.inline.} = discard
-  ## Returns the header fields. 
+  ## 返回头字段集合。
   
 proc metadata*(reader: HttpReader): HttpMetadata {.inline.} = discard
-  ## Returns the metadata. 
+  ## 返回元数据。
   
 proc ended*(reader: HttpReader): bool {.inline.} = discard
-  ## Returns ``true`` if the underlying connection has been disconnected or no more data can be read.
+  ## 如果底部连接已断开或无法读取更多数据，则返回 ``true`` 。
 
 proc normalizeSpecificFields*(reader: HttpReader) = discard
-  # TODO: more normalized header fields
-  ## Normalizes a few special header fields.
+  ## 规范化一些特殊的头字段。
 
 proc read*(reader: HttpReader, buf: pointer, size: range[int(LimitChunkDataLen)..high(int)]): Future[Natural] {.async.} = discard
-  ## Reads up to ``size`` bytes, storing the results in the ``buf``. 
+  ## 读取数据直到 ``size`` 字节，读取的数据填充在 ``buf`` 。
   ## 
-  ## The return value is the number of bytes actually read. This might be less than ``size``.
-  ## A value of zero indicates ``EOF``, i.e. no more data can be read.
+  ## 返回值是实际读取的字节数。这个值可能小于 ``size``。 ``0`` 值表示 ``EOF`` ，即无法读取更多数据。
   ## 
-  ## If a system error occurs during reading, an ``OsError``  will be raised. If the connection is  
-  ## disconnected before successful reading, a ``ReadAbortedError`` will be raised.
+  ## 如果读过程中出现系统错误，则会触发 ``OSError`` 异常；如果在成功读取之前连接断开，则会触发 ``ReadAbortedError`` 异常。
 
 proc read*(reader: HttpReader): Future[string] {.async.} = discard
-  ## Reads up to ``size`` bytes, storing the results as a string. 
+  ## 读取数据直到 ``size`` 字节，读取的数据以字符串返回。
   ## 
-  ## If the return value is ``""``, that indicates ``eof``, i.e. at the end of the request.
+  ## 如果返回值是 ``""``， 表示 ``EOF`` ，即无法读取更多数据。
   ## 
-  ## If a system error occurs during reading, an ``OsError``  will be raised. If the connection is  
-  ## disconnected before successful reading, a ``ReadAbortedError`` will be raised.
+  ## 如果读过程中出现系统错误，则会触发 ``OSError`` 异常；如果在成功读取之前连接断开，则会触发 ``ReadAbortedError`` 异常。
 
 proc readAll*(reader: HttpReader): Future[string] {.async.} = discard
-  ## Reads all bytes, storing the results as a string. 
+  ## 读取所有可读的数据，以字符串返回。
   ## 
-  ## If a system error occurs during reading, an ``OsError``  will be raised. If the connection is  
-  ## disconnected before successful reading, a ``ReadAbortedError`` will be raised.
+  ## 如果读过程中出现系统错误，则会触发 ``OSError`` 异常；如果在成功读取之前连接断开，则会触发 ``ReadAbortedError`` 异常。
   
 proc readDiscard*(reader: HttpReader): Future[void] {.async.} = discard
-  ## Reads all bytes, discarding the results. 
+  ## 读取所有可读的数据，并丢掉这些数据。
   ## 
-  ## If the return future is failed, ``OsError`` or ``ReadAbortedError`` may be raised.
+  ## 如果读过程中出现系统错误，则会触发 ``OSError`` 异常；如果在成功读取之前连接断开，则会触发 ``ReadAbortedError`` 异常。

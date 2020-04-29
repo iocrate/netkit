@@ -190,32 +190,32 @@ proc closed*(conn: HttpConnection): bool {.inline.} = discard
 proc readHttpHeader*(conn: HttpConnection, header: ptr HttpHeader): Future[void] {.async.} = discard
   ## 读取一个消息头部。 
   ## 
-  ## 如果在读过程中出现系统错误，则会触发 ``OSError`` 异常；如果在成功读取之前连接断开，则会触发 ``ReadAbortedError`` 异常。
+  ## 如果读过程中出现系统错误，则会触发 ``OSError`` 异常；如果在成功读取之前连接断开，则会触发 ``ReadAbortedError`` 异常。
 
 proc readChunkHeader*(conn: HttpConnection, header: ptr ChunkHeader): Future[void] {.async.} = discard
   ## 读取一个 chunked 编码的块的头部。 
   ## 
-  ## 如果在读过程中出现系统错误，则会触发 ``OSError`` 异常；如果在成功读取之前连接断开，则会触发 ``ReadAbortedError`` 异常。
+  ## 如果读过程中出现系统错误，则会触发 ``OSError`` 异常；如果在成功读取之前连接断开，则会触发 ``ReadAbortedError`` 异常。
 
 proc readChunkEnd*(conn: HttpConnection, trailer: ptr seq[string]): Future[void] {.async.} = discard
   ## 读取一个 chunked 编码终止块 (terminating chunk)、trailers、和 final CRLF。 
   ## 
-  ## 如果在读过程中出现系统错误，则会触发 ``OSError`` 异常；如果在成功读取之前连接断开，则会触发 ``ReadAbortedError`` 异常。
+  ## 如果读过程中出现系统错误，则会触发 ``OSError`` 异常；如果在成功读取之前连接断开，则会触发 ``ReadAbortedError`` 异常。
 
 proc readData*(conn: HttpConnection, buf: pointer, size: Natural): Future[Natural] {.async.} = discard 
-  ## 读取数据直到 ``size`` 字节，读取的数据填充在 ``buf``，返回实际读取的字节数。如果返回值不等于 ``size``，说明
+  ## 读取数据直到 ``size`` 字节，读取的数据填充在 ``buf`` ，返回实际读取的字节数。如果返回值不等于 ``size`` ，说明
   ## 出现错误或者连接已经断开。如果出现错误或连接已经断开，则立刻返回；否则，将一直等待读取，直到 ``size`` 字节。 
   ## 
   ## 这个函数应该用来读取消息体。 
   ## 
-  ## 如果在读过程中出现系统错误，则会触发 ``OSError`` 异常；如果在成功读取之前连接断开，则会触发 ``ReadAbortedError`` 异常。
+  ## 如果读过程中出现系统错误，则会触发 ``OSError`` 异常；如果在成功读取之前连接断开，则会触发 ``ReadAbortedError`` 异常。
 
 proc write*(conn: HttpConnection, buf: pointer, size: Natural): Future[void] {.inline.} = discard
   ## 写入数据。 ``buf`` 指定数据源， ``size`` 指定数据源的字节数。
   ## 
-  ## 如果在写过程中出现系统错误，则会触发 ``OSError`` 异常；如果在成功写之前连接断开，则会触发 ``WriteAbortedError`` 异常。
+  ## 如果写过程中出现系统错误，则会触发 ``OSError`` 异常；如果在成功写之前连接断开，则会触发 ``WriteAbortedError`` 异常。
 
 proc write*(conn: HttpConnection, data: string): Future[void] {.inline.} = discard
   ## 写入数据。 ``data`` 指定数据源。
   ## 
-  ## 如果在写过程中出现系统错误，则会触发 ``OSError`` 异常；如果在成功写之前连接断开，则会触发 ``WriteAbortedError`` 异常。
+  ## 如果写过程中出现系统错误，则会触发 ``OSError`` 异常；如果在成功写之前连接断开，则会触发 ``WriteAbortedError`` 异常。
