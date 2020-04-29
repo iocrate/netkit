@@ -23,7 +23,7 @@ Make Documentation
 
 There is a script that automatically generate documentation. Check config.nims for details. ``$ nim docs -d:lang=en`` generates documentation for the source code, an English version. ``$ nimble docs -d:lang=zh`` generates a Chinese version of the documentation. ``$ nim docs`` generates both English version and Chinese version for the documentation.
 
-The code comments are written in English. The Chinese version of these comments is placed in ``${projectDir}/doc/zh/source``.
+The code comments are written in English. The Chinese version of these comments is placed in ``${projectDir}/doc/zh/code``.
 
 TODO List
 -----------------------

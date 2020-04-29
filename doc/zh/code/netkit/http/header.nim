@@ -4,34 +4,30 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-## This module contains a defination of the header of a HTTP message.
+## 这个模块包含了 HTTP 消息头的定义。
 ## 
-## Overview
+## 概述
 ## ========================
 ## 
-## A HTTP message consists of a header and a body. The header defines the operating parameters of an HTTP 
-## transaction, and the body is the data bytes transmitted in an HTTP transaction message immediately following 
-## the header. 
+## HTTP 消息由头部和体部组成。头部定义 HTTP 传输的操作参数；体部是传输的数据，紧跟在头部之后，有可能是空的。头部由起始行和头部字段组成。
 ## 
-## A message sent by a client is called a request, and a message sent by a server is called a response. A header 
-## consists of a start line and zero or more header fields. 
+## 客户端发出的消息称为请求消息，服务器发出的消息称为响应消息。
 ## 
-## The start line of a request is called request line, which consists of a request method, a url and a version. 
-## The start line of a response is called status line, which consists of a status code, a reason and a version. 
+## 请求消息的起始行称为请求行，由请求方法、URL 和版本号组成；响应消息的起始行称为状态行，由状态码、原因和版本号组成。
 ## 
 ## .. 
 ## 
-##   See `Hypertext Transfer Protocol <https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol>`_ for more information.
+##   看看 `Hypertext Transfer Protocol <https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol>`_ 了解更多。
 ## 
-## Usage
+## 用法
 ## ========================
 ## 
 ## .. container::r-fragment
 ## 
-##   Request
+##   请求
 ##   -------
 ##   
-##   To output a request message:
+##   输出一个请求消息：
 ## 
 ##   .. code-block::nim
 ## 
@@ -53,10 +49,10 @@
 ## 
 ## .. container::r-fragment
 ##   
-##   Response
+##   响应
 ##   --------
 ##   
-##   To output a response message:
+##   输出一个响应消息：
 ##   
 ##   .. code-block::nim
 ## 
@@ -75,7 +71,7 @@
 ##     )
 ##     assert toResponseStr(Http200) = "200 OK HTTP/1.1\r\nHost: www.iocrate.com\r\n\r\n"
 ##   
-##   To output a response message without fields:
+##   输出一个响应消息，但是不包含头字段：
 ## 
 ##   .. code-block::nim
 ## 
@@ -94,7 +90,7 @@ import netkit/http/status
 import netkit/http/headerfield
 
 type
-  HttpHeaderKind* {.pure.} = enum
+  HttpHeaderKind* {.pure.} = enum ## HTTP 消息的类型。
     Request, Response
 
   HttpHeader* = object ## Represents the header of a HTTP message. Each message must contain only one header.

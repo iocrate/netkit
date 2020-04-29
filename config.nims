@@ -8,7 +8,7 @@ const BuildDir = ProjectDir / "build"
 const TestBuildDir = BuildDir / "tests"
 const DocBuildEnDir = BuildDir / "doc/en"
 const DocBuildZhDir = BuildDir / "doc/zh"
-const DocSourceZhDir = ProjectDir / "doc/zh/source"
+const DocCodeZhDir = ProjectDir / "doc/zh/code"
 const DocPolisher = ProjectDir / "tools/docplus/polish.js"
 
 task test, "Run my tests":
@@ -57,11 +57,11 @@ task docs, "Gen docs":
   case lang
   of "":
     dirs.add((DocBuildEnDir, ProjectDir))
-    dirs.add((DocBuildZhDir, DocSourceZhDir))
+    dirs.add((DocBuildZhDir, DocCodeZhDir))
   of "en":
     dirs.add((DocBuildEnDir, ProjectDir))
   of "zh":
-    dirs.add((DocBuildZhDir, DocSourceZhDir))
+    dirs.add((DocBuildZhDir, DocCodeZhDir))
   else:
     discard
   for dir in dirs:  

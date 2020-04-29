@@ -11,10 +11,9 @@
 ## 
 ## A HTTP message consists of a header and a body. The header defines the operating parameters of an HTTP 
 ## transaction, and the body is the data bytes transmitted in an HTTP transaction message immediately following 
-## the header. 
+## the header. The header consists of a start line and zero or more header fields.
 ## 
-## A message sent by a client is called a request, and a message sent by a server is called a response. A header 
-## consists of a start line and zero or more header fields. 
+## A message sent by a client is called a request, and a message sent by a server is called a response. 
 ## 
 ## The start line of a request is called request line, which consists of a request method, a url and a version. 
 ## The start line of a response is called status line, which consists of a status code, a reason and a version. 
@@ -94,7 +93,7 @@ import netkit/http/status
 import netkit/http/headerfield
 
 type
-  HttpHeaderKind* {.pure.} = enum
+  HttpHeaderKind* {.pure.} = enum ## Kind of HTTP message.
     Request, Response
 
   HttpHeader* = object ## Represents the header of a HTTP message. Each message must contain only one header.
