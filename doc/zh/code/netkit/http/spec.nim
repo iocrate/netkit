@@ -4,17 +4,7 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-## This module contains a few information about HTTP Specification. 
-
-# Tip
-# ---
-#
-# The set type are implemented as high performance bit vectors:
-# 
-# ..code-block::nim
-#   
-#   Chars: set[char] = {...} # => Chars: array[0..255, bit] = [0,0,0,0,1,1,0,1,0,0,0,1,...] 
-#   'A' in {...}             # => Chars[61] == 1
+## 这个模块包含 HTTP 规范相关的一些信息。
 
 const 
   # [RFC5234](https://tools.ietf.org/html/rfc5234#appendix-B.1)
@@ -29,7 +19,7 @@ const
   WSP* = {SP, HTAB}
 
 proc checkFieldName*(s: string) {.raises: [ValueError].} = discard
-  ## Checks if ``s`` is a valid name of a HTTP header field. 
+  ## 检查 ``s`` 是否为有效的 HTTP 头字段名称。
   ##
   ## `HTTP RFC 5234 <https://tools.ietf.org/html/rfc5234>`_
   ## 
@@ -52,7 +42,7 @@ proc checkFieldName*(s: string) {.raises: [ValueError].} = discard
   ## 
 
 proc checkFieldValue*(s: string) {.raises: [ValueError].} = discard
-  ## Checks if ``s`` is a valid value of a HTTP header field. 
+  ## 检查 ``s`` 是否为有效的 HTTP 头字段值。
   ## 
   ## `HTTP RFC 5234 <https://tools.ietf.org/html/rfc5234>`_
   ## 
