@@ -49,6 +49,8 @@ task docs, "Gen docs":
   # run the following command:
   #
   #   nim docs [-d:lang=zh|en] [-d:module=netkit/buffer/constants]
+  #
+  # Note: nodejs is required, and ``$ npm install`` should be done in **${projectDir}/tools/docplus**.
   const lang {.strdefine.} = ""
   const module {.strdefine.} = ""
   var dirs: seq[tuple[build: string, source: string]] = @[]
