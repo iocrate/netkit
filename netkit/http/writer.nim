@@ -69,7 +69,7 @@ proc write*(writer: HttpWriter, buf: pointer, size: Natural): Future[void] {.asy
   ## Writes ``size`` bytes from ``buf`` to the writer.
   ## 
   ## If a system error occurs during writing, an ``OsError``  will be raised. If the connection is  
-  ## disconnected before successful writing or the writer has been shut down, a ``ReadAbortedError`` will be raised.
+  ## disconnected before successful writing or the writer has been shut down, a ``WriteAbortedError`` will be raised.
   await writer.lock.acquire()
   try:
     writer.writeByGuard(buf, size)
@@ -80,7 +80,7 @@ proc write*(writer: HttpWriter, data: string): Future[void] {.async.} =
   ## Writes a string to the writer.
   ## 
   ## If a system error occurs during writing, an ``OsError``  will be raised. If the connection is  
-  ## disconnected before successful writing or the writer has been shut down, a ``ReadAbortedError`` will be raised.
+  ## disconnected before successful writing or the writer has been shut down, a ``WriteAbortedError`` will be raised.
   await writer.lock.acquire()
   GC_ref(data)
   try:
@@ -97,7 +97,7 @@ proc write*(
   ## Writes a message header to the writer.
   ## 
   ## If a system error occurs during writing, an ``OsError``  will be raised. If the connection is  
-  ## disconnected before successful writing or the writer has been shut down, a ``ReadAbortedError`` will be raised.
+  ## disconnected before successful writing or the writer has been shut down, a ``WriteAbortedError`` will be raised.
   return writer.write(
     HttpHeader(
       kind: HttpHeaderKind.Response, 
@@ -112,7 +112,7 @@ proc write*(
   ## Writes a message header to the writer.
   ## 
   ## If a system error occurs during writing, an ``OsError``  will be raised. If the connection is  
-  ## disconnected before successful writing or the writer has been shut down, a ``ReadAbortedError`` will be raised.
+  ## disconnected before successful writing or the writer has been shut down, a ``WriteAbortedError`` will be raised.
   return writer.write(
     HttpHeader(
       kind: HttpHeaderKind.Response, 

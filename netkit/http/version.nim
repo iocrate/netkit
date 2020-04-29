@@ -7,7 +7,9 @@
 ## This module contains a definition of HTTP version. 
 
 type
-  HttpVersion* = tuple ## HTTP version number.
+  HttpVersion* = tuple 
+    ## HTTP version number. ``orig`` means the original string form, such as ``"HTTP/1.1"``. 
+    ## ``major`` represents the major version number, and ``minor`` represents the minor version number.
     orig: string
     major: Natural
     minor: Natural

@@ -4,14 +4,12 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-## This module defines a general object ``HttpMetadata`` to abstract HTTP metadata in order to simplify 
-## the use of metadata. 
+## 这个模块定义了一个通用对象 ``HttpMetadata`` ，该对象抽象了 HTTP 以简化对元数据的使用。
 ## 
-## Overview
+## 概述
 ## ========================
 ## 
-## HTTP messages support carrying metadata. Currently, there are two kinds of metadata. Both of them appear
-## in messages that encoded with ``Transfer-Encoding: chunked``. They are:
+## HTTP 消息支持挂载元数据。当前，有两种类型的元数据，都出现在 chunked 编码的消息。它们是：
 ## 
 ## - Chunk Extensions
 ## - Trailers
@@ -21,15 +19,11 @@
 ##   Chunk Extensions
 ##   -----------------
 ## 
-##   For a message encoded by ``Transfer-Encoding: chunked``, each data chunk is allowed to contain zero or more
-##   chunk-extensions. These extensions immediately follow the chunk-size,  for the sake of supplying per-chunk 
-##   metadata (such as a signature or hash), mid-message control information, or randomization of message body 
-##   size. 
+##   经过 chunked 编码的消息，每个数据块可以包含零个到多个块扩展。这些扩展紧跟在块大小之后，提供块的元数据（例如签名或哈希）。
 ## 
-##   Each extension is a name-value pair with ``=`` as a separator, such as ``language = en``; multiple extensions
-##   are combined with ``;`` as a separator, such as ``language=en; city=London``.
+##   每个扩展都是一个以 ``=`` 作为分隔符的名称/值对，例如 ``language = en``; 多个扩展名以 ``';'`` 作为分隔符组合在一起，例如 ``language=en; city=London`` 。
 ## 
-##   An example of carring chunk extensions:
+##   例子：
 ## 
 ##   .. code-block::http
 ## 
@@ -46,16 +40,12 @@
 ##   Trailers
 ##   --------
 ## 
-##   Messages encoded with ``Transfer-Encoding: chunked`` are allowed to carry trailers at the end. Trailer is
-##   actually one or more HTTP response header fields, allowing the sender to add additional meta-information 
-##   at the end of a message. These meta-information may be dynamically generated with the sending of the message 
-##   body, such as message integrity check, message Digital signature, or the final state of the message after 
-##   processing, etc.
+##   经过 chunked 编码的消息，可以在尾部挂载元数据 trailers。trailers 实际上是一个或多个 HTTP 响应头字段，允许发送方在消息末尾添加其他元信息。
+##   这些元信息可以随着消息正文的发送而动态生成，例如消息完整性检查，消息数字签名或处理后消息的最终状态等。
 ## 
-##   Note: Only when the client sets trailers in the request header ``TE`` (``TE: trailers``),  the server can
-##   carry Trailer in the response.
+##   注意：仅当客户端在请求头包含 ``TE``（ ``TE：trailers`` ）时，服务器才能在响应中挂载 trailers。
 ## 
-##   An example of carring trailers:
+##   例子：
 ## 
 ##   .. code-block::http
 ## 
@@ -69,18 +59,18 @@
 ##     Expires: Wed, 21 Oct 2015 07:28:00 GMT\r\n
 ##     \r\n
 ## 
-## Usage
+## 用法
 ## ========================
 ## 
-## For performance reasons, ``HttpMetadata`` does not further parse the content of ``trailers`` and ``extensions``.
-## You can use ``parseChunkTrailers`` and ``parseChunkExtensions`` to extract the contents of them respectively.
+## 出于性能方面的考虑， ``HttpMetadata`` 不会进一步解析 ``trailers`` 和 ``extensions`` 的内容。
+## 您可以使用 ``parseChunkTrailers`` 和 ``parseChunkExtensions`` 分别提取它们的内容。
 ## 
 ## .. container:: r-fragment
 ## 
 ##   Chunk Extensions
 ##   ----------------
 ## 
-##   To extract chunk extensions:
+##   提取内容：
 ## 
 ##   .. code-block::nim
 ## 
@@ -102,7 +92,7 @@
 ##   Trailers
 ##   --------------
 ## 
-##   To extract trailers:
+##   提取内容：
 ## 
 ##   .. code-block::nim
 ## 
@@ -117,12 +107,12 @@
 ##     assert tailers["Expires"][0] == "Wed, 21 Oct 2015 07:28:00 GMT"
 
 type
-  HttpMetadataKind* {.pure.} = enum  ## Kinds of metadata.
+  HttpMetadataKind* {.pure.} = enum  ## 元数据的类型。
     None,                            
     ChunkTrailers,                   
     ChunkExtensions                  
 
-  HttpMetadata* = object  ## Metadata object.
+  HttpMetadata* = object  ##元数据对象。
     case kind*: HttpMetadataKind
     of HttpMetadataKind.ChunkTrailers:
       trailers*: seq[string] 

@@ -4,23 +4,19 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-## This module contains HTTP status code.
+## 这个模块包含 HTTP 状态码。
 ## 
-## Overview
+## 概述
 ## ========================
 ## 
-## In HTTP/1.0 and since, the first line of the HTTP response is called the status line and includes a numeric 
-## status code (such as "404") and a textual reason phrase (such as "Not Found"). The way the user agent handles 
-## the response depends primarily on the code, and secondarily on the other response header fields. Custom
-## status codes can be used, for if the user agent encounters a code it does not recognize, it can use the first
-## digit of the code to determine the general class of the response.
+## 在 HTTP 1.0 及以后版本中，HTTP 响应的第一行称为状态行，包含数字状态代码（例如 ``404`` ）和原因短语（例如 ``Not Found`` ）。 
 ## 
 ## .. 
 ## 
-##   See `Hypertext Transfer Protocol <https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol>`_ for more information.
+##   看看 `Hypertext Transfer Protocol <https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol>`_ 了解更多。
 
 type
-  HttpCode* = enum ## HTTP status code. 
+  HttpCode* = enum ## HTTP 状态码。
     Http100 = "100 Continue"  
     Http101 = "101 Switching Protocols" 
     Http200 = "200 OK"  
@@ -70,9 +66,9 @@ type
     Http505 = "505 HTTP Version Not Supported"
 
 proc parseHttpCode*(code: int): HttpCode  {.raises: [ValueError].} = discard
-  ## Converts an integer to a status code. A ``ValueError`` is raised when ``code`` is not a valid code.
+  ## 将整数转换为状态码。当 ``code`` 不是有效的状态码时，引发 ``ValueError`` 。
   ## 
-  ## Examples:
+  ## 例子：
   ## 
   ## .. code-block::nim
   ## 

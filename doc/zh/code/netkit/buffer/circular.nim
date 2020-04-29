@@ -192,7 +192,7 @@ import netkit/buffer/constants
 
 type 
   CircularBuffer* = object of RootObj                
-    ## 一个循环缓冲区。
+    ## 一个循环缓冲区。注意，其存储空间的最大长度是 ``BufferSize`` 。
     data: array[0..BufferSize, byte]
     startPos: Natural                                
     endPos: Natural                                  
@@ -248,7 +248,7 @@ proc add*(b: var CircularBuffer, source: pointer, size: Natural): Natural = disc
   ## 从 ``source`` 复制最多 ``size`` 长度的数据，存储到缓冲区。返回实际存储的长度。这个函数是 ``next()`` 
   ## ``pack()`` 组合调用的简化版本，区别是额外执行一次复制。
   ## 
-  ## 当您非常看重性能时，使用 ``next()`` ``pack()`` 组合调用；当您比较看重使用方便时，使用 ``add()`` 。
+  ## 当您非常看重性能时，使用 ``next`` ``pack`` 组合调用；当您比较看重使用方便时，使用 ``add`` 。
   ## 
   ## .. code-block::nim
   ##     
