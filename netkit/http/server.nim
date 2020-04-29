@@ -4,6 +4,8 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
+## This module implements an HTTP server.
+
 import asyncdispatch
 import nativesockets
 import os
@@ -18,7 +20,7 @@ when defined(posix):
   from posix import EBADF
 
 type
-  AsyncHttpServer* = ref object
+  AsyncHttpServer* = ref object ## Server object.
     socket: AsyncFD
     domain: Domain
     onRequest: RequestHandler
@@ -52,13 +54,16 @@ proc listen(fd: SocketHandle, backlog = SOMAXCONN) {.tags: [ReadIOEffect].} =
     raiseOSError(osLastError())
 
 proc newAsyncHttpServer*(): AsyncHttpServer = 
+  ## Creates a new ``AsyncHttpServer`` 。
   new(result)
   result.closed = false
 
 proc `onRequest=`*(server: AsyncHttpServer, handler: RequestHandler) = 
+  ## Sets a hook proc for the server. Whenever a new request comes, this hook function is triggered.
   server.onRequest = handler
 
 proc close*(server: AsyncHttpServer) = 
+  ## Closes the server to release the underlying resources.
   server.socket.closeSocket()
   server.closed = true
 
