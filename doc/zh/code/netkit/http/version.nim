@@ -4,10 +4,12 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
-## This module contains a definition of HTTP version. 
+## 这个模块包含 HTTP 版本的定义。
 
 type
-  HttpVersion* = tuple ## HTTP version number.
+  HttpVersion* = tuple 
+    ## HTTP 版本。 ``orig`` 表示原始字符串形式，比如 ``"HTTP/1.1"`` 。 ``major`` 表示主版本号， 
+    ## ``minor`` 表示次版本号。
     orig: string
     major: Natural
     minor: Natural
@@ -18,10 +20,10 @@ const
   HttpVersion20* = "HTTP/2.0"
 
 proc parseHttpVersion*(s: string): HttpVersion  {.raises: [ValueError].} = discard
-  ## Converts a string to HTTP version. A ``ValueError`` is raised when ``s`` is not a valid version. Currently
-  ## only `"HTTP/1.0"` and `"HTTP/1.1"` are valid versions.
+  ## 将字符串转换为状态码。当 ``s`` 不是有效的 HTTP 版本时，引发 ``ValueError`` 。当前只有 `"HTTP/1.0"` 和 `"HTTP/1.1"`
+  ## 是有效的。
   ## 
-  ## Examples:
+  ## 例子：
   ## 
   ## .. code-block::nim
   ## 
