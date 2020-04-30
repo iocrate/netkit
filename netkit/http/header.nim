@@ -48,7 +48,7 @@
 ##         "Host": "www.iocrate.com"
 ##       }
 ##     )
-##     assert toResponseStr(header) = "GET / HTTP/1.1\r\nHost: www.iocrate.com\r\n\r\n"
+##     assert toResponseStr(header) == "GET / HTTP/1.1\r\nHost: www.iocrate.com\r\n\r\n"
 ## 
 ## .. container::r-fragment
 ##   
@@ -72,7 +72,7 @@
 ##         "Host": "www.iocrate.com"
 ##       }
 ##     )
-##     assert toResponseStr(header) = "200 OK HTTP/1.1\r\nHost: www.iocrate.com\r\n\r\n"
+##     assert toResponseStr(header) == "200 OK HTTP/1.1\r\nHost: www.iocrate.com\r\n\r\n"
 ##   
 ##   To output a response message without fields:
 ## 
@@ -81,7 +81,7 @@
 ##      import netkit/http/status
 ##      import netkit/http/header
 ## 
-##      assert toResponseStr(Http200) = "200 OK HTTP/1.1\r\n\r\n"
+##      assert toResponseStr(Http200) == "200 OK HTTP/1.1\r\n\r\n"
 ## 
 ##   
 
@@ -106,13 +106,12 @@ type
     version*: HttpVersion 
     fields*: HeaderFields 
 
-
-proc initHttpRequestHeader*(reqMethod: HttpMethod, url: string, 
+proc initRequestHeader*(reqMethod: HttpMethod, url: string, 
                             fields: HeaderFields): HttpHeader {.inline.} =
   ## Initiates HTTP request header.
   HttpHeader(kind: HttpHeaderKind.Request, reqMethod: reqMethod, url: url, version: HttpVer11)
 
-proc initHttpResponseHeader*(statusCode: HttpCode, fields: HeaderFields): HttpHeader {.inline.} =
+proc initResponseHeader*(statusCode: HttpCode, fields: HeaderFields): HttpHeader {.inline.} =
   ## Initates HTTP response headers.
   HttpHeader(kind: HttpHeaderKind.Response, statusCode: statusCode, version: HttpVer11, fields: fields)
 

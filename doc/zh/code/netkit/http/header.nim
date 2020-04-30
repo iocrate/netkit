@@ -103,6 +103,13 @@ type
     version*: HttpVersion 
     fields*: HeaderFields 
 
+proc initRequestHeader*(reqMethod: HttpMethod, url: string, 
+                            fields: HeaderFields): HttpHeader {.inline.} = discard
+  ## 初始化一个 HTTP 请求头。
+
+proc initResponseHeader*(statusCode: HttpCode, fields: HeaderFields): HttpHeader {.inline.} = discard
+  ## 初始化一个 HTTP 响应头。
+
 proc toResponseStr*(H: HttpHeader): string = discard
   ## 返回一个字符串，表示 HTTP 响应消息的头部， ``H`` 指定头部的内容。
   ## 

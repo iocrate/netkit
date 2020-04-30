@@ -7,11 +7,10 @@
 ## This module contains a definition of HTTP version. 
 
 type
-  HttpVersion* = enum
+  HttpVersion* = enum ## HTTP version number.
     HttpVer10 = "HTTP/1.0", 
     HttpVer11 = "HTTP/1.1"
     HttpVer20 = "HTTP/2.0"
-
 
 proc parseHttpVersion*(s: string): HttpVersion  {.raises: [ValueError].} =
   ## Converts a string to HTTP version. A ``ValueError`` is raised when ``s`` is not a valid version. Currently
@@ -27,7 +26,14 @@ proc parseHttpVersion*(s: string): HttpVersion  {.raises: [ValueError].} =
     raise newException(ValueError, "Invalid Http Version")
   let major = s[5].ord - 48
   let minor = s[7].ord - 48
-  if major != 1 or minor notin {0, 1}:
+  if major != 1:
+    raise newException(ValueError, "Invalid Http Version")
+  case minor
+  of 0:
+    result = HttpVer10
+  of 1:
+    result = HttpVer11
+  else:
     raise newException(ValueError, "Invalid Http Version")
   const name = "HTTP/"
   var i = 0
@@ -35,8 +41,4 @@ proc parseHttpVersion*(s: string): HttpVersion  {.raises: [ValueError].} =
     if name[i] != s[i]:
       raise newException(ValueError, "Invalid Http Version")
     i.inc()
-  case minor
-  of 0:
-    result = HttpVer10
-  else:
-    result = HttpVer11
+  
