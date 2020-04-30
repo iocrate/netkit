@@ -16,7 +16,7 @@ Netkit is not intended to be a high-level productivity development tool, but rat
 Run Test
 ---------
 
-There is a script that automatically runs tests. Check config.nims for details. ``$ nim test <file_name>`` tests the specified file, for example, ``$ nim test tbuffer`` tests the file **tests/tbuffer.nim**. ``$ nimble test`` tests all test files in the **tests** directory.
+There is a script that automatically runs tests. Check config.nims for details. ``$ nim test -d:modules=<file_name>`` tests the specified file, for example, ``$ nim test -d:modules=tbuffer`` tests the file **tests/tbuffer.nim**. ``$ nimble test`` tests all test files in the **tests** directory.
 
 Make Documentation
 -------------------

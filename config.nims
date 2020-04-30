@@ -14,7 +14,7 @@ const DocPolisher = ProjectDir / "tools/docplus/polish.js"
 task test, "Run my tests":
   #  run the following command:
   #
-  #    nim test -d:modules=a,b.c,d.e.f 
+  #    nim test -d:modules=a,b/c,d/e/f 
   #
   #  equivalent to:
   # 

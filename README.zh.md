@@ -16,7 +16,7 @@ Netkit 不打算成为高阶生产力开发工具，而是作为一个可靠效�
 运行测试
 ---------
 
-软件包提供了一个自动测试的脚本，查看 config.nims 了解详情。``$ nim test <测试文件名>`` 可以测试指定的文件，比如 ``$ nim test tbuffer`` 将测试 tests/tbuffer.nim 文件。``$ nimble test`` 将会测试所有 tests 目录内的测试文件。
+软件包提供了一个自动测试的脚本，查看 config.nims 了解详情。``$ nim test -d:modules=<测试文件名>`` 可以测试指定的文件，比如 ``$ nim test -d:modules=tbuffer`` 将测试 tests/tbuffer.nim 文件。``$ nimble test`` 将会测试所有 tests 目录内的测试文件。
 
 制作文档
 ---------
