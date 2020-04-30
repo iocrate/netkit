@@ -106,6 +106,17 @@ type
     version*: HttpVersion 
     fields*: HeaderFields 
 
+
+proc initHttpRequestHeader*(reqMethod: HttpMethod, url: string, 
+                            version: HttpVersion, fields: HeaderFields): HttpHeader =
+  ## Initiates HTTP request header.
+  HttpHeader(kind: HttpHeaderKind.Request, reqMethod: reqMethod, url: url, version: version)
+
+proc initHttpResponseHeader*(statusCode: HttpCode, version: HttpVersion, 
+                             fields: HeaderFields): HttpHeader =
+  ## Iniates HTTP response header.
+  HttpHeader(kind: HttpHeaderKind.Response, statusCode: statusCode, version: version, fields: fields)
+
 proc toResponseStr*(H: HttpHeader): string = 
   ## Returns a header of a response message. 
   ## 
