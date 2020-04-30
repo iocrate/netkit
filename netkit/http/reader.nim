@@ -279,7 +279,7 @@ proc readAll*(reader: HttpReader): Future[string] {.async.} =
       while not reader.ended:
         result.add(reader.readChunk())
     else:
-      result = newString(reader.contentLen)
+      result = newStringOfCap(reader.contentLen)
       while not reader.ended:
         result.add(reader.readContent())
   finally:
@@ -290,7 +290,7 @@ proc readDiscard*(reader: HttpReader): Future[void] {.async.} =
   ## 
   ## If the return future is failed, ``OsError`` or ``ReadAbortedError`` may be raised.
   await reader.lock.acquire()
-  let buffer = newString(LimitChunkDataLen)
+  let buffer = newStringOfCap(LimitChunkDataLen)
   GC_ref(buffer)
   try:
     if reader.chunked:

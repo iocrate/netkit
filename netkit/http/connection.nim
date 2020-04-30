@@ -139,8 +139,8 @@ proc read(conn: HttpConnection): Future[Natural] =
   proc updateDate(fd: AsyncFD): bool =
     result = true
     if not recvFuture.finished:
-      recvFuture.callback = nil
-      retFuture.fail(newException(ReadAbortedError, "Read timeout"))
+      recvFuture.clearCallbacks()
+      retFuture.fail(newReadAbortedError("Read timeout", true))
 
   if conn.readTimeout > 0:
     addTimer(conn.readTimeout, false, updateDate) 
@@ -151,7 +151,7 @@ proc read(conn: HttpConnection): Future[Natural] =
     else:
       let readLen = recvFuture.read()
       if readLen == 0:
-        retFuture.fail(newException(ReadAbortedError, "Connection closed prematurely"))
+        retFuture.fail(newReadAbortedError("Connection closed prematurely"))
       else:
         discard conn.buffer.pack(readLen)
         retFuture.complete(readLen)
@@ -166,8 +166,8 @@ proc read(conn: HttpConnection, buf: pointer, size: Natural): Future[Natural] =
   proc updateDate(fd: AsyncFD): bool =
     result = true
     if not recvFuture.finished:
-      recvFuture.callback = nil
-      retFuture.fail(newException(ReadAbortedError, "Read timeout"))
+      recvFuture.clearCallbacks()
+      retFuture.fail(newReadAbortedError("Read timeout", true))
       
   if conn.readTimeout > 0:
     addTimer(conn.readTimeout, false, updateDate) 
@@ -178,7 +178,7 @@ proc read(conn: HttpConnection, buf: pointer, size: Natural): Future[Natural] =
     else:
       let readLen = recvFuture.read()
       if readLen == 0:
-        retFuture.fail(newException(ReadAbortedError, "Connection closed prematurely"))
+        retFuture.fail(newReadAbortedError("Connection closed prematurely"))
       else:
         retFuture.complete(readLen)
 
@@ -249,15 +249,11 @@ proc readData*(conn: HttpConnection, buf: pointer, size: Natural): Future[Natura
 proc write*(conn: HttpConnection, buf: pointer, size: Natural): Future[void] {.inline.} =
   ## Writes ``size`` bytes from ``buf`` to the connection. 
   ## 
-  ## If a system error occurs during writing, an ``OsError``  will be raised. If the connection is 
-  ## disconnected or other errors occurs before the write operation is successfully completed, a 
-  ## ``WriteAbortedError`` exception will be raised.
+  ## If a system error occurs during writing, an ``OsError``  will be raised. 
   result = conn.socket.send(buf, size)
 
 proc write*(conn: HttpConnection, data: string): Future[void] {.inline.} =
   ## Writes a string to the connection.
   ## 
-  ## If a system error occurs during writing, an ``OsError``  will be raised. If the connection is 
-  ## disconnected or other errors occurs before the write operation is successfully completed, a 
-  ## ``WriteAbortedError`` exception will be raised.
+  ## If a system error occurs during writing, an ``OsError``  will be raised. 
   result = conn.socket.send(data)

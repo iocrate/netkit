@@ -10,8 +10,6 @@ import asyncdispatch
 import nativesockets
 import os
 import netkit/http/exception
-import netkit/http/spec
-import netkit/http/status
 import netkit/http/connection
 import netkit/http/reader
 import netkit/http/writer
@@ -91,12 +89,20 @@ proc handleNextRequest(server: AsyncHttpServer, conn: HttpConnection) {.async.} 
   try:
     await conn.readHttpHeader(req.header.addr)
     req.normalizeSpecificFields()
-  except HttpError as ex:
-    yield conn.write("HTTP/1.1 " & $ex.code & CRLF)
+  except HttpError as e:
+    yield conn.write("HTTP/1.1 " & $e.code & "\r\nConnection: close\r\n\r\n")
+    conn.close()
+    return
+  except ValueError:
+    yield conn.write("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n")
+    conn.close()
+    return
+  except ReadAbortedError as e:
+    if e.timeout:
+      yield conn.write("HTTP/1.1 408 Request Timeout\r\nConnection: close\r\n\r\n")
     conn.close()
     return
   except:
-    yield conn.write("HTTP/1.1 " & $Http400 & CRLF)
     conn.close()
     return
   

@@ -13,6 +13,8 @@ type
     code*: range[Http400..Http505] 
     
   ReadAbortedError* = object of CatchableError ## 读操作在完成前被中断。
+    timeout*: bool
+
   WriteAbortedError* = object of CatchableError ## 写操作在完成前被中断。
 
 proc newHttpError*(
@@ -27,3 +29,21 @@ proc newHttpError*(
   parentException: ref Exception = nil
 ): ref HttpError = discard
   ## 创建一个 ``ref HttpError``.
+
+proc newReadAbortedError*(
+  msg: string, 
+  timeout: bool = false, 
+  parentException: ref Exception = nil
+): ref ReadAbortedError = discard
+  ## 创建一个 ``ref ReadAbortedError``.
+
+proc newWriteAbortedError*(
+  msg: string, 
+  parentException: ref Exception = nil
+): ref WriteAbortedError = discard
+  ## 创建一个 ``ref ReadAbortedError``.
+  
+  
+
+
+  

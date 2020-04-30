@@ -212,9 +212,9 @@ proc readData*(conn: HttpConnection, buf: pointer, size: Natural): Future[Natura
 proc write*(conn: HttpConnection, buf: pointer, size: Natural): Future[void] {.inline.} = discard
   ## 写入数据。 ``buf`` 指定数据源， ``size`` 指定数据源的字节数。
   ## 
-  ## 如果写过程中出现系统错误，则会触发 ``OSError`` 异常；如果在成功写之前连接断开，则会触发 ``WriteAbortedError`` 异常。
+  ## 如果写过程中出现系统错误，则会触发 ``OSError`` 异常。
 
 proc write*(conn: HttpConnection, data: string): Future[void] {.inline.} = discard
   ## 写入数据。 ``data`` 指定数据源。
   ## 
-  ## 如果写过程中出现系统错误，则会触发 ``OSError`` 异常；如果在成功写之前连接断开，则会触发 ``WriteAbortedError`` 异常。
+  ## 如果写过程中出现系统错误，则会触发 ``OSError`` 异常。

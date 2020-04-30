@@ -106,8 +106,7 @@ type
     version*: HttpVersion 
     fields*: HeaderFields 
 
-proc initRequestHeader*(reqMethod: HttpMethod, url: string, 
-                            fields: HeaderFields): HttpHeader {.inline.} =
+proc initRequestHeader*(reqMethod: HttpMethod, url: string, fields: HeaderFields): HttpHeader {.inline.} =
   ## Initiates HTTP request header.
   HttpHeader(kind: HttpHeaderKind.Request, reqMethod: reqMethod, url: url, version: HttpVer11)
 

@@ -91,6 +91,16 @@ proc write*(writer: HttpWriter, data: string): Future[void] {.async.} =
 
 proc write*(
   writer: HttpWriter, 
+  statusCode: HttpCode
+): Future[void]  =
+  ## Writes a message header to the writer.
+  ## 
+  ## If a system error occurs during writing, an ``OsError``  will be raised. If the connection is  
+  ## disconnected before successful writing or the writer has been shut down, a ``WriteAbortedError`` will be raised.
+  return writer.write(statusCode.toResponseStr())
+
+proc write*(
+  writer: HttpWriter, 
   statusCode: HttpCode,
   fields: openArray[tuple[name: string, value: string]]
 ): Future[void]  =

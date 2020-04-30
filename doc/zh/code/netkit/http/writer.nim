@@ -55,6 +55,14 @@ proc write*(writer: HttpWriter, data: string): Future[void] = discard
 
 proc write*(
   writer: HttpWriter, 
+  statusCode: HttpCode
+): Future[void]  = discard
+  ## 写入一个消息头。
+  ## 
+  ## 如果写过程中出现系统错误，则会触发 ``OSError`` 异常；如果在成功写之前连接断开或者写端已经关闭，则会触发 ``WriteAbortedError`` 异常。
+
+proc write*(
+  writer: HttpWriter, 
   statusCode: HttpCode,
   fields: openArray[tuple[name: string, value: string]]
 ): Future[void]  = discard

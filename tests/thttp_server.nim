@@ -293,3 +293,87 @@ foobar01foobar02foobar03foobar04foobar05foobar06foobar07foobar08""")
     waitFor sleepAsync(10)
     waitFor request()
     server.close()
+
+suite "Read Timeout":
+  test "Wait for header":
+    var server: AsyncHttpServer
+    
+    proc serve() {.async.} = 
+      server = newAsyncHttpServer()
+
+      server.onRequest = proc (req: ServerRequest, res: ServerResponse) {.async.} =
+        try:
+          let data = await req.readAll()
+          await res.write(Http200, {
+            "Content-Length": $data.len
+          })
+          await res.write(data)
+          res.writeEnd()
+        except ReadAbortedError:
+          discard
+        except WriteAbortedError:
+          discard
+        except Exception:
+          discard
+
+      await server.serve(Port(8001), "127.0.0.1", readTimeout=100)
+      
+    proc request() {.async.} = 
+      let client = await asyncnet.dial("127.0.0.1", Port(8001))
+      await client.send("GET /iocrate/netkit HTTP/1.1\r\L")
+      await sleepAsync(1000)
+      await client.send("Host: iocrate.com\r\L\r\L")
+      let statusLine = await client.recvLine()
+      let connectionLine = await client.recvLine()
+      check:
+        statusLine == "HTTP/1.1 408 Request Timeout"
+        connectionLine == "Connection: close"
+      client.close()
+
+    asyncCheck serve()
+    waitFor sleepAsync(10)
+    waitFor request()
+    server.close()
+
+  test "Wait for request":
+    var server: AsyncHttpServer
+    
+    proc serve() {.async.} = 
+      server = newAsyncHttpServer()
+
+      server.onRequest = proc (req: ServerRequest, res: ServerResponse) {.async.} =
+        try:
+          let data = await req.readAll()
+          await res.write(Http200, {
+            "Content-Length": $data.len
+          })
+          await res.write(data)
+          res.writeEnd()
+        except ReadAbortedError as e:
+          check e.timeout
+        except WriteAbortedError:
+          discard
+        except Exception:
+          discard
+
+      await server.serve(Port(8001), "127.0.0.1", readTimeout=100)
+      
+    proc request() {.async.} = 
+      let client = await asyncnet.dial("127.0.0.1", Port(8001))
+      await client.send("""
+GET /iocrate/netkit HTTP/1.1
+Host: iocrate.com
+Content-Length: 12
+
+foobar""")
+      await sleepAsync(1000)
+      await client.send("foobar")
+      let statusLine = await client.recvLine()
+      check:
+        statusLine == ""
+      client.close()
+
+    asyncCheck serve()
+    waitFor sleepAsync(10)
+    waitFor request()
+    server.close()
