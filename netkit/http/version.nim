@@ -7,17 +7,11 @@
 ## This module contains a definition of HTTP version. 
 
 type
-  HttpVersion* = tuple 
-    ## HTTP version number. ``orig`` means the original string form, such as ``"HTTP/1.1"``. 
-    ## ``major`` represents the major version number, and ``minor`` represents the minor version number.
-    orig: string
-    major: Natural
-    minor: Natural
+  HttpVersion* = enum
+    HttpVer10 = "HTTP/1.0", 
+    HttpVer11 = "HTTP/1.1"
+    HttpVer20 = "HTTP/2.0"
 
-const 
-  HttpVersion10* = "HTTP/1.0"
-  HttpVersion11* = "HTTP/1.1"
-  HttpVersion20* = "HTTP/2.0"
 
 proc parseHttpVersion*(s: string): HttpVersion  {.raises: [ValueError].} =
   ## Converts a string to HTTP version. A ``ValueError`` is raised when ``s`` is not a valid version. Currently
@@ -28,9 +22,7 @@ proc parseHttpVersion*(s: string): HttpVersion  {.raises: [ValueError].} =
   ## .. code-block::nim
   ## 
   ##   let version = parseHttpVersion("HTTP/1.1")
-  ##   assert version.orig == "HTTP/1.1"
-  ##   assert version.major == 1
-  ##   assert version.minor == 1
+  ##   assert version == HttpVer11
   if s.len != 8 or s[6] != '.':
     raise newException(ValueError, "Invalid Http Version")
   let major = s[5].ord - 48
@@ -43,4 +35,8 @@ proc parseHttpVersion*(s: string): HttpVersion  {.raises: [ValueError].} =
     if name[i] != s[i]:
       raise newException(ValueError, "Invalid Http Version")
     i.inc()
-  result = (s, major.Natural, minor.Natural)
+  case minor
+  of 0:
+    result = HttpVer10
+  else:
+    result = HttpVer11

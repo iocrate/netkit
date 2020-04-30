@@ -40,7 +40,7 @@
 ##       kind: HttpHeaderKind.Request, 
 ##       reqMethod: HttpGet, 
 ##       url: "/", 
-##       version: HttpVersion11, 
+##       version: HttpVer11, 
 ##       fields: initHeaderFields: {
 ##         "Host": "www.iocrate.com"
 ##       }
@@ -64,7 +64,7 @@
 ##     var header = HttpHeader(
 ##       kind: HttpHeaderKind.Response, 
 ##       statusCode: Http200, 
-##       version: HttpVersion11, 
+##       version: HttpVer11, 
 ##       fields: initHeaderFields: {
 ##         "Host": "www.iocrate.com"
 ##       }
@@ -118,7 +118,7 @@ proc toResponseStr*(H: HttpHeader): string = discard
   ##   var header = HttpHeader(
   ##     kind: HttpHeaderKind.Response, 
   ##     statusCode: Http200, 
-  ##     version: HttpVersion11, 
+  ##     version: HttpVer11, 
   ##     fields: initHeaderFields: {
   ##       "Host": "www.iocrate.com"
   ##     }
@@ -153,7 +153,7 @@ proc toRequestStr*(H: HttpHeader): string = discard
   ##     kind: HttpHeaderKind.Request, 
   ##     reqMethod: HttpGet, 
   ##     url: "/", 
-  ##     version: HttpVersion11, 
+  ##     version: HttpVer11, 
   ##     fields: initHeaderFields: {
   ##       "Host": "www.iocrate.com"
   ##     }
