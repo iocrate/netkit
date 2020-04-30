@@ -55,3 +55,11 @@ proc `=destroy`(a: var Opt) =
 # GC_fullCollect()
 
 echo "\r\n" == "\r\L"
+
+proc updateDate(fd: AsyncFD): bool =
+  echo "updateDate"
+  result = false 
+
+addTimer(1000, false, updateDate) 
+
+runForever()

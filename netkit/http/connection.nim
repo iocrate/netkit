@@ -103,15 +103,21 @@ type
     socket: AsyncFD
     address: string
     closed: bool
+    readTimeout: Natural
 
-proc newHttpConnection*(socket: AsyncFD, address: string): HttpConnection = 
-  ## Creates a new ``HttpConnection``.
+proc newHttpConnection*(socket: AsyncFD, address: string, readTimeout: Natural): HttpConnection = 
+  ## Creates a new ``HttpConnection``. ``socket`` specifies the peer's socket descriptor, ``address`` specifies 
+  ## the peer's network address, ``readTimeout`` specifies the timeout period of the read operation. 
+  ## 
+  ## Note that ``readTimeout`` also affects the keepalive timeout. When the last response is sent and there 
+  ## is no further request for more than ``readTimeout`` milliseconds, a ``ReadAbortedError`` will be raised.
   new(result)
   result.buffer = initMarkableCircularBuffer()
   result.parser = initHttpParser()
   result.socket = socket
   result.address = address
   result.closed = false
+  result.readTimeout = readTimeout
 
 proc close*(conn: HttpConnection) {.inline.} = 
   ## Closes this connection to release the resources.
@@ -122,12 +128,59 @@ proc closed*(conn: HttpConnection): bool {.inline.} =
   ## Returns ``true`` if this connection is closed.
   conn.closed
 
-proc read(conn: HttpConnection): Future[Natural] {.async.} = 
+proc read(conn: HttpConnection): Future[Natural] = 
   ## If a system error occurs during reading, an ``OsError`` will be raised.
+  let retFuture = newFuture[Natural]("read")
+  result = retFuture
+
   let region = conn.buffer.next()
-  result = await conn.socket.recvInto(region[0], region[1])
-  if result > 0:
-    discard conn.buffer.pack(result)
+  let recvFuture = conn.socket.recvInto(region[0], region[1])
+  
+  proc updateDate(fd: AsyncFD): bool =
+    result = true
+    if not recvFuture.finished:
+      recvFuture.callback = nil
+      retFuture.fail(newException(ReadAbortedError, "Read timeout"))
+
+  if conn.readTimeout > 0:
+    addTimer(conn.readTimeout, false, updateDate) 
+
+  recvFuture.callback = proc (fut: Future[int]) = 
+    if fut.failed:
+      retFuture.fail(fut.readError())
+    else:
+      let readLen = recvFuture.read()
+      if readLen == 0:
+        retFuture.fail(newException(ReadAbortedError, "Connection closed prematurely"))
+      else:
+        discard conn.buffer.pack(readLen)
+        retFuture.complete(readLen)
+
+proc read(conn: HttpConnection, buf: pointer, size: Natural): Future[Natural] = 
+  ## If a system error occurs during reading, an ``OsError`` will be raised.
+  let retFuture = newFuture[Natural]("read")
+  result = retFuture
+  
+  let recvFuture = conn.socket.recvInto(buf, size)
+  
+  proc updateDate(fd: AsyncFD): bool =
+    result = true
+    if not recvFuture.finished:
+      recvFuture.callback = nil
+      retFuture.fail(newException(ReadAbortedError, "Read timeout"))
+      
+  if conn.readTimeout > 0:
+    addTimer(conn.readTimeout, false, updateDate) 
+
+  recvFuture.callback = proc (fut: Future[int]) = 
+    if fut.failed:
+      retFuture.fail(fut.readError())
+    else:
+      let readLen = recvFuture.read()
+      if readLen == 0:
+        retFuture.fail(newException(ReadAbortedError, "Connection closed prematurely"))
+      else:
+        retFuture.complete(readLen)
 
 proc readHttpHeader*(conn: HttpConnection, header: ptr HttpHeader): Future[void] {.async.} = 
   ## Reads the header of a HTTP message.
@@ -139,9 +192,7 @@ proc readHttpHeader*(conn: HttpConnection, header: ptr HttpHeader): Future[void]
   if conn.buffer.len > 0:
     succ = conn.parser.parseHttpHeader(conn.buffer, header[])
   while not succ:
-    let n = await conn.read()
-    if n == 0:
-      raise newException(ReadAbortedError, "Connection closed prematurely")
+    discard await conn.read()
     succ = conn.parser.parseHttpHeader(conn.buffer, header[])
 
 proc readChunkHeader*(conn: HttpConnection, header: ptr ChunkHeader): Future[void] {.async.} = 
@@ -153,9 +204,7 @@ proc readChunkHeader*(conn: HttpConnection, header: ptr ChunkHeader): Future[voi
   if conn.buffer.len > 0:
     succ = conn.parser.parseChunkHeader(conn.buffer, header[])
   while not succ:
-    let n = await conn.read()
-    if n == 0:
-      raise newException(ReadAbortedError, "Connection closed prematurely")
+    discard await conn.read()
     succ = conn.parser.parseChunkHeader(conn.buffer, header[])
 
 proc readChunkEnd*(conn: HttpConnection, trailer: ptr seq[string]): Future[void] {.async.} =
@@ -167,9 +216,7 @@ proc readChunkEnd*(conn: HttpConnection, trailer: ptr seq[string]): Future[void]
   if conn.buffer.len > 0:
     succ = conn.parser.parseChunkEnd(conn.buffer, trailer[])
   while not succ:
-    let n = await conn.read()
-    if n == 0:
-      raise newException(ReadAbortedError, "Connection closed prematurely")
+    discard await conn.read()
     succ = conn.parser.parseChunkEnd(conn.buffer, trailer[])
 
 proc readData*(conn: HttpConnection, buf: pointer, size: Natural): Future[Natural] {.async.} =  
@@ -193,9 +240,7 @@ proc readData*(conn: HttpConnection, buf: pointer, size: Natural): Future[Natura
       discard conn.buffer.del(result)
     var remainingLen = size - result
     while remainingLen > 0:
-      let n = await conn.socket.recvInto(buf.offset(result), remainingLen)
-      if n == 0:
-        raise newException(ReadAbortedError, "Connection closed prematurely")
+      let n = await conn.read(buf.offset(result), remainingLen)
       discard conn.buffer.get(buf.offset(result), n)
       discard conn.buffer.del(n)
       result.inc(n)

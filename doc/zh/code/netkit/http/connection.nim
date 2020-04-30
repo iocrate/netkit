@@ -171,15 +171,14 @@ type
     socket: AsyncFD
     address: string
     closed: bool
+    readTimeout: Natural
 
-proc newHttpConnection*(socket: AsyncFD, address: string): HttpConnection = 
-  ## 创建一个新的 ``HttpConnection`` 。
-  new(result)
-  result.buffer = initMarkableCircularBuffer()
-  result.parser = initHttpParser()
-  result.socket = socket
-  result.address = address
-  result.closed = false
+proc newHttpConnection*(socket: AsyncFD, address: string, readTimeout: Natural): HttpConnection = discard
+  ## 创建一个新的 ``HttpConnection`` 。 ``socket`` 指定对端的套接字描述符， ``address`` 指定对端的网络地址， 
+  ## ``readTimeout`` 指定读操作的超时时间。
+  ## 
+  ## 注意： ``readTimeout`` 也影响保持 keepalive 的超时时间。当发送完最后一条响应，超过 ``readTimeout`` 仍然没有新的请求时，
+  ## 触发 ``ReadAbortedError`` 异常。
 
 proc close*(conn: HttpConnection) {.inline.} = discard
   ## 关闭连接以释放底层资源。

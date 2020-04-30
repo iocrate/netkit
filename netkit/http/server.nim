@@ -25,6 +25,7 @@ type
     domain: Domain
     onRequest: RequestHandler
     closed: bool
+    readTimeout: Natural
 
   RequestHandler* = proc (req: ServerRequest, res: ServerResponse): Future[void] {.closure, gcsafe.}
 
@@ -106,10 +107,12 @@ proc serve*(
   server: AsyncHttpServer, 
   port: Port,
   address: string = "",
-  domain = AF_INET
+  domain = AF_INET,
+  readTimeout = 0
 ) {.async.} = 
   ## Starts the process of listening for incoming HTTP connections on the
-  ## specified ``address`` and ``port``.
+  ## specified ``address`` and ``port``. ``readTimeout`` specifies the timeout
+  ## about read operations and keepalive.
   let fd = createNativeSocket(Domain.AF_INET, SOCK_STREAM, IPPROTO_TCP)
   if fd == osInvalidSocket:
     raiseOSError(osLastError())
@@ -137,4 +140,4 @@ proc serve*(
           break
       raise getCurrentException()
     SocketHandle(peer.client).setBlocking(false)
-    asyncCheck server.handleNextRequest(newHttpConnection(peer.client, peer.address))
+    asyncCheck server.handleNextRequest(newHttpConnection(peer.client, peer.address, readTimeout))

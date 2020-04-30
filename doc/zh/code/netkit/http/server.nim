@@ -41,6 +41,8 @@ proc serve*(
   server: AsyncHttpServer, 
   port: Port,
   address: string = "",
-  domain = AF_INET
+  domain = AF_INET,
+  readTimeout = 0
 ): Future[void] = discard
-  ## 启动服务器，侦听 ``address`` 和 ``port`` 传入的 HTTP 连接。
+  ## 启动服务器，侦听 ``address`` 和 ``port`` 传入的 HTTP 连接。 ``readTimeout`` 指定读操作和 keepalive 的
+  ## 超时时间。
