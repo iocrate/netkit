@@ -45,7 +45,7 @@
 ##         "Host": "www.iocrate.com"
 ##       }
 ##     )
-##     assert toResponseStr(Http200) = "GET / HTTP/1.1\r\nHost: www.iocrate.com\r\n\r\n"
+##     assert toResponseStr(Http200) == "GET / HTTP/1.1\r\nHost: www.iocrate.com\r\n\r\n"
 ## 
 ## .. container::r-fragment
 ##   
@@ -69,7 +69,7 @@
 ##         "Host": "www.iocrate.com"
 ##       }
 ##     )
-##     assert toResponseStr(Http200) = "200 OK HTTP/1.1\r\nHost: www.iocrate.com\r\n\r\n"
+##     assert toResponseStr(Http200) == "200 OK HTTP/1.1\r\nHost: www.iocrate.com\r\n\r\n"
 ##   
 ##   输出一个响应消息，但是不包含头字段：
 ## 
@@ -78,7 +78,7 @@
 ##      import netkit/http/status
 ##      import netkit/http/header
 ## 
-##      assert toResponseStr(Http200) = "200 OK HTTP/1.1\r\n\r\n"
+##      assert toResponseStr(Http200) == "200 OK HTTP/1.1\r\n\r\n"
 ## 
 ##   
 
@@ -130,7 +130,7 @@ proc toResponseStr*(H: HttpHeader): string = discard
   ##       "Host": "www.iocrate.com"
   ##     }
   ##   )
-  ##   assert toResponseStr(Http200) = "200 OK HTTP/1.1\r\nHost: www.iocrate.com\r\n\r\n"
+  ##   assert toResponseStr(Http200) == "200 OK HTTP/1.1\r\nHost: www.iocrate.com\r\n\r\n"
 
 proc toResponseStr*(code: HttpCode): string = discard
   ## 返回一个字符串，表示 HTTP 响应消息的头部， ``code`` 指定头部的状态码。注意，返回的头部不包含头字段。
@@ -142,7 +142,7 @@ proc toResponseStr*(code: HttpCode): string = discard
   ##   import netkit/http/status
   ##   import netkit/http/header
   ## 
-  ##   assert toResponseStr(Http200) = "200 OK HTTP/1.1\r\n\r\n"
+  ##   assert toResponseStr(Http200) == "200 OK HTTP/1.1\r\n\r\n"
 
 proc toRequestStr*(H: HttpHeader): string = discard
   ## 返回一个字符串，表示 HTTP 请求消息的头部， ``H`` 指定头部的内容。
@@ -165,4 +165,4 @@ proc toRequestStr*(H: HttpHeader): string = discard
   ##       "Host": "www.iocrate.com"
   ##     }
   ##   )
-  ##   assert toResponseStr(Http200) = "GET / HTTP/1.1\r\nHost: www.iocrate.com\r\n\r\n"
+  ##   assert toResponseStr(Http200) == "GET / HTTP/1.1\r\nHost: www.iocrate.com\r\n\r\n"

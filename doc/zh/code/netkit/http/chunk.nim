@@ -131,8 +131,8 @@
 ##     import netkit/http/chunk
 ## 
 ##     let header = parseChunkHeader("1A; a1=v1; a2=v2") 
-##     assert header.size = 26
-##     assert header.extensions = "; a1=v1; a2=v2"
+##     assert header.size == 26
+##     assert header.extensions == "; a1=v1; a2=v2"
 ## 
 ##   解析块扩展 (chunk extensions) 相关的字符序列：
 ## 
@@ -141,10 +141,10 @@
 ##     import netkit/http/chunk
 ## 
 ##     let extensions = parseChunkExtensions("; a1=v1; a2=v2") 
-##     assert extensions[0].name = "a1"
-##     assert extensions[0].value = "v1"
-##     assert extensions[1].name = "a2"
-##     assert extensions[1].value = "v2"
+##     assert extensions[0].name == "a1"
+##     assert extensions[0].value == "v1"
+##     assert extensions[1].name == "a2"
+##     assert extensions[1].value == "v2"
 ## 
 ##   解析 trailers 相关的字符序列：
 ## 

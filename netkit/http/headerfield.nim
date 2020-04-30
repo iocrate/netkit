@@ -114,11 +114,11 @@
 ##     fields.add("Connection", "keep-alive")
 ##     fields.add("Accept", "text/*")
 ## 
-##     assert fields["Content-Length"][0] = "16"
-##     assert fields["content-length"][0] = "16"
-##     assert fields["Accept"][0] = "text/html; q=1; level=1"
-##     assert fields["Accept"][1] = "text/plain"
-##     assert fields["Accept"][2] = "text/*"
+##     assert fields["Content-Length"][0] == "16"
+##     assert fields["content-length"][0] == "16"
+##     assert fields["Accept"][0] == "text/html; q=1; level=1"
+##     assert fields["Accept"][1] == "text/plain"
+##     assert fields["Accept"][2] == "text/*"
 ## 
 ## .. container:: r-fragment
 ## 
@@ -138,7 +138,7 @@
 ##          "Content-Length": @["0"]
 ##        })
 ##        let values = fields.parseSingleRule("Content-Length")
-##        assert values[0].key = "0"
+##        assert values[0].key == "0"
 ## 
 ##      The returned result should have at most one item, and the ``key`` of the first item indicates the value of this
 ##      header field, if any.
@@ -158,9 +158,9 @@
 ##          "Content-Type": @["application/json; charset=utf8"]
 ##        })
 ##        let values = fields.parseSingleRule("Content-Type")
-##        assert values[0].key = "application/json"
-##        assert values[1].key = "charset"
-##        assert values[1].value = "utf8"
+##        assert values[0].key == "application/json"
+##        assert values[1].key == "charset"
+##        assert values[1].value == "utf8"
 ## 
 ##      If the returned result is not empty, the ``key`` of the first item indicates the value of this header field, and the 
 ##      other items indicates the parameters of this value.
@@ -180,10 +180,10 @@
 ##          "Cookie": @["SID=123abc; language=en"]
 ##        })
 ##        let values = fields.parseSingleRule("Cookie")
-##        assert values[0].key = "SID"
-##        assert values[0].value = "123abc"
-##        assert values[1].key = "language"
-##        assert values[1].value = "en"
+##        assert values[0].key == "SID"
+##        assert values[0].value == "123abc"
+##        assert values[1].key == "language"
+##        assert values[1].value == "en"
 ## 
 ##      If the returned result is not empty, then each item indicates a value, that mean a ``(key, value)`` pair.
 ##      
@@ -210,12 +210,12 @@
 ##          "Accept": @["text/html; q=1; level=1, text/plain"]
 ##        })
 ##        let values = fields.parseMultiRule("Accept")
-##        assert values[0][0].key = "text/html"
-##        assert values[0][1].key = "q"
-##        assert values[0][1].value = "1"
-##        assert values[0][2].key = "level"
-##        assert values[0][2].value = "1"
-##        assert values[1][0].key = "text/plain"
+##        assert values[0][0].key == "text/html"
+##        assert values[0][1].key == "q"
+##        assert values[0][1].value == "1"
+##        assert values[0][2].key == "level"
+##        assert values[0][2].value == "1"
+##        assert values[1][0].key == "text/plain"
 ## 
 ##      the same below：
 ## 
@@ -246,14 +246,14 @@
 ##          "Set-Cookie": @["SID=123abc; path=/", "language=en; path=/"]
 ##        })
 ##        let values = fields.parseMultiRule("Content-Type")
-##        assert values[0][0].key = "SID"
-##        assert values[0][0].value = "123abc"
-##        assert values[0][1].key = "path"
-##        assert values[0][1].value = "/"
-##        assert values[1][0].key = "language"
-##        assert values[1][0].value = "en"
-##        assert values[1][1].key = "path"
-##        assert values[1][1].value = "/"
+##        assert values[0][0].key == "SID"
+##        assert values[0][0].value == "123abc"
+##        assert values[0][1].key == "path"
+##        assert values[0][1].value == "/"
+##        assert values[1][0].key == "language"
+##        assert values[1][0].value == "en"
+##        assert values[1][1].key == "path"
+##        assert values[1][1].value == "/"
 ##    
 ##      If the returned result is not empty, then each item indicates a value.
 ## 

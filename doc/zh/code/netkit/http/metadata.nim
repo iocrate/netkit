@@ -82,10 +82,10 @@
 ##       extensions: "; a1=v1; a2=v2"
 ##     )
 ##     let extensions = parseChunkExtensions(metadata.extensions)
-##     assert extensions[0].name = "a1"
-##     assert extensions[0].value = "v1"
-##     assert extensions[1].name = "a2"
-##     assert extensions[1].value = "v2"
+##     assert extensions[0].name == "a1"
+##     assert extensions[0].value == "v1"
+##     assert extensions[1].name == "a2"
+##     assert extensions[1].value == "v2"
 ## 
 ## .. container:: r-fragment
 ## 

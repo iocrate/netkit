@@ -135,7 +135,7 @@ proc toResponseStr*(H: HttpHeader): string =
   ##       "Host": "www.iocrate.com"
   ##     }
   ##   )
-  ##   assert toResponseStr(header) = "200 OK HTTP/1.1\r\nHost: www.iocrate.com\r\n\r\n"
+  ##   assert toResponseStr(header) == "200 OK HTTP/1.1\r\nHost: www.iocrate.com\r\n\r\n"
   assert H.kind == HttpHeaderKind.Response
   result.add($HttpVer11)
   result.add(SP)
@@ -158,7 +158,7 @@ proc toResponseStr*(code: HttpCode): string =
   ##   import netkit/http/status
   ##   import netkit/http/header
   ## 
-  ##   assert toResponseStr(Http200) = "200 OK HTTP/1.1\r\n\r\n"
+  ##   assert toResponseStr(Http200) == "200 OK HTTP/1.1\r\n\r\n"
   result.add($HttpVer11)
   result.add(SP)
   result.add($code)
@@ -186,7 +186,7 @@ proc toRequestStr*(H: HttpHeader): string =
   ##       "Host": "www.iocrate.com"
   ##     }
   ##   )
-  ##   assert toResponseStr(HttpHeader) = "GET / HTTP/1.1\r\nHost: www.iocrate.com\r\n\r\n"
+  ##   assert toResponseStr(HttpHeader) == "GET / HTTP/1.1\r\nHost: www.iocrate.com\r\n\r\n"
   assert H.kind == HttpHeaderKind.Request
   result.add($H.reqMethod)
   result.add(SP)
