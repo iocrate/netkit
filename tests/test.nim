@@ -16,6 +16,7 @@ discard """
 
 import unittest
 import asyncdispatch
+
 # import netkit/http/base
 
 # template f(t: untyped) =

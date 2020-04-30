@@ -1,6 +1,6 @@
 import strutils 
 import strformat
-import os except getCurrentDir
+import os 
 
 const ProjectDir = projectDir() 
 const TestDir = ProjectDir / "tests"
@@ -14,7 +14,7 @@ const DocPolisher = ProjectDir / "tools/docplus/polish.js"
 task test, "Run my tests":
   #  run the following command:
   #
-  #    nim test a,b.c,d.e.f 
+  #    nim test -d:modules=a,b.c,d.e.f 
   #
   #  equivalent to:
   # 
@@ -22,25 +22,21 @@ task test, "Run my tests":
   #    test tests/b/c.nim
   #    test tests/d/e/f.nim
   #
-  var targets: seq[string] = @[]
-  var flag = false
-  for i in 0..system.paramCount():
-    if flag:
-      targets.add(system.paramStr(i).replace('.', AltSep).split(','))
-    elif system.paramStr(i) == "test":
-      flag = true
+  const modules {.strdefine.} = ""
+  let targets = modules.split(",")
   for t in targets:
-    withDir ProjectDir:
-      var args: seq[string] = @["nim", "c"]
-      args.add("--run")
-      args.add("--verbosity:0")
-      args.add("--hints:off")
-      args.add(fmt"--out:{TestBuildDir / t}")
-      args.add(fmt"--path:{ProjectDir}")
-      args.add(TestDir / t)
-      rmDir(BuildDir / t.parentDir())
-      mkDir(TestBuildDir / t.parentDir())
-      exec(args.join(" "))
+    if t.len > 0:
+      withDir ProjectDir:
+        var args: seq[string] = @["nim", "c"]
+        args.add("--run")
+        args.add("--verbosity:0")
+        args.add("--hints:off")
+        args.add(fmt"--out:{TestBuildDir / t}")
+        args.add(fmt"--path:{ProjectDir}")
+        args.add(TestDir / t)
+        rmDir(BuildDir / t.parentDir())
+        mkDir(TestBuildDir / t.parentDir())
+        exec(args.join(" "))
   
 task docs, "Gen docs":
   # **netkit.nim** is the entry file of this project. This task starts with **netkit.nim** to generate 
