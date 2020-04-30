@@ -229,7 +229,7 @@
 ##        let fields = initHeaderFields({
 ##          "Set-Cookie": @["SID=123abc; path=/", "language=en; path=/"]
 ##        })
-##        let values = fields.parseMultiRule("Content-Type")
+##        let values = fields.parseMultiRule("Set-Cookie")
 ##        assert values[0][0].key == "SID"
 ##        assert values[0][0].value == "123abc"
 ##        assert values[0][1].key == "path"

@@ -6,7 +6,7 @@ Netkit
 
 Netkit hopes to serve as a versatile network development kit, providing tools commonly used in network programming. Netkit should be out of the box, stable and secure. Netkit contains a number of commonly used network programming tools, such as TCP, UDP, TLS, HTTP, HTTPS, WebSocket and related utilities.
 
-Netkit is not intended to be a high-level productivity development tool, ut rather a reliable and efficient network infrastructure. Netkit consists of several submodules, each of which provides some network tools.
+Netkit is not intended to be a high-level productivity development tool, but rather a reliable and efficient network infrastructure. Netkit consists of several submodules, each of which provides some network tools.
 
 **Now, Netkit is under active development.**
 
