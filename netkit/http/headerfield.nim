@@ -359,7 +359,7 @@ template addImpl(fields: var HeaderFields, name: string, value: string) =
   else:
     Table[string, seq[string]](fields)[nameUA] = @[value]
 
-proc initHeaderFields*(pairs: openarray[tuple[name: string, value: seq[string]]]): HeaderFields =
+proc initHeaderFields*(pairs: openArray[tuple[name: string, value: seq[string]]]): HeaderFields =
   ## Initializes a ``HeaderFields``. ``pairs`` is a container consisting of ``(key, value)`` tuples.
   ## 
   ## The following example demonstrates how to deal with a single value, such as ``Content-Length``:
@@ -386,7 +386,7 @@ proc initHeaderFields*(pairs: openarray[tuple[name: string, value: seq[string]]]
     for v in pair.value:
       result.addImpl(pair.name, v)
 
-proc initHeaderFields*(pairs: openarray[tuple[name: string, value: string]]): HeaderFields =
+proc initHeaderFields*(pairs: openArray[tuple[name: string, value: string]]): HeaderFields =
   ## Initializes a ``HeaderFields``. ``pairs`` is a container consisting of ``(key, value)`` tuples.
   ## 
   ## The following example demonstrates how to deal with a single value, such as ``Content-Length``:

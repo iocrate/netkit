@@ -256,7 +256,7 @@ type
 proc initHeaderFields*(): HeaderFields = discard
   ## 初始化一个 ``HeaderFields`` 。
 
-proc initHeaderFields*(pairs: openarray[tuple[name: string, value: seq[string]]]): HeaderFields = discard
+proc initHeaderFields*(pairs: openArray[tuple[name: string, value: seq[string]]]): HeaderFields = discard
   ## 初始化一个 ``HeaderFields`` ， ``pairs`` 指定一组 ``(name, value)`` 对。
   ## 
   ## 下面的示例演示如何处理单值字段，例如 ``Content-Length`` ：
@@ -278,7 +278,7 @@ proc initHeaderFields*(pairs: openarray[tuple[name: string, value: seq[string]]]
   ##       "Accept": @["audio/\*; q=0.2", "audio/basic"]
   ##     })
 
-proc initHeaderFields*(pairs: openarray[tuple[name: string, value: string]]): HeaderFields = discard
+proc initHeaderFields*(pairs: openArray[tuple[name: string, value: string]]): HeaderFields = discard
   ## 初始化一个 ``HeaderFields``. ``pairs`` 指定一组 ``(name, value)`` 对。
   ## 
   ## 下面的示例演示如何处理单值字段，例如 ``Content-Length`` ：
