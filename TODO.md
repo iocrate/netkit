@@ -18,6 +18,12 @@
 - [x] 添加 chunk Extensions 支持
 - [x] 优化 HTTP chunked 解码和编码
 - [x] 添加 HTTP 服务器单元测试，包含多种规则和不规则请求的模拟测试
+- [ ] 添加 HTTP server benchmark tests
+- [ ] 优化 write(statusCode, header) 和 write(data)，在 benchmark 中影响性能达到 6 倍 --> 
+      考虑将 statusCode, header 和第一块数据合并到一个缓冲区发送
+- [ ] 修复 parseSingleRule, parseMultiRule
+- [ ] response.writeEnd 支持 Connection: keepalive 控制
+- [ ] 添加 HTTP server 多线程支持
 - [ ] 添加 HTTP 客户端和 HTTP 客户端连接池
 - [ ] 修订各源码文件留下的 TODOs
 - [ ] 考虑使用 {.noInit.} 优化已经写的 procs iterators vars lets
