@@ -149,12 +149,13 @@
 ## 
 ##   看看 **chunk** 模块和 **metadata** 模块了解更多关于 terminating chunk and trailers 的信息。
 
-import uri
+
 import strutils
 import netkit/buffer/circular
 import netkit/http/limits
 import netkit/http/exception
 import netkit/http/spec
+import netkit/http/uri
 import netkit/http/httpmethod
 import netkit/http/version
 import netkit/http/status

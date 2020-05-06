@@ -85,8 +85,9 @@
 ## 
 ##   
 
-import uri
+
 import netkit/http/spec
+import netkit/http/uri
 import netkit/http/httpmethod
 import netkit/http/version
 import netkit/http/status
