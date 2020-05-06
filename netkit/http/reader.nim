@@ -241,15 +241,15 @@ proc read*(reader: HttpReader, buf: pointer, size: range[int(LimitChunkDataLen).
   ## 
   ## If a system error occurs during reading, an ``OsError``  will be raised. If the connection is  
   ## disconnected before successful reading, a ``ReadAbortedError`` will be raised.
-  await reader.lock.acquire()
-  try:
-    if not reader.ended:
-      if reader.chunked:
-        result = reader.readChunk(buf, size)
-      else:
-        result = reader.readContent(buf, size)
-  finally:
-    reader.lock.release()
+  if not reader.ended:
+    await reader.lock.acquire()
+    try:
+        if reader.chunked:
+          result = reader.readChunk(buf, size)
+        else:
+          result = reader.readContent(buf, size)
+    finally:
+      reader.lock.release()
 
 proc read*(reader: HttpReader): Future[string] {.async.} =
   ## Reads up to ``size`` bytes, storing the results as a string. 
@@ -258,47 +258,49 @@ proc read*(reader: HttpReader): Future[string] {.async.} =
   ## 
   ## If a system error occurs during reading, an ``OsError``  will be raised. If the connection is  
   ## disconnected before successful reading, a ``ReadAbortedError`` will be raised.
-  await reader.lock.acquire()
-  try:
-    if not reader.ended:
-      if reader.chunked:
-        result = reader.readChunk()
-      else:
-        result = reader.readContent()
-  finally:
-    reader.lock.release()
+  if not reader.ended:
+    await reader.lock.acquire()
+    try:
+        if reader.chunked:
+          result = reader.readChunk()
+        else:
+          result = reader.readContent()
+    finally:
+      reader.lock.release()
 
 proc readAll*(reader: HttpReader): Future[string] {.async.} =
   ## Reads all bytes, storing the results as a string. 
   ## 
   ## If a system error occurs during reading, an ``OsError``  will be raised. If the connection is  
   ## disconnected before successful reading, a ``ReadAbortedError`` will be raised.
-  await reader.lock.acquire()
-  try:
-    if reader.chunked:
-      while not reader.ended:
-        result.add(reader.readChunk())
-    else:
-      result = newStringOfCap(reader.contentLen)
-      while not reader.ended:
-        result.add(reader.readContent())
-  finally:
-    reader.lock.release()
+  if not reader.ended:
+    await reader.lock.acquire()
+    try:
+      if reader.chunked:
+        while not reader.ended:
+          result.add(reader.readChunk())
+      else:
+        result = newStringOfCap(reader.contentLen)
+        while not reader.ended:
+          result.add(reader.readContent())
+    finally:
+      reader.lock.release()
 
 proc readDiscard*(reader: HttpReader): Future[void] {.async.} =
   ## Reads all bytes, discarding the results. 
   ## 
   ## If the return future is failed, ``OsError`` or ``ReadAbortedError`` may be raised.
-  await reader.lock.acquire()
-  let buffer = newString(LimitChunkDataLen)
-  GC_ref(buffer)
-  try:
-    if reader.chunked:
-      while not reader.ended:
-        discard reader.readChunk(buffer.cstring, LimitChunkDataLen)
-    else:
-      while not reader.ended:
-        discard reader.readContent(buffer.cstring, LimitChunkDataLen)
-  finally:
-    GC_unref(buffer)
-    reader.lock.release()
+  if not reader.ended:
+    await reader.lock.acquire()
+    let buffer = newString(LimitChunkDataLen)
+    GC_ref(buffer)
+    try:
+      if reader.chunked:
+        while not reader.ended:
+          discard reader.readChunk(buffer.cstring, LimitChunkDataLen)
+      else:
+        while not reader.ended:
+          discard reader.readContent(buffer.cstring, LimitChunkDataLen)
+    finally:
+      GC_unref(buffer)
+      reader.lock.release()

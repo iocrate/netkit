@@ -149,7 +149,7 @@ proc read(conn: HttpConnection): Future[Natural] =
     if fut.failed:
       retFuture.fail(fut.readError())
     else:
-      let readLen = recvFuture.read()
+      let readLen = fut.read()
       if readLen == 0:
         retFuture.fail(newReadAbortedError("Connection closed prematurely"))
       else:
