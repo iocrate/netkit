@@ -98,6 +98,7 @@ proc handleNextRequest(server: AsyncHttpServer, conn: HttpConnection) {.async.} 
     conn.close()
     return
   except ReadAbortedError as e:
+    echo "ReadAbortedError: timeout=", e.timeout
     if e.timeout:
       yield conn.write("HTTP/1.1 408 Request Timeout\r\nConnection: close\r\n\r\n")
     conn.close()

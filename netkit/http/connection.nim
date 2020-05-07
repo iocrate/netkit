@@ -137,8 +137,10 @@ proc read(conn: HttpConnection): Future[Natural] =
   let recvFuture = conn.socket.recvInto(region[0], region[1])
   
   proc updateDate(fd: AsyncFD): bool =
+    echo "Timeout ..."
     result = true
     if not recvFuture.finished:
+      echo "retFuture.fail(newReadAbortedError, timeout)"
       recvFuture.clearCallbacks()
       retFuture.fail(newReadAbortedError("Read timeout", true))
 
@@ -146,6 +148,7 @@ proc read(conn: HttpConnection): Future[Natural] =
     addTimer(conn.readTimeout, false, updateDate) 
 
   recvFuture.callback = proc (fut: Future[int]) = 
+    echo "recvFuture.callback"
     if fut.failed:
       retFuture.fail(fut.readError())
     else:
