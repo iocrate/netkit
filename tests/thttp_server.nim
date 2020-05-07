@@ -310,18 +310,18 @@ suite "Read Timeout":
           await res.write(data)
           res.writeEnd()
         except ReadAbortedError:
-          discard
+          echo "Got ReadAbortedError: ", getCurrentExceptionMsg()
         except WriteAbortedError:
-          discard
+          echo "Got WriteAbortedError: ", getCurrentExceptionMsg()
         except Exception:
-          discard
+          echo "Got Exception: ", getCurrentExceptionMsg()
 
       await server.serve(Port(8001), "127.0.0.1", readTimeout=100)
       
     proc request() {.async.} = 
       let client = await asyncnet.dial("127.0.0.1", Port(8001))
       await client.send("GET /iocrate/netkit HTTP/1.1\r\L")
-      await sleepAsync(1000)
+      await sleepAsync(2000)
       await client.send("Host: iocrate.com\r\L\r\L")
       let statusLine = await client.recvLine()
       let connectionLine = await client.recvLine()
@@ -352,9 +352,9 @@ suite "Read Timeout":
         except ReadAbortedError as e:
           check e.timeout
         except WriteAbortedError:
-          discard
+          echo "Got WriteAbortedError: ", getCurrentExceptionMsg()
         except Exception:
-          discard
+          echo "Got Exception: ", getCurrentExceptionMsg()
 
       await server.serve(Port(8001), "127.0.0.1", readTimeout=100)
       
@@ -366,7 +366,7 @@ Host: iocrate.com
 Content-Length: 12
 
 foobar""")
-      await sleepAsync(1000)
+      await sleepAsync(2000)
       await client.send("foobar")
       let statusLine = await client.recvLine()
       check:
