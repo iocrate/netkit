@@ -22,6 +22,7 @@
 - [ ] 优化 write(statusCode, header) 和 write(data)，在 benchmark 中影响性能达到 6 倍 --> 
       考虑将 statusCode, header 和第一块数据合并到一个缓冲区发送
 - [ ] 修复 parseSingleRule, parseMultiRule
+- [ ] 4 个线程，1000 个连接，30 秒持续请求的吞吐量测试，以优化 asyncdispatcher 的 io
 - [ ] response.writeEnd 支持 Connection: keepalive 控制
 - [ ] 添加 HTTP server 多线程支持
 - [ ] 添加 HTTP 客户端和 HTTP 客户端连接池

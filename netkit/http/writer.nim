@@ -61,6 +61,7 @@ template writeByGuard(writer: HttpWriter, buf: pointer, size: Natural) =
   if not writer.writable:
     raise newException(WriteAbortedError, "Write after ended")
   let writeFuture = writer.conn.write(buf, size) 
+  yield writeFuture
   if writeFuture.failed:
     writer.conn.close()
     raise writeFuture.readError()
