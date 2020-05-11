@@ -1,6 +1,5 @@
 *~
 build/
-benchmark/
 .vscode
 testresults
 nimcache
