@@ -172,10 +172,10 @@ type
     currentLineLen: Natural
     currentFieldName: string
     currentFieldCount: Natural
-    state: HttpParseState
+    state*: HttpParseState
     startLineState: StartLineState
     
-  HttpParseState {.pure.} = enum
+  HttpParseState* {.pure.} = enum
     StartLine, FieldName, FieldValue, Body
 
   StartLineState {.pure.} = enum
