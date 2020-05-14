@@ -4,6 +4,9 @@
 #    See the file "LICENSE", included in this
 #    distribution, for details about the copyright.
 
+import std/selectors
+import std/nativesockets, os, net, asyncdispatch, deques
+
 import selectors
 import nativesockets
 import net
@@ -26,11 +29,7 @@ when defined(posix):
   from posix import EBADF
 
 type
-  HandleKind = enum
-    Server, Client, Dispatcher # TODO: Accepter, Reader, Writer, Timer, Pendinger
-
   Data = object
-    kind: HandleKind
     ip: string
     conn: FastConnection
 
@@ -143,31 +142,52 @@ proc handleNextRequest(server: AsyncHttpServer, conn: HttpConnection) {.async.} 
   res = newServerResponse(conn, onWriteEnd)
   await server.onRequest(req, res)
 
-template handleAccept() =
-  let (client, address) = fd.SocketHandle.accept()
-  if client == osInvalidSocket:
-    let lastError = osLastError()
-    raiseOSError(lastError)
-  setBlocking(client, false)
-  selector.registerHandle(client, {Event.Read}, Data(
-    kind: Client, 
-    ip: address,
-    conn: FastConnection(
-      buffer: initMarkableCircularBuffer(),
-      parser: initHttpParser(),
-      socket: client,
-      address: address,
-      closed: false,
-      readTimeout: 0,
-      currentRequest: FastRequest(
-        header: HttpHeader(),
-        # metadata: HttpMetadata
-        contentLen: 0,
-        chunked: false,
-        readable: true
-      )
-    )
-  ))
+type
+  AsyncFD* = distinct int
+  AsyncData* = proc (fd: AsyncFD, events: set[Event]): bool {.closure.}
+
+  AsyncDispatcher* = ref object of RootRef
+    # timers*: HeapQueue[tuple[finishAt: MonoTime, fut: Future[void]]]
+    # callbacks*: Deque[proc () {.gcsafe.}]
+    selector: Selector[AsyncData]
+
+## TODO: 参考 std/asyncdispatch 提供 windows IOCP API
+
+proc register*(disp: AsyncDispatcher, fd: AsyncFD, data: AsyncData) = 
+  ## 为调度器注册一个描述符 ``fd`` 。当该描述符接收到感兴趣的事件时，运行回调函数 ``data`` 。这个函数仅仅
+  ## 注册描述符，并不为描述符绑定感兴趣的事件。 TODO：“事件” 这个词需要推敲一下，看看网络上有没有合适的词语替代。
+  disp.selector.registerHandle(fd.SocketHandle, {}, data)
+
+proc unregister*(disp: AsyncDispatcher, fd: AsyncFD) = 
+  ## 从调度器删除一个已经注册的描述符 ``fd`` 。
+  disp.selector.unregister(fd.SocketHandle)
+
+proc advertise*(disp: AsyncDispatcher, fd: AsyncFD, events: set[Event]) = 
+  ## 告诉调度器，描述符 ``fd`` 对事件 ``events`` 感兴趣。接下来，只通知 ``events`` 有关的事件。
+  disp.selector.updateHandle(fd.SocketHandle, events)
+
+proc newAsyncDispatcher*(): AsyncDispatcher = 
+  new(result)
+  result.selector = newSelector[AsyncData]()
+
+  proc cb(fd: AsyncFD, events: set[Event]): bool =
+    assert events == {Event.Read}
+    asyncdispatch.poll(0)
+  result.register(asyncdispatch.getGlobalDispatcher().getIoHandler().getFd().AsyncFD, cb)
+  result.advertise(asyncdispatch.getGlobalDispatcher().getIoHandler().getFd().AsyncFD, {Event.Read})
+
+proc poll*(disp: AsyncDispatcher) =
+  ## 
+  var keys: array[64, ReadyKey]
+  var count = disp.selector.selectInto(-1, keys)
+  for i in 0..<count:
+    let fd = keys[i].fd.AsyncFD
+    let events = keys[i].events
+    let cb: AsyncData = disp.selector.getData(fd.SocketHandle)
+    discard cb(fd, events)
+
+  if unlikely(asyncdispatch.getGlobalDispatcher().callbacks.len() > 0):
+    asyncdispatch.poll(0)
 
 proc serve*(
   server: AsyncHttpServer, 
@@ -179,7 +199,7 @@ proc serve*(
   ## Starts the process of listening for incoming HTTP connections on the
   ## specified ``address`` and ``port``. ``readTimeout`` specifies the timeout
   ## about read operations and keepalive.
-  var selector = newSelector[Data]()
+  var disp = newAsyncDispatcher()
 
   let fd = createNativeSocket(Domain.AF_INET, SOCK_STREAM, IPPROTO_TCP)
   if fd == osInvalidSocket:
@@ -192,37 +212,35 @@ proc serve*(
   fd.listen()
   fd.setBlocking(false)
 
-  selector.registerHandle(fd, {Event.Read}, Data(kind: Server))
+  proc cbServer(fd: AsyncFD, events: set[Event]): bool = 
+    if Event.Read in events:
+      let (client, address) = fd.SocketHandle.accept()
+      if client == osInvalidSocket:
+        let lastError = osLastError()
+        raiseOSError(lastError)
+      setBlocking(client, false)
 
-  selector.registerHandle(asyncdispatch.getGlobalDispatcher().getIoHandler().getFd(), {Event.Read},
-                          Data(kind: Dispatcher))
-
-  # Set up timer to get current date/time.
-  # discard updateDate(0.AsyncFD)
-  # asyncdispatch.addTimer(1000, false, updateDate)
-
-  var events: array[64, ReadyKey]
-  while true:
-    let count = selector.selectInto(-1, events)
-    for i in 0..<count:
-      let fd = events[i].fd
-      var data: ptr Data = selector.getData(fd).addr
-      # Handle error events first.
-      if Event.Error in events[i].events:
-        if isDisconnectionError({SocketFlag.SafeDisconn}, events[i].errorCode):
-          selector.unregister(fd)
-          fd.SocketHandle.close()
-          continue
-        raiseOSError(events[i].errorCode)
-
-      case data.kind
-      of Server:
-        if Event.Read in events[i].events:
-          handleAccept()
-        else:
-          assert false, "Only Read events are expected for the server"
-      of Client:
-        if Event.Read in events[i].events:
+      proc cbClient(fd: AsyncFD, events: set[Event]): bool = 
+        discard
+        var data = Data(
+          ip: address,
+          conn: FastConnection(
+            buffer: initMarkableCircularBuffer(),
+            parser: initHttpParser(),
+            socket: client,
+            address: address,
+            closed: false,
+            readTimeout: 0,
+            currentRequest: FastRequest(
+              header: HttpHeader(),
+              # metadata: HttpMetadata
+              contentLen: 0,
+              chunked: false,
+              readable: true
+            )
+          )
+        )
+        if Event.Read in events:
           block read:
             if data.conn.parser.state != HttpParseState.Body:
               var succ = false
@@ -232,7 +250,7 @@ proc serve*(
                 let region = data.conn.buffer.next()
                 let ret = recv(fd.SocketHandle, region[0], region[1], 0.cint)
                 if ret == 0:
-                  selector.unregister(fd)
+                  disp.unregister(fd)
                   fd.SocketHandle.close()
                   break read
                 if ret == -1:
@@ -240,7 +258,7 @@ proc serve*(
                   if lastError.int32 in {EWOULDBLOCK, EAGAIN}:
                     break read
                   if isDisconnectionError({SocketFlag.SafeDisconn}, lastError):
-                    selector.unregister(fd)
+                    disp.unregister(fd)
                     fd.SocketHandle.close()
                     break read
                   raiseOSError(lastError)
@@ -264,7 +282,7 @@ proc serve*(
                 let region = data.conn.buffer.next()
                 let ret = recv(fd.SocketHandle, region[0], region[1], 0.cint)
                 if ret == 0:
-                  selector.unregister(fd)
+                  disp.unregister(fd)
                   fd.SocketHandle.close()
                   break read
                 if ret == -1:
@@ -272,15 +290,15 @@ proc serve*(
                   if lastError.int32 in {EWOULDBLOCK, EAGAIN}:
                     break read
                   if isDisconnectionError({SocketFlag.SafeDisconn}, lastError):
-                    selector.unregister(fd)
+                    disp.unregister(fd)
                     fd.SocketHandle.close()
                     break read
                   raiseOSError(lastError)
                 discard data.conn.buffer.pack(ret)
-             
-            selector.updateHandle(fd.SocketHandle, {Event.Write})
+              
+            disp.advertise(fd, {Event.Write})
 
-        elif Event.Write in events[i].events:
+        elif Event.Write in events:
           block write:
             let s = "HTTP/1.1 200 OK\r\nContent-Length: 11\r\n\r\nHello World"
             let ret = send(fd.SocketHandle, s.cstring, s.len, 0)
@@ -289,7 +307,7 @@ proc serve*(
               if lastError.int32 in {EWOULDBLOCK, EAGAIN}:
                 break
               if isDisconnectionError({SocketFlag.SafeDisconn}, lastError):
-                selector.unregister(fd)
+                disp.unregister(fd)
                 fd.SocketHandle.close()
                 break write
               raiseOSError(lastError)
@@ -302,39 +320,70 @@ proc serve*(
               chunked: false,
               readable: true
             )
-            selector.updateHandle(fd.SocketHandle, {Event.Read})
+            disp.advertise(fd, {Event.Read})
         else:
           assert false
-      of Dispatcher:
-        assert events[i].events == {Event.Read}
-        asyncdispatch.poll(0)
+      
+      ## 注册客户端 read - recv()
+      disp.register(client.AsyncFD, cbClient)
+      disp.advertise(client.AsyncFD, {Event.Read})
+    else:
+      assert false, "Only Read events are expected for the server"
 
-    # Ensure callbacks list doesn't grow forever in asyncdispatch.
-    # See https://github.com/nim-lang/Nim/issues/7532.
-    # Not processing callbacks can also lead to exceptions being silently
-    # lost!
-    if unlikely(asyncdispatch.getGlobalDispatcher().callbacks.len() > 0):
-      asyncdispatch.poll(0)
+  ## 注册服务器 read - accept()
+  disp.register(fd.AsyncFD, cbServer)
+  disp.advertise(fd.AsyncFD, {Event.Read})
+
+  while true:
+    disp.poll()
 
 
-  # AsyncFD(fd).register()
-  # server.socket = fd
-  # server.domain = domain
-  
-  # while not server.closed:
-  #   var peer: tuple[address: string, client: AsyncFD]
-  #   try:
-  #     peer = await server.socket.acceptAddr()
-  #   except:
-  #     if server.closed:
-  #       when defined(posix):
-  #         if osLastError() == OSErrorCode(EBADF):
-  #           break
-  #       else:
-  #         break
-  #     raise getCurrentException()
-  #   SocketHandle(peer.client).setBlocking(false)
-  #   asyncCheck server.handleNextRequest(newHttpConnection(peer.client, peer.address, readTimeout))
+# import net
+
+# var socket1 = newSocket(buffered=false)
+# var socket2 = newSocket(buffered=false)
+
+# socket1.bindAddr(Port(8080))
+# socket1.listen()
+# socket1.getFd().setSockOptInt(SOL_SOCKET, SO_REUSEADDR, 1)
+# socket1.getFd().setSockOptInt(SOL_SOCKET, SO_REUSEPORT, 1)
+# socket1.getFd().setBlocking(false)
+
+# socket2.getFd().setBlocking(false)
+# # socket2.bindAddr(Port(8081))
+# # socket2.listen()
+
+# var disp = newAsyncDispatcher()
+
+# proc cb1(fd: AsyncFD, events: set[Event]): bool =
+#   var client: Socket
+#   socket1.accept(client)
+#   echo "cb1:", events, " ", repr client.getPeerAddr()
+#   # sleep(10)
+#   # disp.advertise(socket1.getFd().AsyncFD, {Event.Read})
+
+# proc cb2(fd: AsyncFD, events: set[Event]): bool =
+#   echo "cb2:", repr events
+
+# disp.register(socket1.getFd().AsyncFD, cb1)
+# disp.register(socket2.getFd().AsyncFD, cb2)
+
+# ## Tip：有意思，我发现 socket 没有进行 bind listen，于是使用 epoll 监听 socket 时立马触发 EPOLLRDHUP {Error} 事件
+# ## 并且，由于 std/ioselectors 实现 updateHandle 时采用的水平触发，导致该事件在每次 selectInto 时都会触发。
+# ## 如果 std/ioselectors.updateHandle 修改为 var epv = EpollEvent(events: EPOLLRDHUP or EPOLLET) 则只触发一次
+# ## 考虑：标准库的 asynchttpserver 有没有可能因为此导致效率问题？
+# disp.advertise(socket1.getFd().AsyncFD, {Event.Read})
+# disp.advertise(socket2.getFd().AsyncFD, {Event.Write})
+
+# import posix
+# try:
+#   socket2.connect("127.0.0.1", Port(8080))
+# except:
+#   assert osLastError().cint == EINPROGRESS ## TODO: 发现 nonblocking connect 非常复杂，特别是 windows 版本，有必要封装一个函数
+
+# disp.poll()
+# # disp.poll()
+# # disp.poll()
 
 var server = newAsyncHttpServer()
 
