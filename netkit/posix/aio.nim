@@ -7,74 +7,6 @@
 import std/selectors
 import std/nativesockets
 
-when defined(windows):
-  import std/winlean
-  import std/os
-  
-  type
-    FDEvent* {.pure.} = enum
-      Read, Write, Error
-
-    SelectFD* = distinct int
-    SelectTimer* = distinct int
-
-    CompletionKey = ULONG_PTR
-
-    CompletionData* = object
-      fd*: SelectFD       # TODO: Rename this.
-      cb*: owned(proc (fd: SelectFD, bytesTransferred: DWORD, errcode: OSErrorCode) {.closure, gcsafe.})
-      cell*: ForeignCell # we need this `cell` to protect our `cb` environment,
-                          # when using RegisterWaitForSingleObject, because
-                          # waiting is done in different thread.
-    CustomObj = object of OVERLAPPED
-        data*: CompletionData
-    CustomRef* = ref CustomObj
-    PostCallbackData = object
-      ioPort: Handle
-      handleFd: SelectFD
-      waitFd: Handle
-      ovl: owned CustomRef
-    PostCallbackDataPtr = ptr PostCallbackData
-    SelectEventImpl = object
-      when defined(windows):
-        hEvent: Handle
-        hWaiter: Handle
-        pcd: PostCallbackDataPtr
-    SelectEvent* = ptr SelectEventImpl
-
-    SelectFDCb* = proc (disp: AioDispatcher, fd: SelectFD, events: set[FDEvent]) {.closure, gcsafe.}
-    SelectTimerCb* = proc (disp: AioDispatcher, timer: SelectTimer) {.closure, gcsafe.}
-    SelectEventCb* = proc (disp: AioDispatcher, event: SelectEvent) {.closure, gcsafe.}
-    
-    AioKind {.pure.} = enum
-      SelectFD, SelectTimer, SelectEvent
-
-    AioData* = object
-      case kind: AioKind
-      of AioKind.SelectFD:
-        fdCb: SelectFDCb
-      of AioKind.SelectTimer:
-        timerCb: SelectTimerCb
-      of AioKind.SelectEvent:
-        eventCb: SelectEventCb
-        eventPtr: SelectEvent
-    
-    AioDispatcher* = ref object of RootRef
-      # timers*: HeapQueue[tuple[finishAt: MonoTime, fut: Future[void]]]
-      # callbacks*: Deque[proc () {.gcsafe.}]
-      selector: Selector[AioData]
-
-  proc registerHandle*(disp: AioDispatcher, fd: SelectFD, cb: SelectFDCb) = 
-    ## 为调度器注册一个描述符 ``fd`` 。当该描述符接收到感兴趣的事件时，运行回调函数 ``data`` 。这个函数仅仅
-    ## 注册描述符，并不为描述符绑定感兴趣的事件。 TODO：“事件” 这个词需要推敲一下，看看网络上有没有合适的词语替代。
-    disp.selector.registerHandle(fd.int, {}, AioData(kind: AioKind.SelectFD, fdCb: cb))
-    
-    when defined(windows):
-      if createIoCompletionPort(fd.Handle, p.ioPort,
-                                cast[CompletionKey](fd), 1) == 0:
-        raiseOSError(osLastError())
-      p.handles.incl(fd)
-
 type
   FDEvent* {.pure.} = enum
     Read, Write, Error
@@ -179,16 +111,17 @@ proc poll*(disp: AioDispatcher, timeout = 500) =
   # if unlikely(asyncdispatch.getGlobalDispatcher().callbacks.len() > 0):
   #   asyncdispatch.poll(0)
 
-var disp = newAioDispatcher()
+when isMainModule:
+  var disp = newAioDispatcher()
 
-proc timeoutCb(disp: AioDispatcher, timer: SelectTimer) =
-  echo  "timeout"
+  proc timeoutCb(disp: AioDispatcher, timer: SelectTimer) =
+    echo  "timeout"
 
-disp.registerTimer(10, false, timeoutCb)
+  disp.registerTimer(10, false, timeoutCb)
 
-# disp.poll()
-# disp.poll()
-# disp.poll()
-# disp.poll()
-# disp.poll()
-# disp.poll()
+  disp.poll()
+  disp.poll()
+  disp.poll()
+  disp.poll()
+  disp.poll()
+  disp.poll()
