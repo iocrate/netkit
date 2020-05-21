@@ -31,3 +31,13 @@
 - [ ] 添加 HTTP 客户端和 HTTP 客户端连接池
 - [ ] 修订各源码文件留下的 TODOs
 - [ ] 考虑使用 {.noInit.} 优化已经写的 procs iterators vars lets
+
+2020-05-21
+
+- [ ] 添加 posix-linux epoll selector 支持 (linux-4.1)
+- [ ] 添加 posix-bsd kqueue selector 支持 ? 我好像需要一些 bsd 虚拟环境来测试这些程序 (freebsd-11.0and12.1, openbsd-6.0, netbsd-6.1, drangonflybsd-4.9, macox)
+- [ ] 添加 posix-solaris evport selector 支持 ? 我好像需要一些虚拟环境来测试这些程序 (solaris-11.0)
+- [ ] 添加 windows iocp selector 支持
+- [ ] 考虑 epoll/kqueue/evport/iocp 的多线程并行问题
+- [ ] 考虑 epoll/kqueue/evport/iocp 的描述符分布问题
+- [ ] 考虑 tcp,udp 的扩平台问题
