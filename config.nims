@@ -66,6 +66,8 @@ task docs, "Gen docs":
       mkDir(dir.build)
       var args: seq[string] = @["nim", "doc2"]
       args.add("--verbosity:0")
+      args.add("""--docCmd:"--hints:off"""")
+      args.add("--warnings:off")
       args.add("--hints:off")
       args.add(fmt"--path:.")
       if module.len == 0:
