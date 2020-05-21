@@ -16,6 +16,7 @@ discard """
 
 import unittest
 import asyncdispatch
+import os
 
 # import netkit/http/base
 
@@ -54,3 +55,48 @@ proc `=destroy`(a: var Opt) =
 # g()
 
 # GC_fullCollect()
+
+type
+  Context = object
+    cb: proc () {.gcsafe.}
+
+  ContextPtr = ptr Context
+
+var thr: array[0..1, Thread[ContextPtr]]
+
+proc threadFunc(ctx: ContextPtr) {.thread.} =
+  ctx.cb()
+
+proc f(s: var string): ContextPtr = 
+  var a = s
+  var m = "efg"
+
+  proc cb() = 
+    echo "..."
+    echo "cb:", a
+    echo "m:", m
+    a.add("efg")
+  
+  var env = system.protect(cb.rawEnv)
+  # system.dispose(env)
+  var ctx = cast[ContextPtr](allocShared0(sizeof(Context)))
+  ctx.cb = cb
+  return ctx
+
+proc main() =
+  var s = "abc"
+  s.shallow()
+  var ctx = f(s)
+  GC_fullCollect()
+  createThread(thr[0], threadFunc, ctx) 
+  GC_fullCollect()
+  GC_fullCollect()
+  var a = "eee"
+  var b = "eee"
+  var c = a 
+  echo "c:", c
+  echo "0:", repr s
+  joinThreads(thr)
+  echo "1:", repr s
+
+main()

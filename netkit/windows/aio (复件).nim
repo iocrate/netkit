@@ -16,54 +16,55 @@ import std/monotimes
 import std/tables
 
 type
-  AioFDEvent* {.pure.} = enum
+  FDEvent* {.pure.} = enum
     Read, Write, Error
 
-  AioFD* = distinct Handle
-  AioTimer* = distinct Handle
-  
-  AioEventObj = object
-    hEvent: Handle
-    hWaiter: Handle
-    pcd: PostCallbackData
-  AioEvent* = ptr AioEventObj
+  SelectFD* = distinct int
+  SelectTimer* = distinct int
 
   CompletionKey = ULONG_PTR
+
   CompletionData = object
-    fd: AioFD          
-    cb: owned(proc (fd: Handle, bytesTransferred: DWORD, errcode: OSErrorCode) {.closure, gcsafe.})
+    fd: SelectFD       # TODO: Rename this.
+    cb: owned(proc (fd: SelectFD, bytesTransferred: DWORD, errcode: OSErrorCode) {.closure, gcsafe.})
     cell: ForeignCell  # we need this `cell` to protect our `cb` environment,
                        # when using RegisterWaitForSingleObject, because
                        # waiting is done in different thread.
-
   CustomObj = object of OVERLAPPED
     data: CompletionData
   CustomRef = ref CustomObj
 
   PostCallbackData = object
     ioPort: Handle
-    handleFd: AioFD
+    handleFd: SelectFD
     waitFd: Handle
     ovl: CustomObj
+  
+  SelectEventImpl = object
+    when defined(windows):
+      hEvent: Handle
+      hWaiter: Handle
+      pcd: PostCallbackData
+  SelectEvent* = ptr SelectEventImpl
 
-  AioFDCb* = proc (disp: AioDispatcher, fd: AioFD, events: set[AioFDEvent]) {.closure, gcsafe.}
-  AioTimerCb* = proc (disp: AioDispatcher, timer: AioTimer) {.closure, gcsafe.}
-  AioEventCb* = proc (disp: AioDispatcher, event: AioEvent) {.closure, gcsafe.}
-
+  SelectFDCb* = proc (disp: AioDispatcher, fd: SelectFD, events: set[FDEvent]) {.closure, gcsafe.}
+  SelectTimerCb* = proc (disp: AioDispatcher, timer: SelectTimer) {.closure, gcsafe.}
+  SelectEventCb* = proc (disp: AioDispatcher, event: SelectEvent) {.closure, gcsafe.}
+  
   AioKind {.pure.} = enum
-    FileHandle, Timer, Event
+    SelectFD, SelectTimer, SelectEvent
 
   AioData* = object
     case kind: AioKind
-    of AioKind.FileHandle:
+    of AioKind.SelectFD:
       fdPcd: PostCallbackData
       fdEvent: Handle
-    of AioKind.Timer:
+    of AioKind.SelectTimer:
       timerPcd: PostCallbackData
       timerEvent: Handle
-    of AioKind.Event:
-      eventCb: AioEventCb
-      eventPtr: AioEvent
+    of AioKind.SelectEvent:
+      eventCb: SelectEventCb
+      eventPtr: SelectEvent
   
   AioDispatcher* = ref object of RootRef
     # timers*: HeapQueue[tuple[finishAt: MonoTime, fut: Future[void]]]
@@ -95,20 +96,20 @@ proc waitableCallback(pcd: pointer, timerOrWaitFired: WINBOOL) {.stdcall.} =
   )
 {.pop.}
 
-proc registerHandle*(disp: AioDispatcher, fd: AioFD, cb: AioFDCb) = 
+proc registerHandle*(disp: AioDispatcher, fd: SelectFD, cb: SelectFDCb) = 
   ## 为调度器注册一个描述符 ``fd`` 。当该描述符接收到感兴趣的事件时，运行回调函数 ``data`` 。这个函数仅仅
   ## 注册描述符，并不为描述符绑定感兴趣的事件。 TODO：“事件” 这个词需要推敲一下，看看网络上有没有合适的词语替代。
   if createIoCompletionPort(fd.Handle, disp.ioPort, cast[CompletionKey](fd), 1) == 0:
     raiseOSError(osLastError())
   let data = new(AioData)
-  data.kind = AioKind.AioFD
+  data.kind = AioKind.SelectFD
 
   var hEvent = wsaCreateEvent()
   if hEvent == 0:
     raiseOSError(osLastError())
   data.fdEvent = hEvent
 
-  proc cdataCb(fd: AioFD, bytesCount: DWORD, errcode: OSErrorCode) {.gcsafe.} =
+  proc cdataCb(fd: SelectFD, bytesCount: DWORD, errcode: OSErrorCode) {.gcsafe.} =
     # unregisterWait() is called before callback, because appropriate
     # winsockets function can re-enable event.
     # https://msdn.microsoft.com/en-us/library/windows/desktop/ms741576(v=vs.85).aspx
@@ -127,18 +128,18 @@ proc registerHandle*(disp: AioDispatcher, fd: AioFD, cb: AioFDCb) =
   
   disp.handles[fd.int] = data
 
-proc unregisterHandle*(disp: AioDispatcher, fd: AioFD) = 
+proc unregisterHandle*(disp: AioDispatcher, fd: SelectFD) = 
   ## 从调度器删除一个已经注册的描述符 ``fd`` 。
   if not wsaCloseEvent(disp.handles[fd.int].fdEvent):
     raiseOSError(osLastError())
   disp.handles.del(fd.int)
 
-proc advertiseHandle*(disp: AioDispatcher, fd: AioFD, events: set[AioFDEvent]) = 
+proc advertiseHandle*(disp: AioDispatcher, fd: SelectFD, events: set[FDEvent]) = 
   ## 告诉调度器，描述符 ``fd`` 对事件 ``events`` 感兴趣。接下来，只通知 ``events`` 有关的事件。
   var mask: DWORD = 0
-  if AioFDEvent.Read in events: mask = FD_READ or FD_ACCEPT or FD_OOB or FD_CLOSE
-  if AioFDEvent.Write in events: mask = FD_WRITE or FD_CONNECT or FD_CLOSE
-  if AioFDEvent.Error in events: mask = 0
+  if FDEvent.Read in events: mask = FD_READ or FD_ACCEPT or FD_OOB or FD_CLOSE
+  if FDEvent.Write in events: mask = FD_WRITE or FD_CONNECT or FD_CLOSE
+  if FDEvent.Error in events: mask = 0
 
   # doAssert disp.handles.contains(fd.int)
   let data = disp.handles[fd.int]
@@ -159,7 +160,7 @@ proc advertiseHandle*(disp: AioDispatcher, fd: AioFD, events: set[AioFDEvent]) =
   ):
     raiseOSError(osLastError())
 
-proc registerTimer*(disp: AioDispatcher, timeout: int, oneshot: bool, cb: AioTimerCb): AioTimer {.discardable.} = 
+proc registerTimer*(disp: AioDispatcher, timeout: int, oneshot: bool, cb: SelectTimerCb): SelectTimer {.discardable.} = 
   ## 为调度器注册一个描述符 ``fd`` 。当该描述符接收到感兴趣的事件时，运行回调函数 ``data`` 。这个函数仅仅
   ## 注册描述符，并不为描述符绑定感兴趣的事件。 TODO：“事件” 这个词需要推敲一下，看看网络上有没有合适的词语替代。
   var hEvent = createEvent(nil, 1, 0, nil)
@@ -167,14 +168,14 @@ proc registerTimer*(disp: AioDispatcher, timeout: int, oneshot: bool, cb: AioTim
     raiseOSError(osLastError())
   
   let data = new(AioData)
-  data.kind = AioKind.AioTimer
+  data.kind = AioKind.SelectTimer
   data.timerEvent = hEvent
   
-  proc cdataCb(fd: AioFD, bytesCount: DWORD, errcode: OSErrorCode) {.gcsafe.} =
+  proc cdataCb(fd: SelectFD, bytesCount: DWORD, errcode: OSErrorCode) {.gcsafe.} =
     # unregisterWait() is called before callback, because appropriate
     # winsockets function can re-enable event.
     # https://msdn.microsoft.com/en-us/library/windows/desktop/ms741576(v=vs.85).aspx
-    cb(disp, fd.AioTimer)
+    cb(disp, fd.SelectTimer)
     if oneshot:
       let waitFd = data.fdPcd.waitFd
       if unregisterWait(waitFd) == 0:
@@ -186,11 +187,11 @@ proc registerTimer*(disp: AioDispatcher, timeout: int, oneshot: bool, cb: AioTim
         raiseOSError(osLastError())
 
   data.fdPcd.ioPort = disp.ioPort
-  data.fdPcd.handleFd = hEvent.AioFD
+  data.fdPcd.handleFd = hEvent.SelectFD
   data.fdPcd.ovl = CustomObj()
   # We need to protect our callback environment value, so GC will not free it
   # accidentally.
-  data.fdPcd.ovl.data = CompletionData(fd: hEvent.AioFD, cb: cdataCb, cell: system.protect(rawEnv(data.fdPcd.ovl.data.cb)))
+  data.fdPcd.ovl.data = CompletionData(fd: hEvent.SelectFD, cb: cdataCb, cell: system.protect(rawEnv(data.fdPcd.ovl.data.cb)))
   var flags = WT_EXECUTEINWAITTHREAD.DWORD
   if oneshot: flags = flags or WT_EXECUTEONLYONCE
   if not registerWaitForSingleObject(data.fdPcd.waitFd.addr, hEvent,
@@ -201,21 +202,21 @@ proc registerTimer*(disp: AioDispatcher, timeout: int, oneshot: bool, cb: AioTim
     raiseOSError(err)
   disp.handles[hEvent.int] = data
 
-proc unregisterTimer*(disp: AioDispatcher, timer: AioTimer) = 
+proc unregisterTimer*(disp: AioDispatcher, timer: SelectTimer) = 
   ## 从调度器删除一个已经注册的描述符 ``fd`` 。
   if closeHandle(disp.handles[timer.int].timerEvent) == 0:
     raiseOSError(osLastError())
   disp.handles.del(timer.int)
 
-proc registerEvent*(disp: AioDispatcher, event: AioEvent, cb: AioEventCb) = 
+proc registerEvent*(disp: AioDispatcher, event: SelectEvent, cb: SelectEventCb) = 
   ## 为调度器注册一个描述符 ``fd`` 。当该描述符接收到感兴趣的事件时，运行回调函数 ``data`` 。这个函数仅仅
   ## 注册描述符，并不为描述符绑定感兴趣的事件。 TODO：“事件” 这个词需要推敲一下，看看网络上有没有合适的词语替代。
   let hEvent = event.hEvent
 
   let data = new(AioData)
-  data.kind = AioKind.AioEvent
+  data.kind = AioKind.SelectEvent
 
-  proc cdataCb(fd: AioFD, bytesCount: DWORD, errcode: OSErrorCode) =
+  proc cdataCb(fd: SelectFD, bytesCount: DWORD, errcode: OSErrorCode) =
     if event.hWaiter != 0:
       cb(disp, event)
       if event.hWaiter != 0:
@@ -227,11 +228,11 @@ proc registerEvent*(disp: AioDispatcher, event: AioEvent, cb: AioEventCb) =
         event.hWaiter = 0
 
   data.fdPcd.ioPort = disp.ioPort
-  data.fdPcd.handleFd = hEvent.AioFD
+  data.fdPcd.handleFd = hEvent.SelectFD
   data.fdPcd.ovl = CustomObj()
   # We need to protect our callback environment value, so GC will not free it
   # accidentally.
-  data.fdPcd.ovl.data = CompletionData(fd: hEvent.AioFD, cb: cdataCb, cell: system.protect(rawEnv(data.fdPcd.ovl.data.cb)))
+  data.fdPcd.ovl.data = CompletionData(fd: hEvent.SelectFD, cb: cdataCb, cell: system.protect(rawEnv(data.fdPcd.ovl.data.cb)))
   
   var flags = WT_EXECUTEINWAITTHREAD.DWORD
   if not registerWaitForSingleObject(data.fdPcd.waitFd.addr, hEvent,
@@ -244,7 +245,7 @@ proc registerEvent*(disp: AioDispatcher, event: AioEvent, cb: AioEventCb) =
   
   event.hWaiter = data.fdPcd.waitFd
 
-proc unregisterEvent*(disp: AioDispatcher, event: AioEvent) = 
+proc unregisterEvent*(disp: AioDispatcher, event: SelectEvent) = 
   ## 从调度器删除一个已经注册的描述符 ``fd`` 。
   disp.handles.del(event.hEvent.int)
   if unregisterWait(event.hWaiter) == 0:
@@ -253,10 +254,10 @@ proc unregisterEvent*(disp: AioDispatcher, event: AioEvent) =
       raiseOSError(err)
   event.hWaiter = 0
 
-proc newAioEvent*(): AioEvent =
-  ## Creates a new thread-safe ``AioEvent`` object.
+proc newSelectEvent*(): SelectEvent =
+  ## Creates a new thread-safe ``SelectEvent`` object.
   ##
-  ## New ``AioEvent`` object is not automatically registered with
+  ## New ``SelectEvent`` object is not automatically registered with
   ## dispatcher like ``AsyncSocket``.
   var sa = SECURITY_ATTRIBUTES(
     nLength: sizeof(SECURITY_ATTRIBUTES).cint,
@@ -265,15 +266,15 @@ proc newAioEvent*(): AioEvent =
   var event = createEvent(addr(sa), 0'i32, 0'i32, nil)
   if event == INVALID_HANDLE_VALUE:
     raiseOSError(osLastError())
-  result = cast[AioEvent](allocShared0(sizeof(AioEventImpl)))
+  result = cast[SelectEvent](allocShared0(sizeof(SelectEventImpl)))
   result.hEvent = event
 
-proc trigger*(event: AioEvent) =
+proc trigger*(event: SelectEvent) =
   ## Set event ``ev`` to signaled state.
   if setEvent(event.hEvent) == 0:
     raiseOSError(osLastError())
 
-proc close*(event: AioEvent) =
+proc close*(event: SelectEvent) =
   ## Closes event ``ev``.
   let res = closeHandle(event.hEvent)
   deallocShared(cast[pointer](event))
@@ -285,7 +286,7 @@ proc close*(event: AioEvent) =
 # proc newAioDispatcher*(): AioDispatcher = 
 #   new(result)
 #   result.ioPort = createIoCompletionPort(INVALID_HANDLE_VALUE, 0, 0, 1)
-#   result.handles = initHashSet[AioFD]()
+#   result.handles = initHashSet[SelectFD]()
 #   # result.timers.newHeapQueue()
 #   result.callbacks = initDeque[proc () {.closure, gcsafe.}](64)
 
@@ -304,15 +305,15 @@ proc close*(event: AioEvent) =
 #     let events = keys[i].events
 #     var data: ptr AioData = addr disp.selector.getData(fd)
 #     case data.kind
-#     of AioKind.AioFD:
-#       var evs: set[AioFDEvent] = {}
-#       if Event.Read in events: evs.incl(AioFDEvent.Read)
-#       if Event.Write in events: evs.incl(AioFDEvent.Write)
-#       if Event.Error in events: evs.incl(AioFDEvent.Error)
-#       data.fdCb(disp, fd.AioFD, evs)
-#     of AioKind.AioTimer:
-#       data.timerCb(disp, fd.AioTimer)
-#     of AioKind.AioEvent:
+#     of AioKind.SelectFD:
+#       var evs: set[FDEvent] = {}
+#       if Event.Read in events: evs.incl(FDEvent.Read)
+#       if Event.Write in events: evs.incl(FDEvent.Write)
+#       if Event.Error in events: evs.incl(FDEvent.Error)
+#       data.fdCb(disp, fd.SelectFD, evs)
+#     of AioKind.SelectTimer:
+#       data.timerCb(disp, fd.SelectTimer)
+#     of AioKind.SelectEvent:
 #       data.eventCb(disp, data.eventPtr)
 
 #   # if unlikely(asyncdispatch.getGlobalDispatcher().callbacks.len() > 0):
