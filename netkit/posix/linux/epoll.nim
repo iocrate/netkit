@@ -20,6 +20,9 @@ const
   EPOLL_CTL_DEL* = 2  
   EPOLL_CTL_MOD* = 3  
 
+const
+  EPOLL_CLOEXEC* = 0x80000
+
 type
   EpollData* {.importc: "union epoll_data", header: "<sys/epoll.h>", union, final.} = object 
     data* {.importc: "ptr".}: pointer
@@ -32,8 +35,6 @@ type
     data*: EpollData 
 
   SignalSet* {.importc: "sigset_t", header: "<sys/signal.h>", pure, final.} = object
-
-echo $sizeof(EpollEvent)
 
 proc epoll_create*(size: cint): cint {.
   importc: "epoll_create",
