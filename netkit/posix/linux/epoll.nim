@@ -25,8 +25,8 @@ const
 
 type
   EpollData* {.importc: "union epoll_data", header: "<sys/epoll.h>", union, final.} = object 
-    data* {.importc: "ptr".}: pointer
     fd* {.importc: "fd".}: cint
+    data* {.importc: "ptr".}: pointer
     u32* {.importc: "u32".}: uint32
     u64* {.importc: "u64".}: uint64
 

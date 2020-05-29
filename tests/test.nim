@@ -99,4 +99,3 @@ proc main() =
   joinThreads(thr)
   echo "1:", repr s
 
-main()

@@ -1,0 +1,33 @@
+@startuml
+scale 1200 width
+
+left to right direction
+
+component Selector #Lime
+
+interface "register()" as R
+interface "select()" as S
+
+R --> Selector 
+Selector --> S
+
+component Intent #Skyblue [
+  Intent
+  ---
+  uint32
+]
+
+Intent -- R 
+
+component Event #LightSkyBlue [
+  Event
+  ---
+  uint32
+]
+S -- Event
+
+
+@enduml
+
+
+

@@ -336,6 +336,13 @@ proc serve*(
   #   SocketHandle(peer.client).setBlocking(false)
   #   asyncCheck server.handleNextRequest(newHttpConnection(peer.client, peer.address, readTimeout))
 
-var server = newAsyncHttpServer()
+var
+  thr: array[0..4, Thread[void]]
 
-server.serve(Port(8080))
+proc threadFunc() {.thread.} =
+  var server = newAsyncHttpServer()
+  server.serve(Port(8080))
+
+for i in 0..3:
+  createThread(thr[i], threadFunc)
+joinThreads(thr)
