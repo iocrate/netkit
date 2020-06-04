@@ -6,27 +6,15 @@ type
 
   Future*[T] = ref object of FutureBase
     value: T
-
-  AioPromiseCode* {.pure.} = enum # TODO: size 优化，与 Promise 一致
-    Send, Recv
-
-  AioPromise* = ref object of RootObj
-    code*: AioPromiseCode
     
-  Promise*[T] = ref object of AioPromise
+  Promise*[T] = object 
     future: Future[T]
 
   CallbackFunc* = proc () {.gcsafe.}
 
-proc newPromise*[T](): Promise[T] =
-  new(result)
+proc initPromise*[T](): Promise[T] =
   result.future = new(Future[T])
   result.future.finished = false
-
-proc init*[T](promise: Promise[T], code: AioPromiseCode) =
-  promise.code = code
-  promise.future = new(Future[T])
-  promise.future.finished = false
 
 proc setValue*[T](promise: Promise[T], value: T) =
   let future = promise.future
