@@ -41,6 +41,10 @@ proc `[]=`*[T](x: var SharedVec[T], i: Natural, v: sink T) {.inline.} =
 proc len*[T](x: SharedVec[T]): Natural {.inline.} = 
   x.len
 
+iterator items*[T](x: SharedVec[T]): var T = 
+  for i in len..<x.len: 
+    yield x.data[i]
+
 proc resize*[T](x: var SharedVec[T], len: Natural) =
   if x.len > len: 
     for i in len..<x.len: 
