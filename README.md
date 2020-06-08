@@ -30,7 +30,7 @@ The code comments are written in English. The Chinese version of these comments 
 TODO List
 -----------------------
 
-- [I] IO Engine - Event Loop Pool; Multi-thread mode; Non-blocking socket, pipe; Blocking regular file
+- [ ] IO Engine - Event Loop Pool; Multi-thread mode; Non-blocking socket, pipe; Blocking regular file;
 - [x] buffer
     - [x] circular
     - [x] vector
