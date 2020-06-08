@@ -13,6 +13,8 @@ Netkit is not intended to be a high-level productivity development tool, but rat
 - [Documentation - BTW: temporary, requires a more friendly homepage](https://iocrate.github.io/netkit.html)
 - [Documentation zh - BTW: temporary, requires a more friendly homepage](https://iocrate.github.io/zh/netkit.html)
 
+A new IO engine, which has a (selector) loop pool in multi-thread non-blocking mode, is being developed in **devel** branch. Indeed, I am no longer satisfied with the IO engine in standard library. 
+
 Run Test
 ---------
 
@@ -28,6 +30,7 @@ The code comments are written in English. The Chinese version of these comments 
 TODO List
 -----------------------
 
+- [I] IO Engine - Event Loop Pool; Multi-thread mode; Non-blocking socket, pipe; Blocking regular file
 - [x] buffer
     - [x] circular
     - [x] vector
