@@ -13,7 +13,7 @@ Netkit is not intended to be a high-level productivity development tool, but rat
 - [Documentation - BTW: temporary, requires a more friendly homepage](https://iocrate.github.io/netkit.html)
 - [Documentation zh - BTW: temporary, requires a more friendly homepage](https://iocrate.github.io/zh/netkit.html)
 
-A new IO engine, which has a (selector) loop pool in multi-thread non-blocking mode, is being developed in **devel** branch. Indeed, I am no longer satisfied with the IO engine in standard library. 
+A new IO engine, inspired by Netty, which has a (selector) loop pool in multi-thread non-blocking mode, is being developed in **devel** branch. Indeed, we are no longer satisfied with the IO engine in standard library. 
 
 Run Test
 ---------
