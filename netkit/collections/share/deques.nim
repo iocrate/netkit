@@ -58,19 +58,19 @@ template checkMaxBounds[T](x: SharedDeque[T], i: Natural) =
   # ``-d:release`` should disable this.
   when compileOption("boundChecks"): 
     if unlikely(i >= x.len): 
-      raise newException(IndexDefect, "Out of bounds: " & $i & " > " & $(x.len - 1))
+      raise newException(IndexDefect, "value out of bounds: " & $i & " > " & $(x.len - 1))
 
 template checkMinBounds[T](x: SharedDeque[T], i: Natural) =
   # ``-d:release`` should disable this.
   when compileOption("boundChecks"): 
     if unlikely(i < 0): 
-      raise newException(IndexDefect, "Out of bounds: " & $i & " < 0")
+      raise newException(IndexDefect, "value out of bounds: " & $i & " < 0")
 
 template checkEmpty[T](x: SharedDeque[T]) =
   # Bounds check for the regular deque access.
   when compileOption("boundChecks"):
     if unlikely(x.len < 1):
-      raise newException(IndexDefect, "Empty deque.")
+      raise newException(IndexDefect, "empty deque")
 
 proc `=destroy`*[T](x: var SharedDeque[T]) = 
   if x.data != nil:

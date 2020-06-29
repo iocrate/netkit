@@ -9,13 +9,13 @@ template checkMaxBounds[T](x: SharedVec[T], i: Natural) =
   # ``-d:release`` should disable this.
   when compileOption("boundChecks"): 
     if unlikely(i >= x.len): 
-      raise newException(IndexDefect, "Out of bounds: " & $i & " > " & $(x.len - 1))
+      raise newException(IndexDefect, "value out of bounds: " & $i & " > " & $(x.len - 1))
 
 template checkMinBounds[T](x: SharedVec[T], i: Natural) =
   # ``-d:release`` should disable this.
   when compileOption("boundChecks"): 
     if unlikely(i < 0): 
-      raise newException(IndexDefect, "Out of bounds: " & $i & " < 0")
+      raise newException(IndexDefect, "value out of bounds: " & $i & " < 0")
 
 proc `=destroy`*[T](x: var SharedVec[T]) = 
   if x.data != nil:

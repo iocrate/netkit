@@ -44,7 +44,52 @@ proc release*(L: var AsyncLock) =
     else:
       L.locked = false
 
-proc isLocked*(L: AsyncLock): bool = 
+proc isLocked*(L: AsyncLock): bool {.inline.} = 
   ## Returns ``true`` if ``L`` is locked.
   L.locked
   
+type
+  SpinLock* = object ## A spin lock.
+    locked: bool
+
+proc initSpinLock*(): SpinLock = 
+  ## Initializes an ``SpinLock``.
+  result.locked = false
+
+proc acquire*(L: var SpinLock) {.inline.} = 
+  ## Tries to acquire a lock. When this future is completed, it indicates that the lock is acquired.
+  while not cas(addr L.locked, false, true): cpuRelax()
+
+proc release*(L: var SpinLock) {.inline.} = 
+  ## Releases the lock that has been acquired. 
+  L.locked = false
+
+proc isLocked*(L: SpinLock): bool {.inline.} = 
+  ## Returns ``true`` if ``L`` is locked.
+  L.locked
+  
+template withLock*(L: SpinLock, body: untyped) = 
+  L.acquire()
+  try:
+    body
+  finally:
+    L.release()
+
+when isMainModule:
+  var spinLock = initSpinLock()
+  var spinCount = 0
+
+  proc spinThreadFunc() {.thread.} =
+    for j in 0..<100000:
+      withLock spinLock:
+        spinCount = spinCount + 1   
+
+  proc spinTest() = 
+    var threads: array[8, Thread[void]]
+    for i in 0..<8:
+      createThread(threads[i], spinThreadFunc)
+    joinThreads(threads)
+    doAssert spinCount == 800000
+
+  spinTest()
+
