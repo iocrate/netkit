@@ -173,12 +173,51 @@ discard """
 # main()
 
 
-type
-  OptionDemo = object
-    val: int
-    has: bool
+# type
+#   OptionDemo = object
+#     val: int
+#     has: bool
 
-var Test_demo = OptionDemo()
-var data = Test_demo.val
-echo "[R] ", data
-zeroMem(Test_demo.addr, 16) 
+# var Test_demo = OptionDemo()
+# var data = Test_demo.val
+# echo "[R] ", data
+# zeroMem(Test_demo.addr, 16) 
+
+# import volatile
+
+# var a: int = 1;
+# var b: int = 2;
+# var c: int;
+
+
+# proc f() =
+#   # a = b;
+#   # c = 1;
+#   volatileStore(a.addr, b)
+#   volatileStore(c.addr, 1)
+
+# f()
+
+# var 
+#   r: int = 0
+
+# proc threadFunc1() {.thread.} =
+#   while r != 1: 
+#     continue
+#   echo "Got r=2"
+
+# proc threadFunc2() {.thread.} =
+#   r = 1
+
+# proc main() =
+#   var
+#     thread1: Thread[void]
+#     thread2: Thread[void]
+
+#   createThread(thread1, threadFunc1)
+#   createThread(thread2, threadFunc2)
+
+#   joinThread(thread1)
+#   joinThread(thread2)
+
+# main()

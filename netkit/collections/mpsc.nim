@@ -1,81 +1,142 @@
 
 
 import std/math
-import std/options
 import netkit/locks
+import netkit/alloctor
 
 type
-  MpscQueue*[T] = object of RootObj
+  SigCounter* = ptr object of RootObj
+    signalImpl*: proc (c: SigCounter) {.nimcall, gcsafe.}
+    waitImpl*: proc (c: SigCounter): Natural {.nimcall, gcsafe.}
+
+proc signal*(c: SigCounter) {.inline.} =
+  c.signalImpl(c) 
+
+proc wait*(c: SigCounter): Natural {.inline.} =
+  c.waitImpl(c) 
+
+type
+  MpscQueue*[T] = object 
     writeLock: SpinLock
     data: ptr UncheckedArray[T]
-    head, tail, cap, mask: Natural
+    head: Natural
+    tail: Natural 
+    cap: Natural
+    mask: Natural
+    len: Natural
+    counter: SigCounter
+    counterAlloctor: Alloctor[SigCounter]
 
-proc init*[T](x: var MpscQueue[T], initialSize: Natural = 4) =
-  assert isPowerOfTwo(initialSize)
-  x.writeLock = initSpinLock()
-  x.cap = initialSize
-  x.mask = initialSize - 1
-  x.data = cast[ptr UncheckedArray[T]](allocShared0(sizeof(T) * initialSize))
+proc `=destroy`*[T](x: var MpscQueue[T]) = 
+  deallocShared(x.data)
+  x.counterAlloctor.dealloc(x.counter)
 
-proc produce*[T](x: var MpscQueue[T], item: sink T): bool = 
+proc initMpscQueue*[T](counterAlloctor: Alloctor[SigCounter], cap: Natural = 4): MpscQueue[T] =
+  assert isPowerOfTwo(cap)
+  result.writeLock = initSpinLock()
+  result.data = cast[ptr UncheckedArray[T]](allocShared0(sizeof(T) * cap))
+  result.head = 0
+  result.tail = 0
+  result.cap = cap
+  result.mask = cap - 1
+  result.len = 0
+  result.counterAlloctor = counterAlloctor
+  result.counter = result.counterAlloctor.alloc()
+
+proc tryAdd*[T](x: var MpscQueue[T], item: sink T): bool = 
+  result = true
   withLock x.writeLock:
     let next = (x.tail + 1) and x.mask
     if unlikely(next == x.head):
       return false
     x.data[x.tail] = item
     x.tail = next
-    return true
+  fence()
+  x.counter.signal()
 
-proc produceUntil*[T](x: var MpscQueue[T], item: sink T) = 
+proc add*[T](x: var MpscQueue[T], item: sink T) = 
   withLock x.writeLock:
     let next = (x.tail + 1) and x.mask
     while unlikely(next == x.head):
       cpuRelax()
     x.data[x.tail] = item
     x.tail = next
+  fence()
+  x.counter.signal()
+
+proc len*[T](x: var MpscQueue[T]): Natural {.inline.} = 
+  x.len
   
-proc comsume*[T](x: var MpscQueue[T]): Option[T] = 
-  if x.head == x.tail:
-    return none
+proc sync*[T](x: var MpscQueue[T]) {.inline.} = 
+  x.len.inc(x.counter.wait())
+  
+proc take*[T](x: var MpscQueue[T]): T = 
   result = move(x.data[x.head])
   x.head = (x.head + 1) and x.mask
+  x.len.dec()
+
+when isMainModule and defined(linux):
+  import std/os
+  import std/posix
+
+  proc eventfd*(initval: cuint, flags: cint): cint {.
+    importc: "eventfd", 
+    header: "<sys/eventfd.h>"
+  .}
+
+  type 
+    MySigCounter = ptr object of SigCounter
+      efd: cint
+
+  proc signalMySigCounter(c: SigCounter) = 
+    var buf = 1'u64
+    if cast[MySigCounter](c).efd.write(buf.addr, sizeof(buf)) < 0:
+      raiseOSError(osLastError())
   
-proc comsumeUntil*[T](x: var MpscQueue[T]): T = 
-  while x.head == x.tail:
-    cpuRelax()
-  result = move(x.data[x.head])
-  x.head = (x.head + 1) and x.mask
+  proc waitMySigCounter(c: SigCounter): Natural = 
+    var buf = 0'u64
+    if cast[MySigCounter](c).efd.read(buf.addr, sizeof(buf)) < 0:
+      raiseOSError(osLastError())
+    result = buf # TODO: u64 -> int 考虑溢出
+    echo "wait:", $buf
 
-iterator comsumes*[T](x: var MpscQueue[T]): lent T =
-  ## Yield every element of `deq`.
-  ##
-  while x.head != x.tail:
-    yield x.data[x.head]
-    reset(x.data[x.head])
-    x.head = (x.head + 1) and x.mask
+  proc allocMySigCounter(): SigCounter = 
+    let p = cast[MySigCounter](allocShared0(sizeof(MySigCounter)))
+    p.signalImpl = signalMySigCounter
+    p.waitImpl = waitMySigCounter
+    p.efd = eventfd(0, 0)
+    if p.efd < 0:
+      raiseOSError(osLastError())
+    result = p
 
-when isMainModule:
-  var counter = 0
-  var mq: MpscQueue[int] 
-  mq.init()
+  proc deallocMySigCounter(c: SigCounter) =
+    deallocShared(cast[MySigCounter](c))
 
-  proc produceThreadFunc() {.thread.} =
-    for i in 0..<600000:
-      mq.produceUntil(i) 
+  var rcounter = 0
+  var rsum = 0
+  var mq = initMpscQueue[int](initAlloctor(allocMySigCounter, deallocMySigCounter))
 
-  proc consumeThreadFunc() {.thread.} =
-    while counter < 1800000:
-      for x in mq.comsumes():
-        counter.inc()
+  proc producerFunc() {.thread.} =
+    for i in 1..1000:
+      mq.add(i) 
+
+  proc consumerFunc() {.thread.} =
+    while rcounter < 4000:
+      mq.sync()
+      while mq.len > 0:
+        rcounter.inc()
+        var val = mq.take()
+        rsum.inc(val)
 
   proc test() = 
-    var producers: array[3, Thread[void]]
+    var producers: array[4, Thread[void]]
     var comsumer: Thread[void]
-    for i in 0..<3:
-      createThread(producers[i], produceThreadFunc)
-    createThread(comsumer, consumeThreadFunc)
+    for i in 0..<4:
+      createThread(producers[i], producerFunc)
+    createThread(comsumer, consumerFunc)
     joinThreads(producers)
     joinThreads(comsumer)
-    doAssert counter == 1800000
+    doAssert rsum == ((1 + 1000) * (1000 div 2)) * 4 # (1 + n) * n / 2
 
   test()
+
