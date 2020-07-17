@@ -22,14 +22,45 @@ type
     head: Natural
     tail: Natural 
     cap: Natural
-    mask: Natural
     len: Natural
+    mask: Natural
     counter: SigCounter
     counterAlloctor: Alloctor[SigCounter]
 
 proc `=destroy`*[T](x: var MpscQueue[T]) = 
-  deallocShared(x.data)
-  x.counterAlloctor.dealloc(x.counter)
+  if x.data != nil:
+    for i in 0..<x.len: 
+      `=destroy`(x.data[i])
+    deallocShared(x.data)
+    x.data = nil
+    x.counterAlloctor.dealloc(x.counter)
+    x.counter = nil
+
+proc `=sink`*[T](dest: var MpscQueue[T], source: MpscQueue[T]) = 
+  `=destroy`(dest)
+  dest.data = source.data
+  dest.head = source.head
+  dest.tail = source.tail
+  dest.cap = source.cap
+  dest.len = source.len
+  dest.mask = source.mask
+  dest.counter = source.counter
+  dest.counterAlloctor = source.counterAlloctor
+
+proc `=`*[T](dest: var MpscQueue[T], source: MpscQueue[T]) =
+  if dest.data != source.data: 
+    `=destroy`(dest)
+    dest.head = source.head
+    dest.tail = source.tail
+    dest.cap = source.cap
+    dest.len = source.len
+    dest.mask = source.mask
+    dest.counterAlloctor = source.counterAlloctor
+    if source.data != nil:
+      let blockLen = sizeof(T) * source.len
+      dest.data = cast[ptr UncheckedArray[T]](allocShared0(blockLen))
+      copyMem(dest.data, source.data, blockLen)
+      dest.counter = dest.counterAlloctor.alloc()
 
 proc initMpscQueue*[T](counterAlloctor: Alloctor[SigCounter], cap: Natural = 4): MpscQueue[T] =
   assert isPowerOfTwo(cap)
@@ -140,3 +171,7 @@ when isMainModule and defined(linux):
 
   test()
 
+
+
+
+  
