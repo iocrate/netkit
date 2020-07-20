@@ -17,9 +17,10 @@ matrix:
       env: CHANNEL=stable
       compiler: clang
 
-    - os: windows
-      env: CHANNEL=stable
-      compiler: gcc
+    # blocked by https://github.com/dom96/choosenim/pull/201
+    # - os: windows
+    #   env: CHANNEL=stable
+    #   compiler: gcc
 
 
   allow_failures:
