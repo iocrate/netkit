@@ -221,3 +221,22 @@ discard """
 #   joinThread(thread2)
 
 # main()
+
+
+# type
+#   Demo = ptr object
+#     val: int
+#     a: string
+#     b: string
+#     c: string
+
+# proc testFunc(x: Demo): int = 
+#   return x.val + 100
+
+# proc setFunc(x: ptr Demo) = 
+#   var a = testFunc(x[])
+#   var b = a
+
+# var demo = Demo()
+# discard testFunc((demo.addr)[])
+# setFunc(demo.addr)
