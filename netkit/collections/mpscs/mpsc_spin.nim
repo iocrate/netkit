@@ -160,11 +160,11 @@ when isMainModule and defined(linux):
   var mq = initMpscQueue[ptr Task](sigCounter, 4)
 
   proc producerFunc() {.thread.} =
-    for i in 1..10000:
+    for i in 1..1000000:
       mq.add(createTask(i)) 
 
   proc consumerFunc() {.thread.} =
-    while counter < 40000:
+    while counter < 4000000:
       mq.sync()
       while mq.len > 0:
         counter.inc()
@@ -181,7 +181,7 @@ when isMainModule and defined(linux):
     joinThreads(producers)
     joinThreads(comsumer)
     sigCounter.destroy()
-    doAssert sum == ((1 + 10000) * (10000 div 2)) * 4 # (1 + n) * n / 2
+    doAssert sum == ((1 + 1000000) * (1000000 div 2)) * 4 # (1 + n) * n / 2
 
   test()
 
