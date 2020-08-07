@@ -2,7 +2,7 @@
 import netkit/collections/share/deques
 
 type
-  Identity = distinct Natural
+  Identity* = distinct Natural
 
   IdentityManager* = object
     curr: Natural
