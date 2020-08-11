@@ -69,90 +69,10 @@ import std/posix
 
 import netkit/collections/mpsc
 import netkit/collections/share/vecs
+import netkit/collections/taskcounter
+import netkit/collections/simplequeue
 import netkit/posix/linux/selector
 import netkit/aio/ident
-
-proc eventfd*(initval: cuint, flags: cint): cint {.
-  importc: "eventfd", 
-  header: "<sys/eventfd.h>"
-.}
-
-type
-  TaskCounter = object of SigCounter
-    fd: cint
-
-proc signalTaskCounter(c: ptr SigCounter) = 
-  var buf = 1'u64
-  if cast[ptr TaskCounter](c).fd.write(buf.addr, sizeof(buf)) < 0:
-    raiseOSError(osLastError()) # TODO: 考虑 errorno == Enter, EAGAIN, EWOULDBLOCK
-
-proc waitTaskCounter(c: ptr SigCounter): Natural = 
-  var buf = 0'u64
-  if cast[ptr TaskCounter](c).fd.read(buf.addr, sizeof(buf)) < 0:
-    raiseOSError(osLastError())
-  result = buf # TODO: u64 -> int 考虑溢出；考虑 errorno == Enter, EAGAIN, EWOULDBLOCK
-
-type
-  SimpleNode[T] = object
-    next: ptr SimpleNode[T]
-    val*: T
-
-  SimpleQueue[T] = object
-    head: ptr SimpleNode[T]
-    tail: ptr SimpleNode[T]
-    len: Natural
-
-proc createSimpleNode[T](): ptr SimpleNode[T] =
-  cast[ptr SimpleNode[T]](alloc0(sizeof(SimpleNode[T])))
-
-proc createSimpleNode[T](val: sink T): ptr SimpleNode[T] =
-  result = cast[ptr SimpleNode[T]](alloc0(sizeof(SimpleNode[T])))
-  result.val = val
-
-proc destroy[T](node: ptr SimpleNode[T]) {.inline.} =
-  dealloc(node)
-
-proc initSimpleQueue[T](): SimpleQueue[T] = 
-  discard
-
-proc len[T](Q: SimpleQueue[T]): Natural {.inline.} = 
-  Q.len
-
-proc addLast[T](Q: var SimpleQueue[T], node: ptr SimpleNode[T]) = 
-  # result = case[ptr SimpleNode[T]](alloc0(sizeof(SimpleNode[T])))
-  assert node != nil
-  assert node.next == nil
-  if Q.tail == nil:
-    Q.head = node
-  else:
-    Q.tail.next = node
-  Q.tail = node
-  Q.len.inc()
-
-proc popFirst[T](Q: var SimpleQueue[T]): ptr SimpleNode[T] = 
-  if Q.head != nil:
-    result = Q.head
-    Q.head = Q.head.next
-    result.next = nil
-    Q.len.dec()
-
-proc peekFirst[T](Q: var SimpleQueue[T]): ptr SimpleNode[T] {.inline.} = 
-  Q.head
-
-iterator nodes[T](Q: var SimpleQueue[T]): ptr SimpleNode[T] = 
-  var node = Q.head
-  while node != nil:
-    yield node
-    node = node.next
-
-iterator nodesByPop[T](Q: var SimpleQueue[T]): ptr SimpleNode[T] = 
-  while Q.head != nil:
-    let node = Q.head
-    let next = node.next
-    node.next = nil
-    Q.head = next
-    Q.len.dec()
-    yield node
 
 type
   Runnable* = tuple 
@@ -160,24 +80,22 @@ type
     run: proc (context: pointer) {.nimcall, gcsafe.}
     destroy: proc (context: pointer) {.nimcall, gcsafe.}
 
-  RunnableQueue = SimpleQueue[Runnable]
-
-type
   Worker = object
     id: int
-    taskEventFd: cint
+    taskSemaphore: cint
     taskCounter: TaskCounter
     taskQueue: MpscQueue[Runnable]
-    selector: Selector
-    interests: SharedVec[InterestData] # 散列 handle -> data
-    identManager: IdentityManager
+    ioSelector: Selector
+    ioInterests: SharedVec[InterestData] # 散列 handle -> data
+    ioIdentManager: IdentityManager
 
   InterestData = object
     fd: cint
     interest: Interest
     readReady: bool
-    readQueue: RunnableQueue
-    writeQueue: RunnableQueue
+    readQueue: SimpleQueue[Runnable]
+    writeQueue: SimpleQueue[Runnable]
+    has: bool
 
 const
   MaxThreadPoolSize* {.intdefine.} = 256 ## Maximum size of the thread pool. 256 threads
@@ -199,129 +117,160 @@ proc spawn*(runnable: Runnable) =
   recursiveThreadId = recursiveThreadId mod (currentPoolSize - 1) + 1
   workersData[recursiveThreadId].taskQueue.add(runnable)
 
-proc run(w: ptr Worker) {.thread.} =
-  echo "Start Thread: ", w.id
-  currentThreadId = w.id
-
-  # interest 表注册 ([文件描述符 -> ident] - 感兴趣的数据 (缓存))
-  # selector 注册 (文件描述符 - ident, 感兴趣的事件)
-  var identEventFd = w.identManager.acquire()
+proc registerSemaphore(fd: cint): Identity =
+  let w = workersData[currentThreadId].addr
+  result = w.ioIdentManager.acquire()
+  assert w.ioInterests.len > result.int
   var interest = initInterest()
   interest.registerReadable()
-  w.selector.register(w.taskEventFd, UserData(u64: identEventFd.uint64), interest)
-  var data = InterestData(
-    fd: identEventFd.cint,
-    interest: interest
-  )
-  w.interests[identEventFd.int] = data
+  let data = w.ioInterests[result.int].addr
+  data.fd = fd
+  data.interest = interest
+  data.has = true
+  w.ioSelector.register(fd, UserData(u64: result.uint64), interest)
 
-  # TODO: 考虑 events 的容量；使用 Vec -> newSeq；Event kind
-  # 考虑使用 thread local heap?
-  var events = newSeq[Event](128)
+proc run*(w: ptr Worker) {.thread.} =
+  let w = workersData[currentThreadId].addr
+
+  template handleSemaphoreEvent() =
+    w.taskQueue.sync()
+    while w.taskQueue.len > 0:
+      let task = w.taskQueue.take()
+      task.run(task.context)
+      if task.destroy != nil:
+        task.destroy(task.context)
+
+  template handleReadableEvent(event: Event) =
+    let data = w.ioInterests[event.data.u64].addr
+    echo "isReadable or isError...", data.readQueue.len, " [", currentThreadId, "]"
+    for node in data.readQueue.nodesByPop():
+      node.val.run(node.val.context)
+      if node.val.destroy != nil:
+        node.val.destroy(node.val.context)
+      node.destroy() 
+
+  template handleWritableEvent(event: Event) =
+    let data = w.ioInterests[event.data.u64].addr
+    echo "isWritable or isError...", data.writeQueue.len, " [", currentThreadId, "]"
+    for node in data.writeQueue.nodesByPop():
+      node.val.run(node.val.context)
+      if node.val.destroy != nil:
+        node.val.destroy(node.val.context)
+      node.destroy()  
+
+  currentThreadId = w.id
+  let taskSemaphoreIdent = registerSemaphore(w.taskSemaphore)
+  var events = newSeq[Event](128) # TODO: 考虑 events 的容量；使用 Vec -> newSeq；Event kind # 考虑使用 thread local heap?
   while true:
-    # TODO: 考虑 select 超时
-    let count = w.selector.select(events, -1)
+    let count = w.ioSelector.select(events, -1) # TODO: 考虑 select 超时；考虑 count <= 0
     for i in 0..<count:
-      let event = events[i].addr
-      if event[].data.u64 == identEventFd.uint64:
-        # read eventfd 应该不会出现错误 (否则，是一个 fatal error or program error)
-        # read eventfd 应该只有 readable
-        if event[].isReadable:
-          w.taskQueue.sync()
-          while w.taskQueue.len > 0:
-            var task = w.taskQueue.take()
-            task.run(task.context)
-            task.destroy(task.context)
+      let event = events[i]
+      if event.data.u64 == taskSemaphoreIdent.uint64:
+        if event.isReadable: # read eventfd 应该不会出现错误 (否则，是一个 fatal error or program error)
+          handleSemaphoreEvent()
         else:
           raise newException(Defect, "bug， 不应该遇到这个错误")
       else:
-        var ident = event[].data.u64
-        var data = w.interests[ident].addr
-        if event[].isReadable or event[].isError:
-          echo "isReadable or isError...", data.readQueue.len, " [", currentThreadId, "]"
-          for node in data.readQueue.nodesByPop():
-            node.val.run(node.val.context)
-            node.val.destroy(node.val.context)
-            node.destroy()  
-        if event[].isWritable or event[].isError:
-          echo "isWritable or isError...", data.writeQueue.len, " [", currentThreadId, "]"
-          for node in data.writeQueue.nodesByPop():
-            node.val.run(node.val.context)
-            node.val.destroy(node.val.context)
-            node.destroy()  
+        if event.isReadable or event.isError:
+          handleReadableEvent(event)
+        if event.isWritable or event.isError:
+          handleWritableEvent(event)
 
-proc register(fd: cint): Identity =
+proc register*(fd: cint): Identity =
   let w = workersData[currentThreadId].addr
-  result = w.identManager.acquire()
-  var interest = initInterest()
-  w.interests[result.int] = InterestData(
-    fd: fd,
-    interest: interest,
-    readReady: false,
-    readQueue: initSimpleQueue[Runnable](),
-    writeQueue: initSimpleQueue[Runnable]()
-  )
-  w.selector.register(fd, UserData(u64: result.uint64), interest)
-
-proc unregister(ident: Identity) =
-  let w = workersData[currentThreadId].addr
-  if w.interests.len > ident.int:
+  let interest = initInterest()
+  result = w.ioIdentManager.acquire()
+  if w.ioInterests.len <= result.int:
     # TODO: 考虑边界
-    var data = w.interests[ident.int].addr
-    if data.fd <= 0:
-      raise newException(ValueError, "File descriptor not registered")
-    reset(w.interests[ident.int]) # TODO
-    w.identManager.release(ident)
-    w.selector.unregister(data.fd)
-  else:
-    raise newException(ValueError, "边界问题")
-  # TODO: 考虑 w.interests[ident.int] 内部成员的内存问题
+    discard
+  let data = w.ioInterests[result.int].addr
+  data.fd = fd
+  data.interest = interest
+  data.readReady = false
+  data.readQueue = initSimpleQueue[Runnable]()
+  data.writeQueue = initSimpleQueue[Runnable]()
+  data.has = true
+  w.ioSelector.register(fd, UserData(u64: result.uint64), interest)
 
-proc addRead(ident: Identity, runnable: Runnable) =
+proc unregister*(ident: Identity) =
   let w = workersData[currentThreadId].addr
-  if w.interests.len > ident.int:
-    # TODO: 考虑边界
-    var data = w.interests[ident.int].addr
-    if data.fd <= 0:
-      raise newException(ValueError, "File descriptor not registered")
+  let data = w.ioInterests[ident.int].addr
+  if not data.has:
+    raise newException(ValueError, "file descriptor not registered")
+  for node in data.readQueue.nodesByPop():
+    if node.val.destroy != nil:
+      node.val.destroy(node.val.context)
+    node.destroy()  
+  for node in data.writeQueue.nodesByPop():
+    if node.val.destroy != nil:
+      node.val.destroy(node.val.context)
+    node.destroy()  
+  reset(w.ioInterests[ident.int]) # TODO
+  w.ioSelector.unregister(data.fd)
+  w.ioIdentManager.release(ident)
+
+proc unregisterReadable*(ident: Identity) =
+  let w = workersData[currentThreadId].addr
+  let data = w.ioInterests[ident.int].addr
+  if not data.has:
+    raise newException(ValueError, "file descriptor not registered")
+  if data.interest.isReadable():
+    for node in data.readQueue.nodesByPop():
+      if node.val.destroy != nil:
+        node.val.destroy(node.val.context)
+      node.destroy()  
+    data.interest.unregisterReadable()
+    w.ioSelector.update(data.fd, UserData(u64: ident.uint64), data.interest)
+
+proc unregisterWritable*(ident: Identity) =
+  let w = workersData[currentThreadId].addr
+  let data = w.ioInterests[ident.int].addr
+  if not data.has:
+    raise newException(ValueError, "file descriptor not registered")
+  if data.interest.isWritable():
+    for node in data.writeQueue.nodesByPop():
+      if node.val.destroy != nil:
+        node.val.destroy(node.val.context)
+      node.destroy()  
+    data.interest.unregisterWritable()
+    w.ioSelector.update(data.fd, UserData(u64: ident.uint64), data.interest)
+
+proc updateRead*(ident: Identity, runnable: Runnable) =
+  let w = workersData[currentThreadId].addr
+  let data = w.ioInterests[ident.int].addr
+  if not data.has:
+    raise newException(ValueError, "file descriptor not registered")
+  data.readQueue.addLast(createSimpleNode[Runnable](runnable))
+  if not data.interest.isReadable():
     data.interest.registerReadable()
-    let node = createSimpleNode[Runnable](runnable)
-    data.readQueue.addLast(node)
-    w.selector.update(data.fd, UserData(u64: ident.uint64), data.interest)
-  else:
-    raise newException(ValueError, "边界问题")
+    w.ioSelector.update(data.fd, UserData(u64: ident.uint64), data.interest)
 
-proc addWrite(ident: Identity, runnable: Runnable) =
+proc updateWrite*(ident: Identity, runnable: Runnable) =
   let w = workersData[currentThreadId].addr
-  if w.interests.len > ident.int:
-    # TODO: 考虑边界
-    var data = w.interests[ident.int].addr
-    if data.fd <= 0:
-      raise newException(ValueError, "File descriptor not registered")
+  let data = w.ioInterests[ident.int].addr
+  if not data.has:
+    raise newException(ValueError, "file descriptor not registered")
+  data.writeQueue.addLast(createSimpleNode[Runnable](runnable))
+  if not data.interest.isWritable():
     data.interest.registerWritable()
-    let node = createSimpleNode[Runnable](runnable)
-    data.writeQueue.addLast(node)
-    w.selector.update(data.fd, UserData(u64: ident.uint64), data.interest)
-    echo "...", data.writeQueue.len, " ", currentThreadId
-  else:
-    raise newException(ValueError, "边界问题")
+    w.ioSelector.update(data.fd, UserData(u64: ident.uint64), data.interest)
 
 proc startWorkerThread(i: int) {.noinline.} =
   workersData[i].id = i
 
-  workersData[i].taskEventFd = eventfd(0, 0)
-  if workersData[i].taskEventFd < 0:
+  workersData[i].taskSemaphore = eventfd(0, 0)
+  if workersData[i].taskSemaphore < 0:
     raiseOSError(osLastError())
   workersData[i].taskCounter = TaskCounter(
-    fd: workersData[i].taskEventFd,
+    fd: workersData[i].taskSemaphore,
     signalImpl: signalTaskCounter,
     waitImpl: waitTaskCounter
   )
   workersData[i].taskQueue = initMpscQueue[Runnable](workersData[i].taskCounter.addr, 4096)
 
-  workersData[i].selector = initSelector()
-  workersData[i].interests.init(4096)
-  workersData[i].identManager.init()
+  workersData[i].ioSelector = initSelector()
+  workersData[i].ioInterests.init(4096)
+  workersData[i].ioIdentManager.init()
 
   createThread(workers[i], run, workersData[i].addr)
   when defined(nimPinToCpu):
@@ -378,14 +327,14 @@ proc runMyContextWrite(context: pointer) =
   echo "Worker id: ", currentThreadId, " val: ", cast[ptr MyContext](context).val
   echo num
   var ident = register(channel[1])
-  addWrite(ident, (createChannelContext(100), runChannelContextWrite, destroyChannelContext))
+  updateWrite(ident, (createChannelContext(100), runChannelContextWrite, destroyChannelContext))
 
 proc runMyContextRead(context: pointer) =
   num.inc()
   echo "Worker id: ", currentThreadId, " val: ", cast[ptr MyContext](context).val
   echo num
   var ident = register(channel[0])
-  addRead(ident, (createChannelContext(101), runChannelContextRead, destroyChannelContext))
+  updateRead(ident, (createChannelContext(101), runChannelContextRead, destroyChannelContext))
 
 proc setup() =
   let cpus = countProcessors()
