@@ -5,3 +5,5 @@ benchmark/
 testresults
 nimcache
 *.exe
+megatest.nim
+outputGotten.txt
