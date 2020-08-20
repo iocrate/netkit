@@ -55,9 +55,24 @@
   TODO:
 
   紧接着要做两件事：用 spsc 代替 mpsc，只允许主线程分发任务，其他线程分发任务时，任务
-                 总是由本线程完成；制定 Callable(context, fn) 和 
-                 Task(runner: Callable, callbacker: Callable)，无论是线程之间
+                 总是由本线程完成；制定 ActionBase(context, fn) 和 
+                 TaskBase(runner: ActionBase, callbacker: ActionBase)，无论是线程之间
                  还是 epoll loop 内部都使用这个对象处理任务。  
+      
+  # PromiseKind* {.pure.} = enum
+  #   RUNNABLE, CALLABLE
+
+  # Promise* = object
+  #   context: pointer
+  #   clean: proc (context: pointer) {.nimcall, gcsafe.}
+  #   case kind: PromiseKind
+  #   of PromiseKind.RUNNABLE:
+  #     run: proc (context: pointer) {.nimcall, gcsafe.}
+  #   of PromiseKind.CALLABLE:
+  #     result: pointer
+  #     call: proc (context: pointer): pointer {.nimcall, gcsafe.}
+  #     then: proc (result: pointer) {.nimcall, gcsafe.}
+
 ]#
 
 when not compileOption("threads"):
@@ -75,16 +90,35 @@ import netkit/posix/linux/selector
 import netkit/aio/ident
 
 type
-  Runnable* = tuple 
-    context: pointer
-    run: proc (context: pointer) {.nimcall, gcsafe.}
-    destroy: proc (context: pointer) {.nimcall, gcsafe.}
+  TaskBase* = object of RootObj
+    run*: TaskProc
+
+  Task*[T] = object of TaskBase
+    value*: T
+
+  TaskProc* = proc (r: ptr TaskBase) {.nimcall, gcsafe.}
+
+  Future* = object
+    publish: proc ()
+    subscribe: proc ()
+    finished: bool
+    # error*: ref Exception
+    # value: T   
+
+  ActionBase* = object of RootObj
+    future: ref Future
+    run: ActionProc
+
+  Action*[T] = object of ActionBase
+    value*: T
+
+  ActionProc* = proc (c: ref ActionBase) {.nimcall, gcsafe.}
 
   Worker = object
     id: int
-    taskSemaphore: cint
+    taskEventFd: cint
     taskCounter: TaskCounter
-    taskQueue: MpscQueue[Runnable]
+    taskQueue: MpscQueue[ptr TaskBase]
     ioSelector: Selector
     ioInterests: SharedVec[InterestData] # 散列 handle -> data
     ioIdentManager: IdentityManager
@@ -92,32 +126,34 @@ type
   InterestData = object
     fd: cint
     interest: Interest
+    readQueue: SimpleQueue[ref ActionBase]
+    writeQueue: SimpleQueue[ref ActionBase]
     readReady: bool
-    readQueue: SimpleQueue[Runnable]
-    writeQueue: SimpleQueue[Runnable]
     has: bool
 
 const
   MaxThreadPoolSize* {.intdefine.} = 256 ## Maximum size of the thread pool. 256 threads
                                          ## should be good enough for anybody ;-)
-  MaxDistinguishedThread* {.intdefine.} = 32 ## Maximum number of "distinguished" threads.
 
 var
   workers: array[MaxThreadPoolSize, Thread[ptr Worker]]
   workersData: array[MaxThreadPoolSize, Worker]
-  currentPoolSize: int
+  currentThreadPoolSize: int
   currentThreadId {.threadvar.}: int 
   recursiveThreadId: int
 
-when defined(nimPinToCpu):
-  var gCpus: Natural
+when defined(PinToCpu):
+  gCpus: Natural
 
-proc spawn*(runnable: Runnable) =
-  assert currentPoolSize > 1
-  recursiveThreadId = recursiveThreadId mod (currentPoolSize - 1) + 1
-  workersData[recursiveThreadId].taskQueue.add(runnable)
+proc spawn*(r: ptr TaskBase) =
+  assert currentThreadPoolSize > 1
+  if currentThreadId == 0:
+    r.run(r)
+  else:
+    recursiveThreadId = recursiveThreadId mod (currentThreadPoolSize - 1) + 1
+    workersData[recursiveThreadId].taskQueue.add(r)
 
-proc registerSemaphore(fd: cint): Identity =
+proc registerTaskCounter(fd: cint): Identity =
   let w = workersData[currentThreadId].addr
   result = w.ioIdentManager.acquire()
   assert w.ioInterests.len > result.int
@@ -130,65 +166,51 @@ proc registerSemaphore(fd: cint): Identity =
   w.ioSelector.register(fd, UserData(u64: result.uint64), interest)
 
 proc run*(w: ptr Worker) {.thread.} =
-  let w = workersData[currentThreadId].addr
+  currentThreadId = w.id
 
-  template handleSemaphoreEvent() =
+  template handleTaskEvent() =
     w.taskQueue.sync()
     while w.taskQueue.len > 0:
       let task = w.taskQueue.take()
-      task.run(task.context)
-      if task.destroy != nil:
-        task.destroy(task.context)
+      task.run(task)
 
-  template handleReadableEvent(event: Event) =
-    let data = w.ioInterests[event.data.u64].addr
-    echo "isReadable or isError...", data.readQueue.len, " [", currentThreadId, "]"
-    for node in data.readQueue.nodesByPop():
-      node.val.run(node.val.context)
-      if node.val.destroy != nil:
-        node.val.destroy(node.val.context)
-      node.destroy() 
+  template handleIOEvent(node: ref SimpleNode[ref ActionBase]) =
+    node.val.run(node.val)
 
-  template handleWritableEvent(event: Event) =
-    let data = w.ioInterests[event.data.u64].addr
-    echo "isWritable or isError...", data.writeQueue.len, " [", currentThreadId, "]"
-    for node in data.writeQueue.nodesByPop():
-      node.val.run(node.val.context)
-      if node.val.destroy != nil:
-        node.val.destroy(node.val.context)
-      node.destroy()  
-
-  currentThreadId = w.id
-  let taskSemaphoreIdent = registerSemaphore(w.taskSemaphore)
+  let taskCounterIdent = registerTaskCounter(w.taskEventFd)
   var events = newSeq[Event](128) # TODO: 考虑 events 的容量；使用 Vec -> newSeq；Event kind # 考虑使用 thread local heap?
   while true:
     let count = w.ioSelector.select(events, -1) # TODO: 考虑 select 超时；考虑 count <= 0
     for i in 0..<count:
       let event = events[i]
-      if event.data.u64 == taskSemaphoreIdent.uint64:
+      if event.data.u64 == taskCounterIdent.uint64:
         if event.isReadable: # read eventfd 应该不会出现错误 (否则，是一个 fatal error or program error)
-          handleSemaphoreEvent()
+          handleTaskEvent()
         else:
           raise newException(Defect, "bug， 不应该遇到这个错误")
       else:
+        let data = w.ioInterests[event.data.u64].addr
         if event.isReadable or event.isError:
-          handleReadableEvent(event)
+          echo "isReadable or isError...", data.readQueue.len, " [", currentThreadId, "]"
+          for node in data.readQueue.nodesByPop():
+            handleIOEvent(node)
         if event.isWritable or event.isError:
-          handleWritableEvent(event)
+          echo "isWritable or isError...", data.writeQueue.len, " [", currentThreadId, "]"
+          for node in data.writeQueue.nodesByPop():
+            handleIOEvent(node)
 
 proc register*(fd: cint): Identity =
   let w = workersData[currentThreadId].addr
   let interest = initInterest()
   result = w.ioIdentManager.acquire()
   if w.ioInterests.len <= result.int:
-    # TODO: 考虑边界
-    discard
+    w.ioInterests.resize(w.ioInterests.len * 2)
   let data = w.ioInterests[result.int].addr
   data.fd = fd
   data.interest = interest
+  data.readQueue = initSimpleQueue[ref ActionBase]()
+  data.writeQueue = initSimpleQueue[ref ActionBase]()
   data.readReady = false
-  data.readQueue = initSimpleQueue[Runnable]()
-  data.writeQueue = initSimpleQueue[Runnable]()
   data.has = true
   w.ioSelector.register(fd, UserData(u64: result.uint64), interest)
 
@@ -197,15 +219,7 @@ proc unregister*(ident: Identity) =
   let data = w.ioInterests[ident.int].addr
   if not data.has:
     raise newException(ValueError, "file descriptor not registered")
-  for node in data.readQueue.nodesByPop():
-    if node.val.destroy != nil:
-      node.val.destroy(node.val.context)
-    node.destroy()  
-  for node in data.writeQueue.nodesByPop():
-    if node.val.destroy != nil:
-      node.val.destroy(node.val.context)
-    node.destroy()  
-  reset(w.ioInterests[ident.int]) # TODO
+  reset(w.ioInterests[ident.int]) 
   w.ioSelector.unregister(data.fd)
   w.ioIdentManager.release(ident)
 
@@ -215,10 +229,6 @@ proc unregisterReadable*(ident: Identity) =
   if not data.has:
     raise newException(ValueError, "file descriptor not registered")
   if data.interest.isReadable():
-    for node in data.readQueue.nodesByPop():
-      if node.val.destroy != nil:
-        node.val.destroy(node.val.context)
-      node.destroy()  
     data.interest.unregisterReadable()
     w.ioSelector.update(data.fd, UserData(u64: ident.uint64), data.interest)
 
@@ -228,132 +238,141 @@ proc unregisterWritable*(ident: Identity) =
   if not data.has:
     raise newException(ValueError, "file descriptor not registered")
   if data.interest.isWritable():
-    for node in data.writeQueue.nodesByPop():
-      if node.val.destroy != nil:
-        node.val.destroy(node.val.context)
-      node.destroy()  
     data.interest.unregisterWritable()
     w.ioSelector.update(data.fd, UserData(u64: ident.uint64), data.interest)
 
-proc updateRead*(ident: Identity, runnable: Runnable) =
+proc updateRead*(ident: Identity, c: ref ActionBase) =
   let w = workersData[currentThreadId].addr
   let data = w.ioInterests[ident.int].addr
   if not data.has:
     raise newException(ValueError, "file descriptor not registered")
-  data.readQueue.addLast(createSimpleNode[Runnable](runnable))
+  data.readQueue.addLast(newSimpleNode[ref ActionBase](c))
   if not data.interest.isReadable():
     data.interest.registerReadable()
     w.ioSelector.update(data.fd, UserData(u64: ident.uint64), data.interest)
 
-proc updateWrite*(ident: Identity, runnable: Runnable) =
+proc updateWrite*(ident: Identity, c: ref ActionBase) =
   let w = workersData[currentThreadId].addr
   let data = w.ioInterests[ident.int].addr
   if not data.has:
     raise newException(ValueError, "file descriptor not registered")
-  data.writeQueue.addLast(createSimpleNode[Runnable](runnable))
+  data.writeQueue.addLast(newSimpleNode[ref ActionBase](c))
   if not data.interest.isWritable():
     data.interest.registerWritable()
     w.ioSelector.update(data.fd, UserData(u64: ident.uint64), data.interest)
 
-proc startWorkerThread(i: int) {.noinline.} =
-  workersData[i].id = i
-
-  workersData[i].taskSemaphore = eventfd(0, 0)
-  if workersData[i].taskSemaphore < 0:
-    raiseOSError(osLastError())
-  workersData[i].taskCounter = TaskCounter(
-    fd: workersData[i].taskSemaphore,
-    signalImpl: signalTaskCounter,
-    waitImpl: waitTaskCounter
-  )
-  workersData[i].taskQueue = initMpscQueue[Runnable](workersData[i].taskCounter.addr, 4096)
-
-  workersData[i].ioSelector = initSelector()
-  workersData[i].ioInterests.init(4096)
-  workersData[i].ioIdentManager.init()
-
-  createThread(workers[i], run, workersData[i].addr)
-  when defined(nimPinToCpu):
-    if gCpus > 0: 
+proc runLoop*() =
+  # 启动流水线
+  for i in 1..<currentThreadPoolSize:
+    createThread(workers[i], run, workersData[i].addr)
+    when defined(PinToCpu):
+      assert gCpus > 0
       pinToCpu(workers[i], i mod gCpus)
-
-type
-  MyContext = object
-    val: int
-
-proc createMyContext(val: int): pointer =
-  let p = cast[ptr MyContext](allocShared0(sizeof(MyContext)))
-  p.val = val
-  result = p
-
-proc destroyMyContext(context: pointer) =
-  deallocShared(cast[ptr MyContext](context))
-
-var num = 0
-
-proc runMyContext(context: pointer) =
-  num.inc()
-  echo "Worker id: ", currentThreadId, " val: ", cast[ptr MyContext](context).val
-  echo num
-
-type
-  ChannelContext = object
-    val: int
-
-proc createChannelContext(val: int): pointer =
-  let p = cast[ptr ChannelContext](alloc0(sizeof(ChannelContext)))
-  p.val = val
-  result = p
-
-proc destroyChannelContext(context: pointer) =
-  dealloc(cast[ptr ChannelContext](context))
-
-var channel: array[2, cint]
-discard pipe(channel)
-
-proc runChannelContextWrite(context: pointer) =
-  var buffer = "hello " & $(cast[ptr ChannelContext](context).val)
-  if channel[1].write(buffer.cstring, buffer.len) < 0:
-    raiseOSError(osLastError())
-
-proc runChannelContextRead(context: pointer) =
-  var buffer = newString(1024)
-  if channel[0].read(buffer.cstring, buffer.len) < 0:
-    raiseOSError(osLastError())
-  echo buffer
-
-proc runMyContextWrite(context: pointer) =
-  num.inc()
-  echo "Worker id: ", currentThreadId, " val: ", cast[ptr MyContext](context).val
-  echo num
-  var ident = register(channel[1])
-  updateWrite(ident, (createChannelContext(100), runChannelContextWrite, destroyChannelContext))
-
-proc runMyContextRead(context: pointer) =
-  num.inc()
-  echo "Worker id: ", currentThreadId, " val: ", cast[ptr MyContext](context).val
-  echo num
-  var ident = register(channel[0])
-  updateRead(ident, (createChannelContext(101), runChannelContextRead, destroyChannelContext))
+  run(workersData[0].addr)
+  for i in 1..<currentThreadPoolSize:
+    joinThread(workers[i]) 
 
 proc setup() =
   let cpus = countProcessors()
-  when defined(nimPinToCpu):
+  when defined(PinToCpu):
     gCpus = cpus
-  currentPoolSize = min(cpus, MaxThreadPoolSize)
+  currentThreadPoolSize = min(cpus, MaxThreadPoolSize)
   
-  # 启动流水线
-  for i in 0..<currentPoolSize: 
-    startWorkerThread(i)
-  
-  # 测试
-  # for i in 0..<1000:
-  #   spawn((createMyContext(i), runMyContext, destroyMyContext))
-  spawn((createMyContext(1), runMyContextWrite, destroyMyContext))
-  spawn((createMyContext(2), runMyContextRead, destroyMyContext))
-  
-  # 等待流水线完成工作 (虽然流水线直到某个特定信号前不会停止)
-  joinThreads(workers)
+  for i in 0..<currentThreadPoolSize:
+    let w = workersData[i].addr
+    w.id = i
+    w.taskEventFd = eventfd(0, 0)
+    if w.taskEventFd < 0:
+      raiseOSError(osLastError())
+    w.taskCounter = initTaskCounter(w.taskEventFd)
+    w.taskQueue = initMpscQueue[ptr TaskBase](w.taskCounter.addr, 4096)
+    w.ioSelector = initSelector()
+    w.ioInterests.init(4096)
+    w.ioIdentManager.init()
 
 setup()
 
+when isMainModule:
+  # type
+  #   MyTask = object of TaskBase
+  #     val: int
+
+  # proc destroy(r: ptr MyTask) =
+  #   deallocShared(r)
+
+  # var num = 0
+
+  # proc runMyTask(r: ptr TaskBase) =
+  #   # num.inc()
+  #   atomicInc(num)
+  #   echo "Worker id: ", currentThreadId, " val: ", cast[ptr MyTask](r).val
+  #   echo num
+  #   cast[ptr MyTask](r).destroy()
+
+  # proc createMyTask(val: int): ptr MyTask =
+  #   result = cast[ptr MyTask](allocShared0(sizeof(MyTask)))
+  #   result.val = val
+  #   result.run = runMyTask
+
+  type
+    ReadContext = object 
+      val: int
+
+    WriteContext = object
+      val: int
+
+    WriteData = object 
+      val: int
+
+  var channel: array[2, cint]
+  discard pipe(channel)
+
+  proc runReadAction(r: ref ActionBase) =
+    var buffer = newString(1024)
+    if channel[0].read(buffer.cstring, buffer.len) < 0:
+      raiseOSError(osLastError())
+    echo buffer
+
+  proc runReadTask(r: ptr TaskBase) =
+    echo "Worker id: ", currentThreadId, " val: ", cast[ptr Task[ReadContext]](r).value.val
+    var ident = register(channel[0])
+    var callable = new(ActionBase)
+    callable.run = runReadAction
+    updateRead(ident, callable)
+    deallocShared(cast[ptr Task[ReadContext]](r))
+
+  proc createReadTask(val: int): ptr Task[ReadContext] =
+    result = cast[ptr Task[ReadContext]](allocShared0(sizeof(Task[ReadContext])))
+    result.value.val = val
+    result.run = runReadTask
+
+  proc runWriteAction(r: ref ActionBase) =
+    var buffer = "hello " & $((ref Action[WriteData])(r).value.val)
+    if channel[1].write(buffer.cstring, buffer.len) < 0:
+      raiseOSError(osLastError())
+
+  proc runWriteTask(r: ptr TaskBase) =
+    echo "Worker id: ", currentThreadId, " val: ", cast[ptr Task[WriteContext]](r).value.val
+    var ident = register(channel[1])
+    var callable = new(Action[WriteData])
+    callable.run = runWriteAction
+    callable.value.val = cast[ptr Task[WriteContext]](r).value.val
+    updateWrite(ident, callable)
+    deallocShared(cast[ptr Task[WriteContext]](r))
+
+  proc createWriteTask(val: int): ptr Task[WriteContext] =
+    result = cast[ptr Task[WriteContext]](allocShared0(sizeof(Task[WriteContext])))
+    result.value.val = val
+    result.run = runWriteTask
+
+  # proc thenMyTaskRead(result: pointer) =
+  #   echo "Worker id: ", currentThreadId, " val: ", cast[ptr MyTask](result).val
+  #   deallocShared(cast[ptr MyTask](result))
+
+  # 测试
+  # for i in 0..<1000:
+  #   spawn(createMyTask(i))
+  spawn(createReadTask(1))
+  spawn(createWriteTask(2))
+
+  runLoop()

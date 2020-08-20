@@ -240,3 +240,63 @@ discard """
 # var demo = Demo()
 # discard testFunc((demo.addr)[])
 # setFunc(demo.addr)
+
+
+# type
+#   PromiseKind* {.pure.} = enum
+#     RUNNABLE, CALLABLE
+
+#   Promise* = object
+#     context: pointer
+#     case kind: PromiseKind
+#     of PromiseKind.RUNNABLE:
+#       run: proc (context: pointer) {.nimcall, gcsafe.}
+#     of PromiseKind.CALLABLE:
+#       result: pointer
+#       call: proc (context: pointer): pointer {.nimcall, gcsafe.}
+#       then: proc (result: pointer) {.nimcall, gcsafe.}
+
+# echo sizeof(PromiseKind)
+# echo sizeof(Promise)
+
+# type 
+#   Runnable* = object of RootObj
+#     run*: proc (x: ptr Runnable) {.nimcall, gcsafe.}
+
+#   Runnable2*[T] = object
+#     value: T
+#     run*: proc (x: ptr Runnable) {.nimcall, gcsafe.}
+  
+#   Opt = object
+#     a: int
+#     b: int8
+
+# var a: Runnable
+# var b: Runnable2[int]
+# var c: Runnable2[string]
+
+# echo sizeof(Runnable2[Opt])
+
+# type 
+#   Runnable* = object of RootObj
+#     run*: proc (x: ptr Runnable) {.nimcall, gcsafe.}
+
+#   Test = object of Runnable
+#     val: int
+
+# proc f(r: ptr Runnable) =
+#   echo "..."
+#   deallocShared(cast[ptr Test](r))
+
+# proc main() =
+#   var test = cast[ptr Test](allocShared0(sizeof(Test)))
+#   test.val = 100
+#   # test.run = f
+#   f(test)
+
+# main()
+
+import cpuinfo
+
+var gCpus: Natural = countProcessors()
+echo gCpus
