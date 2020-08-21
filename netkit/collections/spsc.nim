@@ -1,12 +1,10 @@
 
 
 import std/math
-import netkit/locks
 import netkit/collections/sigcounter
 
 type
-  MpscQueue*[T] = object 
-    writeLock: SpinLock
+  SpscQueue*[T] = object 
     data: ptr UncheckedArray[T]
     head: Natural
     tail: Natural 
@@ -15,7 +13,7 @@ type
     mask: Natural
     counter: ptr SigCounter
 
-proc `=destroy`*[T](x: var MpscQueue[T]) = 
+proc `=destroy`*[T](x: var SpscQueue[T]) = 
   if x.data != nil:
     for i in 0..<x.len: 
       `=destroy`(x.data[i])
@@ -23,7 +21,7 @@ proc `=destroy`*[T](x: var MpscQueue[T]) =
     x.data = nil
     x.counter = nil
 
-proc `=sink`*[T](dest: var MpscQueue[T], source: MpscQueue[T]) = 
+proc `=sink`*[T](dest: var SpscQueue[T], source: SpscQueue[T]) = 
   `=destroy`(dest)
   dest.data = source.data
   dest.head = source.head
@@ -33,7 +31,7 @@ proc `=sink`*[T](dest: var MpscQueue[T], source: MpscQueue[T]) =
   dest.mask = source.mask
   dest.counter = source.counter
 
-proc `=`*[T](dest: var MpscQueue[T], source: MpscQueue[T]) =
+proc `=`*[T](dest: var SpscQueue[T], source: SpscQueue[T]) =
   if dest.data != source.data: 
     `=destroy`(dest)
     dest.head = source.head
@@ -46,9 +44,8 @@ proc `=`*[T](dest: var MpscQueue[T], source: MpscQueue[T]) =
       dest.data = cast[ptr UncheckedArray[T]](allocShared0(sizeof(T) * source.cap))
       copyMem(dest.data, source.data, sizeof(T) * source.len)
 
-proc initMpscQueue*[T](counter: ptr SigCounter, cap: Natural = 1024*1024): MpscQueue[T] =
+proc initSpscQueue*[T](counter: ptr SigCounter, cap: Natural = 1024*1024): SpscQueue[T] =
   assert isPowerOfTwo(cap)
-  result.writeLock = initSpinLock()
   result.data = cast[ptr UncheckedArray[T]](allocShared0(sizeof(T) * cap))
   result.head = 0
   result.tail = 0
@@ -57,34 +54,32 @@ proc initMpscQueue*[T](counter: ptr SigCounter, cap: Natural = 1024*1024): MpscQ
   result.len = 0
   result.counter = counter
 
-proc tryAdd*[T](x: var MpscQueue[T], item: sink T): bool = 
+proc tryAdd*[T](x: var SpscQueue[T], item: sink T): bool = 
   result = true
-  withLock x.writeLock:
-    let next = (x.tail + 1) and x.mask
-    if unlikely(next == x.head):
-      return false
-    x.data[x.tail] = item
-    x.tail = next
+  let next = (x.tail + 1) and x.mask
+  if unlikely(next == x.head):
+    return false
+  x.data[x.tail] = item
+  x.tail = next
   fence()
   x.counter.signal()
 
-proc add*[T](x: var MpscQueue[T], item: sink T) = 
-  withLock x.writeLock:
-    let next = (x.tail + 1) and x.mask
-    while unlikely(next == x.head):
-      cpuRelax()
-    x.data[x.tail] = item
-    x.tail = next
+proc add*[T](x: var SpscQueue[T], item: sink T) = 
+  let next = (x.tail + 1) and x.mask
+  while unlikely(next == x.head):
+    cpuRelax()
+  x.data[x.tail] = item
+  x.tail = next
   fence()
   x.counter.signal()
 
-proc len*[T](x: var MpscQueue[T]): Natural {.inline.} = 
+proc len*[T](x: var SpscQueue[T]): Natural {.inline.} = 
   x.len
   
-proc sync*[T](x: var MpscQueue[T]) {.inline.} = 
+proc sync*[T](x: var SpscQueue[T]) {.inline.} = 
   x.len.inc(Natural(x.counter.wait()))
   
-proc take*[T](x: var MpscQueue[T]): T = 
+proc take*[T](x: var SpscQueue[T]): T = 
   result = move(x.data[x.head])
   x.head = (x.head + 1) and x.mask
   x.len.dec()
@@ -147,14 +142,14 @@ when isMainModule and defined(linux):
   var counter = 0
   var sum = 0
   var sigCounter = createMySigCounter()
-  var mq = initMpscQueue[ptr Task](sigCounter, 4)
+  var mq = initSpscQueue[ptr Task](sigCounter, 4)
 
   proc producerFunc() {.thread.} =
     for i in 1..10000:
       mq.add(createTask(i)) 
 
   proc consumerFunc() {.thread.} =
-    while counter < 40000:
+    while counter < 10000:
       mq.sync()
       while mq.len > 0:
         counter.inc()
@@ -163,15 +158,14 @@ when isMainModule and defined(linux):
         task.destroy()
 
   proc test() = 
-    var producers: array[4, Thread[void]]
+    var producer: Thread[void]
     var comsumer: Thread[void]
-    for i in 0..<4:
-      createThread(producers[i], producerFunc)
+    createThread(producer, producerFunc)
     createThread(comsumer, consumerFunc)
-    joinThreads(producers)
-    joinThreads(comsumer)
+    joinThread(producer)
+    joinThread(comsumer)
     sigCounter.destroy()
-    doAssert sum == ((1 + 10000) * (10000 div 2)) * 4 # (1 + n) * n / 2
+    doAssert sum == ((1 + 10000) * (10000 div 2)) * 1 # (1 + n) * n / 2
 
   test()
 

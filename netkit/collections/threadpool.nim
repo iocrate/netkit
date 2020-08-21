@@ -82,7 +82,7 @@ import std/cpuinfo
 import std/os
 import std/posix
 
-import netkit/collections/mpsc
+import netkit/collections/spsc
 import netkit/collections/share/vecs
 import netkit/collections/taskcounter
 import netkit/collections/simplequeue
@@ -118,7 +118,7 @@ type
     id: int
     taskEventFd: cint
     taskCounter: TaskCounter
-    taskQueue: MpscQueue[ptr TaskBase]
+    taskQueue: SpscQueue[ptr TaskBase]
     ioSelector: Selector
     ioInterests: SharedVec[InterestData] # 散列 handle -> data
     ioIdentManager: IdentityManager
@@ -285,7 +285,7 @@ proc setup() =
     if w.taskEventFd < 0:
       raiseOSError(osLastError())
     w.taskCounter = initTaskCounter(w.taskEventFd)
-    w.taskQueue = initMpscQueue[ptr TaskBase](w.taskCounter.addr, 4096)
+    w.taskQueue = initSpscQueue[ptr TaskBase](w.taskCounter.addr, 4096)
     w.ioSelector = initSelector()
     w.ioInterests.init(4096)
     w.ioIdentManager.init()
@@ -364,10 +364,6 @@ when isMainModule:
     result = cast[ptr Task[WriteContext]](allocShared0(sizeof(Task[WriteContext])))
     result.value.val = val
     result.run = runWriteTask
-
-  # proc thenMyTaskRead(result: pointer) =
-  #   echo "Worker id: ", currentThreadId, " val: ", cast[ptr MyTask](result).val
-  #   deallocShared(cast[ptr MyTask](result))
 
   # 测试
   # for i in 0..<1000:

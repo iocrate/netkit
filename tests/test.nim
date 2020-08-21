@@ -296,7 +296,22 @@ discard """
 
 # main()
 
-import cpuinfo
+# import cpuinfo
 
-var gCpus: Natural = countProcessors()
-echo gCpus
+# var gCpus: Natural = countProcessors()
+# echo gCpus
+
+var a: uint64 = high(uint64)
+var b: int64 = high(int64)
+
+echo "a:", a
+echo "b:", b
+
+var m = 0
+for i in b.uint64..<a:
+  m.inc()
+  if m > 10:
+    echo "c:", i
+    break
+
+  
