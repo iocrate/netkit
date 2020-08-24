@@ -86,6 +86,7 @@ import netkit/collections/spsc
 import netkit/collections/share/vecs
 import netkit/collections/taskcounter
 import netkit/collections/simplequeue
+import netkit/collections/action
 import netkit/posix/linux/selector
 import netkit/aio/ident
 
@@ -97,22 +98,6 @@ type
     value*: T
 
   TaskProc* = proc (r: ptr TaskBase) {.nimcall, gcsafe.}
-
-  Future* = object
-    publish: proc ()
-    subscribe: proc ()
-    finished: bool
-    # error*: ref Exception
-    # value: T   
-
-  ActionBase* = object of RootObj
-    future: ref Future
-    run: ActionProc
-
-  Action*[T] = object of ActionBase
-    value*: T
-
-  ActionProc* = proc (c: ref ActionBase) {.nimcall, gcsafe.}
 
   Worker = object
     id: int
@@ -126,14 +111,16 @@ type
   InterestData = object
     fd: cint
     interest: Interest
-    readQueue: SimpleQueue[ref ActionBase]
-    writeQueue: SimpleQueue[ref ActionBase]
+    readQueue: ActionQueue
+    writeQueue: ActionQueue
     readReady: bool
     has: bool
 
 const
   MaxThreadPoolSize* {.intdefine.} = 256 ## Maximum size of the thread pool. 256 threads
                                          ## should be good enough for anybody ;-)
+  TaskQueueSize* {.intdefine.} = 4096
+  InterestVecSize* {.intdefine.} = 4096
 
 var
   workers: array[MaxThreadPoolSize, Thread[ptr Worker]]
@@ -146,12 +133,11 @@ when defined(PinToCpu):
   gCpus: Natural
 
 proc spawn*(r: ptr TaskBase) =
-  assert currentThreadPoolSize > 1
-  if currentThreadId == 0:
-    r.run(r)
-  else:
+  if currentThreadPoolSize > 1 and currentThreadId == 0:
     recursiveThreadId = recursiveThreadId mod (currentThreadPoolSize - 1) + 1
     workersData[recursiveThreadId].taskQueue.add(r)
+  else:
+    r.run(r)
 
 proc registerTaskCounter(fd: cint): Identity =
   let w = workersData[currentThreadId].addr
@@ -168,14 +154,16 @@ proc registerTaskCounter(fd: cint): Identity =
 proc run*(w: ptr Worker) {.thread.} =
   currentThreadId = w.id
 
-  template handleTaskEvent() =
-    w.taskQueue.sync()
-    while w.taskQueue.len > 0:
-      let task = w.taskQueue.take()
+  template handleTaskEvent(queue: SpscQueue[ptr TaskBase]) =
+    queue.sync()
+    while queue.len > 0:
+      let task = queue.take()
       task.run(task)
 
-  template handleIOEvent(node: ref SimpleNode[ref ActionBase]) =
-    node.val.run(node.val)
+  template handleIoEvent(queue: ActionQueue) =
+    for node in queue.nodes():
+      if node.value.run(node.value):
+        queue.remove(node)
 
   let taskCounterIdent = registerTaskCounter(w.taskEventFd)
   var events = newSeq[Event](128) # TODO: 考虑 events 的容量；使用 Vec -> newSeq；Event kind # 考虑使用 thread local heap?
@@ -185,19 +173,17 @@ proc run*(w: ptr Worker) {.thread.} =
       let event = events[i]
       if event.data.u64 == taskCounterIdent.uint64:
         if event.isReadable: # read eventfd 应该不会出现错误 (否则，是一个 fatal error or program error)
-          handleTaskEvent()
+          w.taskQueue.handleTaskEvent()
         else:
           raise newException(Defect, "bug， 不应该遇到这个错误")
       else:
         let data = w.ioInterests[event.data.u64].addr
         if event.isReadable or event.isError:
           echo "isReadable or isError...", data.readQueue.len, " [", currentThreadId, "]"
-          for node in data.readQueue.nodesByPop():
-            handleIOEvent(node)
+          data.readQueue.handleIoEvent()
         if event.isWritable or event.isError:
           echo "isWritable or isError...", data.writeQueue.len, " [", currentThreadId, "]"
-          for node in data.writeQueue.nodesByPop():
-            handleIOEvent(node)
+          data.writeQueue.handleIoEvent()
 
 proc register*(fd: cint): Identity =
   let w = workersData[currentThreadId].addr
@@ -285,9 +271,9 @@ proc setup() =
     if w.taskEventFd < 0:
       raiseOSError(osLastError())
     w.taskCounter = initTaskCounter(w.taskEventFd)
-    w.taskQueue = initSpscQueue[ptr TaskBase](w.taskCounter.addr, 4096)
+    w.taskQueue = initSpscQueue[ptr TaskBase](w.taskCounter.addr, TaskQueueSize)
     w.ioSelector = initSelector()
-    w.ioInterests.init(4096)
+    w.ioInterests.init(InterestVecSize)
     w.ioIdentManager.init()
 
 setup()
@@ -327,14 +313,15 @@ when isMainModule:
   var channel: array[2, cint]
   discard pipe(channel)
 
-  proc runReadAction(r: ref ActionBase) =
+  proc runReadAction(r: ref ActionBase): bool =
     var buffer = newString(1024)
     if channel[0].read(buffer.cstring, buffer.len) < 0:
       raiseOSError(osLastError())
     echo buffer
+    result = true
 
   proc runReadTask(r: ptr TaskBase) =
-    echo "Worker id: ", currentThreadId, " val: ", cast[ptr Task[ReadContext]](r).value.val
+    echo "Worker read id: ", currentThreadId, " val: ", cast[ptr Task[ReadContext]](r).value.val
     var ident = register(channel[0])
     var callable = new(ActionBase)
     callable.run = runReadAction
@@ -346,13 +333,14 @@ when isMainModule:
     result.value.val = val
     result.run = runReadTask
 
-  proc runWriteAction(r: ref ActionBase) =
+  proc runWriteAction(r: ref ActionBase): bool =
     var buffer = "hello " & $((ref Action[WriteData])(r).value.val)
     if channel[1].write(buffer.cstring, buffer.len) < 0:
       raiseOSError(osLastError())
+    result = true
 
   proc runWriteTask(r: ptr TaskBase) =
-    echo "Worker id: ", currentThreadId, " val: ", cast[ptr Task[WriteContext]](r).value.val
+    echo "Worker write id: ", currentThreadId, " val: ", cast[ptr Task[WriteContext]](r).value.val
     var ident = register(channel[1])
     var callable = new(Action[WriteData])
     callable.run = runWriteAction
