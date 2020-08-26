@@ -81,24 +81,18 @@ when not compileOption("threads"):
 import std/cpuinfo
 import std/os
 import std/posix
+import std/locks
 
 import netkit/collections/spsc
 import netkit/collections/share/vecs
 import netkit/collections/taskcounter
 import netkit/collections/simplequeue
 import netkit/collections/action
+import netkit/collections/task
 import netkit/posix/linux/selector
 import netkit/aio/ident
 
 type
-  TaskBase* = object of RootObj
-    run*: TaskProc
-
-  Task*[T] = object of TaskBase
-    value*: T
-
-  TaskProc* = proc (r: ptr TaskBase) {.nimcall, gcsafe.}
-
   Worker = object
     id: int
     taskEventFd: cint
@@ -113,19 +107,25 @@ type
     interest: Interest
     readQueue: ActionQueue
     writeQueue: ActionQueue
-    readReady: bool
     has: bool
+
+  ThreadPoolState* {.pure.} = enum
+    IDLE, RUNNING, SHUTDOWN
 
 const
   MaxThreadPoolSize* {.intdefine.} = 256 ## Maximum size of the thread pool. 256 threads
                                          ## should be good enough for anybody ;-)
   TaskQueueSize* {.intdefine.} = 4096
   InterestVecSize* {.intdefine.} = 4096
+  MaxIoEvents* {.intdefine.} = 128
+  LoopTimeout* {.intdefine.} = 500
 
 var
   workers: array[MaxThreadPoolSize, Thread[ptr Worker]]
   workersData: array[MaxThreadPoolSize, Worker]
+  workersLock: Lock
   currentThreadPoolSize: int
+  currentThreadPoolState: ThreadPoolState
   currentThreadId {.threadvar.}: int 
   recursiveThreadId: int
 
@@ -142,7 +142,9 @@ proc spawn*(r: ptr TaskBase) =
 proc registerTaskCounter(fd: cint): Identity =
   let w = workersData[currentThreadId].addr
   result = w.ioIdentManager.acquire()
-  assert w.ioInterests.len > result.int
+  if w.ioInterests.len <= result.int:
+    w.ioInterests.resize(w.ioInterests.len * 2)
+    assert w.ioInterests.len > result.int
   var interest = initInterest()
   interest.registerReadable()
   let data = w.ioInterests[result.int].addr
@@ -152,8 +154,6 @@ proc registerTaskCounter(fd: cint): Identity =
   w.ioSelector.register(fd, UserData(u64: result.uint64), interest)
 
 proc run*(w: ptr Worker) {.thread.} =
-  currentThreadId = w.id
-
   template handleTaskEvent(queue: SpscQueue[ptr TaskBase]) =
     queue.sync()
     while queue.len > 0:
@@ -164,26 +164,36 @@ proc run*(w: ptr Worker) {.thread.} =
     for node in queue.nodes():
       if node.value.run(node.value):
         queue.remove(node)
-
-  let taskCounterIdent = registerTaskCounter(w.taskEventFd)
-  var events = newSeq[Event](128) # TODO: 考虑 events 的容量；使用 Vec -> newSeq；Event kind # 考虑使用 thread local heap?
-  while true:
-    let count = w.ioSelector.select(events, -1) # TODO: 考虑 select 超时；考虑 count <= 0
-    for i in 0..<count:
-      let event = events[i]
-      if event.data.u64 == taskCounterIdent.uint64:
-        if event.isReadable: # read eventfd 应该不会出现错误 (否则，是一个 fatal error or program error)
-          w.taskQueue.handleTaskEvent()
-        else:
-          raise newException(Defect, "bug， 不应该遇到这个错误")
       else:
-        let data = w.ioInterests[event.data.u64].addr
-        if event.isReadable or event.isError:
-          echo "isReadable or isError...", data.readQueue.len, " [", currentThreadId, "]"
-          data.readQueue.handleIoEvent()
-        if event.isWritable or event.isError:
-          echo "isWritable or isError...", data.writeQueue.len, " [", currentThreadId, "]"
-          data.writeQueue.handleIoEvent()
+        break
+
+  currentThreadId = w.id
+  let taskCounterIdent = registerTaskCounter(w.taskEventFd)
+  var events: array[MaxIoEvents, Event] 
+  while true:
+    let count = w.ioSelector.select(events, LoopTimeout) 
+    if currentThreadPoolState == ThreadPoolState.SHUTDOWN:
+      return
+    if count < 0:
+      let errorCode = osLastError()
+      if errorCode.int32 != EINTR:
+        raiseOSError(errorCode) 
+    else:
+      for i in 0..<count:
+        let event = events[i]
+        if event.data.u64 == taskCounterIdent.uint64:
+          if event.isReadable: 
+            w.taskQueue.handleTaskEvent()
+          else:
+            raise newException(Defect, "bug， 不应该遇到这个错误")
+        else:
+          let data = w.ioInterests[event.data.u64].addr
+          if event.isReadable or event.isError:
+            echo "isReadable or isError...", data.readQueue.len, " [", currentThreadId, "]"
+            data.readQueue.handleIoEvent()
+          if event.isWritable or event.isError:
+            echo "isWritable or isError...", data.writeQueue.len, " [", currentThreadId, "]"
+            data.writeQueue.handleIoEvent()
 
 proc register*(fd: cint): Identity =
   let w = workersData[currentThreadId].addr
@@ -191,12 +201,12 @@ proc register*(fd: cint): Identity =
   result = w.ioIdentManager.acquire()
   if w.ioInterests.len <= result.int:
     w.ioInterests.resize(w.ioInterests.len * 2)
+    assert w.ioInterests.len > result.int
   let data = w.ioInterests[result.int].addr
   data.fd = fd
   data.interest = interest
   data.readQueue = initSimpleQueue[ref ActionBase]()
   data.writeQueue = initSimpleQueue[ref ActionBase]()
-  data.readReady = false
   data.has = true
   w.ioSelector.register(fd, UserData(u64: result.uint64), interest)
 
@@ -248,15 +258,26 @@ proc updateWrite*(ident: Identity, c: ref ActionBase) =
     w.ioSelector.update(data.fd, UserData(u64: ident.uint64), data.interest)
 
 proc runLoop*() =
-  # 启动流水线
-  for i in 1..<currentThreadPoolSize:
-    createThread(workers[i], run, workersData[i].addr)
-    when defined(PinToCpu):
-      assert gCpus > 0
-      pinToCpu(workers[i], i mod gCpus)
-  run(workersData[0].addr)
-  for i in 1..<currentThreadPoolSize:
-    joinThread(workers[i]) 
+  workersLock.acquire()
+  if currentThreadPoolState == ThreadPoolState.IDLE:
+    currentThreadPoolState = ThreadPoolState.RUNNING
+    workersLock.release()
+    # 启动流水线
+    for i in 1..<currentThreadPoolSize:
+      createThread(workers[i], run, workersData[i].addr)
+      when defined(PinToCpu):
+        assert gCpus > 0
+        pinToCpu(workers[i], i mod gCpus)
+    run(workersData[0].addr)
+    for i in 1..<currentThreadPoolSize:
+      joinThread(workers[i]) 
+  else:
+    workersLock.release()
+
+proc shutdownLoop*() = 
+  workersLock.acquire()
+  currentThreadPoolState = ThreadPoolState.SHUTDOWN
+  workersLock.release()
 
 proc setup() =
   let cpus = countProcessors()
@@ -264,6 +285,7 @@ proc setup() =
     gCpus = cpus
   currentThreadPoolSize = min(cpus, MaxThreadPoolSize)
   
+  initLock(workersLock)
   for i in 0..<currentThreadPoolSize:
     let w = workersData[i].addr
     w.id = i

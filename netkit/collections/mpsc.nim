@@ -5,25 +5,25 @@ import netkit/locks
 import netkit/collections/sigcounter
 
 type
-  MpscQueue*[T] = object 
+  MpscQueue*[D, C] = object 
     writeLock: SpinLock
-    data: ptr UncheckedArray[T]
+    data: ptr UncheckedArray[D]
     head: Natural
     tail: Natural 
     cap: Natural
     len: Natural
     mask: Natural
-    counter: ptr SigCounter
+    counter: SigCounter[C]
 
-proc `=destroy`*[T](x: var MpscQueue[T]) = 
+proc `=destroy`*[D, C](x: var MpscQueue[D, C]) = 
   if x.data != nil:
     for i in 0..<x.len: 
       `=destroy`(x.data[i])
     deallocShared(x.data)
     x.data = nil
-    x.counter = nil
+    `=destroy`(x.counter)
 
-proc `=sink`*[T](dest: var MpscQueue[T], source: MpscQueue[T]) = 
+proc `=sink`*[D, C](dest: var MpscQueue[D, C], source: MpscQueue[D, C]) = 
   `=destroy`(dest)
   dest.data = source.data
   dest.head = source.head
@@ -33,7 +33,7 @@ proc `=sink`*[T](dest: var MpscQueue[T], source: MpscQueue[T]) =
   dest.mask = source.mask
   dest.counter = source.counter
 
-proc `=`*[T](dest: var MpscQueue[T], source: MpscQueue[T]) =
+proc `=`*[D, C](dest: var MpscQueue[D, C], source: MpscQueue[D, C]) =
   if dest.data != source.data: 
     `=destroy`(dest)
     dest.head = source.head
@@ -43,13 +43,13 @@ proc `=`*[T](dest: var MpscQueue[T], source: MpscQueue[T]) =
     dest.mask = source.mask
     dest.counter = source.counter
     if source.data != nil:
-      dest.data = cast[ptr UncheckedArray[T]](allocShared0(sizeof(T) * source.cap))
-      copyMem(dest.data, source.data, sizeof(T) * source.len)
+      dest.data = cast[ptr UncheckedArray[D]](allocShared0(sizeof(D) * source.cap))
+      copyMem(dest.data, source.data, sizeof(D) * source.len)
 
-proc initMpscQueue*[T](counter: ptr SigCounter, cap: Natural = 1024*1024): MpscQueue[T] =
+proc initMpscQueue*[D, C](counter: SigCounter[C], cap: Natural = 4096): MpscQueue[D, C] =
   assert isPowerOfTwo(cap)
   result.writeLock = initSpinLock()
-  result.data = cast[ptr UncheckedArray[T]](allocShared0(sizeof(T) * cap))
+  result.data = cast[ptr UncheckedArray[D]](allocShared0(sizeof(D) * cap))
   result.head = 0
   result.tail = 0
   result.cap = cap
@@ -57,7 +57,7 @@ proc initMpscQueue*[T](counter: ptr SigCounter, cap: Natural = 1024*1024): MpscQ
   result.len = 0
   result.counter = counter
 
-proc tryAdd*[T](x: var MpscQueue[T], item: sink T): bool = 
+proc tryAdd*[D, C](x: var MpscQueue[D, C], item: sink D): bool = 
   result = true
   withLock x.writeLock:
     let next = (x.tail + 1) and x.mask
@@ -68,7 +68,7 @@ proc tryAdd*[T](x: var MpscQueue[T], item: sink T): bool =
   fence()
   x.counter.signal()
 
-proc add*[T](x: var MpscQueue[T], item: sink T) = 
+proc add*[D, C](x: var MpscQueue[D, C], item: sink D) = 
   withLock x.writeLock:
     let next = (x.tail + 1) and x.mask
     while unlikely(next == x.head):
@@ -78,13 +78,13 @@ proc add*[T](x: var MpscQueue[T], item: sink T) =
   fence()
   x.counter.signal()
 
-proc len*[T](x: var MpscQueue[T]): Natural {.inline.} = 
+proc len*[D, C](x: var MpscQueue[D, C]): Natural {.inline.} = 
   x.len
   
-proc sync*[T](x: var MpscQueue[T]) {.inline.} = 
+proc sync*[D, C](x: var MpscQueue[D, C]) {.inline.} = 
   x.len.inc(Natural(x.counter.wait()))
   
-proc take*[T](x: var MpscQueue[T]): T = 
+proc take*[D, C](x: var MpscQueue[D, C]): D = 
   result = move(x.data[x.head])
   x.head = (x.head + 1) and x.mask
   x.len.dec()
@@ -99,33 +99,23 @@ when isMainModule and defined(linux):
   .}
 
   type 
-    MySigCounter = object of SigCounter
-      efd: cint
+    MySigCounter = SigCounter[cint]
 
-  proc signalMySigCounter(c: ptr SigCounter) = 
+  proc signalMySigCounter(c: var SigCounterBase) = 
     var buf = 1'u64
-    if cast[ptr MySigCounter](c).efd.write(buf.addr, sizeof(buf)) < 0:
+    if MySigCounter(c).value.write(buf.addr, sizeof(buf)) < 0:
       raiseOSError(osLastError())
   
-  proc waitMySigCounter(c: ptr SigCounter): uint64 = 
+  proc waitMySigCounter(c: var SigCounterBase): uint64 = 
     var buf = 0'u64
-    if cast[ptr MySigCounter](c).efd.read(buf.addr, sizeof(buf)) < 0:
+    if MySigCounter(c).value.read(buf.addr, sizeof(buf)) < 0:
       raiseOSError(osLastError())
     result = buf 
 
-  proc createMySigCounter(): ptr MySigCounter = 
-    let p = cast[ptr MySigCounter](allocShared0(sizeof(MySigCounter)))
-    p.signalImpl = signalMySigCounter
-    p.waitImpl = waitMySigCounter
-    p.efd = eventfd(0, 0)
-    if p.efd < 0:
-      raiseOSError(osLastError())
-    result = p
-
-  proc destroy(c: ptr MySigCounter) =
-    if cast[ptr MySigCounter](c).efd.close() < 0:
-      raiseOSError(osLastError())
-    deallocShared(c)
+  proc intMySigCounter(fd: cint): MySigCounter = 
+    result.signalImpl = signalMySigCounter
+    result.waitImpl = waitMySigCounter
+    result.value = fd
 
   type 
     Task = object
@@ -146,8 +136,10 @@ when isMainModule and defined(linux):
 
   var counter = 0
   var sum = 0
-  var sigCounter = createMySigCounter()
-  var mq = initMpscQueue[ptr Task](sigCounter, 4)
+  var efd = eventfd(0, 0)
+  if efd < 0:
+    raiseOSError(osLastError())
+  var mq = initMpscQueue[ptr Task, cint](intMySigCounter(efd), 4)
 
   proc producerFunc() {.thread.} =
     for i in 1..10000:
@@ -170,7 +162,8 @@ when isMainModule and defined(linux):
     createThread(comsumer, consumerFunc)
     joinThreads(producers)
     joinThreads(comsumer)
-    sigCounter.destroy()
+    if close(efd) < 0:
+      raiseOSError(osLastError())
     doAssert sum == ((1 + 10000) * (10000 div 2)) * 4 # (1 + n) * n / 2
 
   test()

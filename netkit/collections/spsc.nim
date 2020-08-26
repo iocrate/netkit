@@ -4,24 +4,24 @@ import std/math
 import netkit/collections/sigcounter
 
 type
-  SpscQueue*[T] = object 
-    data: ptr UncheckedArray[T]
+  SpscQueue*[D, C] = object 
+    data: ptr UncheckedArray[D]
     head: Natural
     tail: Natural 
     cap: Natural
     len: Natural
     mask: Natural
-    counter: ptr SigCounter
+    counter*: SigCounter[C]
 
-proc `=destroy`*[T](x: var SpscQueue[T]) = 
+proc `=destroy`*[D, C](x: var SpscQueue[D, C]) = 
   if x.data != nil:
     for i in 0..<x.len: 
       `=destroy`(x.data[i])
     deallocShared(x.data)
     x.data = nil
-    x.counter = nil
+    `=destroy`(x.counter)
 
-proc `=sink`*[T](dest: var SpscQueue[T], source: SpscQueue[T]) = 
+proc `=sink`*[D, C](dest: var SpscQueue[D, C], source: SpscQueue[D, C]) = 
   `=destroy`(dest)
   dest.data = source.data
   dest.head = source.head
@@ -31,7 +31,7 @@ proc `=sink`*[T](dest: var SpscQueue[T], source: SpscQueue[T]) =
   dest.mask = source.mask
   dest.counter = source.counter
 
-proc `=`*[T](dest: var SpscQueue[T], source: SpscQueue[T]) =
+proc `=`*[D, C](dest: var SpscQueue[D, C], source: SpscQueue[D, C]) =
   if dest.data != source.data: 
     `=destroy`(dest)
     dest.head = source.head
@@ -41,12 +41,12 @@ proc `=`*[T](dest: var SpscQueue[T], source: SpscQueue[T]) =
     dest.mask = source.mask
     dest.counter = source.counter
     if source.data != nil:
-      dest.data = cast[ptr UncheckedArray[T]](allocShared0(sizeof(T) * source.cap))
-      copyMem(dest.data, source.data, sizeof(T) * source.len)
+      dest.data = cast[ptr UncheckedArray[D]](allocShared0(sizeof(D) * source.cap))
+      copyMem(dest.data, source.data, sizeof(D) * source.len)
 
-proc initSpscQueue*[T](counter: ptr SigCounter, cap: Natural = 1024*1024): SpscQueue[T] =
+proc initSpscQueue*[D, C](counter: SigCounter[C], cap: Natural = 4096): SpscQueue[D, C] =
   assert isPowerOfTwo(cap)
-  result.data = cast[ptr UncheckedArray[T]](allocShared0(sizeof(T) * cap))
+  result.data = cast[ptr UncheckedArray[D]](allocShared0(sizeof(D) * cap))
   result.head = 0
   result.tail = 0
   result.cap = cap
@@ -54,7 +54,7 @@ proc initSpscQueue*[T](counter: ptr SigCounter, cap: Natural = 1024*1024): SpscQ
   result.len = 0
   result.counter = counter
 
-proc tryAdd*[T](x: var SpscQueue[T], item: sink T): bool = 
+proc tryAdd*[D, C](x: var SpscQueue[D, C], item: sink D): bool = 
   result = true
   let next = (x.tail + 1) and x.mask
   if unlikely(next == x.head):
@@ -64,7 +64,7 @@ proc tryAdd*[T](x: var SpscQueue[T], item: sink T): bool =
   fence()
   x.counter.signal()
 
-proc add*[T](x: var SpscQueue[T], item: sink T) = 
+proc add*[D, C](x: var SpscQueue[D, C], item: sink D) = 
   let next = (x.tail + 1) and x.mask
   while unlikely(next == x.head):
     cpuRelax()
@@ -73,13 +73,13 @@ proc add*[T](x: var SpscQueue[T], item: sink T) =
   fence()
   x.counter.signal()
 
-proc len*[T](x: var SpscQueue[T]): Natural {.inline.} = 
+proc len*[D, C](x: var SpscQueue[D, C]): Natural {.inline.} = 
   x.len
   
-proc sync*[T](x: var SpscQueue[T]) {.inline.} = 
+proc sync*[D, C](x: var SpscQueue[D, C]) {.inline.} = 
   x.len.inc(Natural(x.counter.wait()))
   
-proc take*[T](x: var SpscQueue[T]): T = 
+proc take*[D, C](x: var SpscQueue[D, C]): D = 
   result = move(x.data[x.head])
   x.head = (x.head + 1) and x.mask
   x.len.dec()
@@ -94,33 +94,23 @@ when isMainModule and defined(linux):
   .}
 
   type 
-    MySigCounter = object of SigCounter
-      efd: cint
+    MySigCounter = SigCounter[cint]
 
-  proc signalMySigCounter(c: ptr SigCounter) = 
+  proc signalMySigCounter(c: var SigCounterBase) = 
     var buf = 1'u64
-    if cast[ptr MySigCounter](c).efd.write(buf.addr, sizeof(buf)) < 0:
+    if MySigCounter(c).value.write(buf.addr, sizeof(buf)) < 0:
       raiseOSError(osLastError())
   
-  proc waitMySigCounter(c: ptr SigCounter): uint64 = 
+  proc waitMySigCounter(c: var SigCounterBase): uint64 = 
     var buf = 0'u64
-    if cast[ptr MySigCounter](c).efd.read(buf.addr, sizeof(buf)) < 0:
+    if MySigCounter(c).value.read(buf.addr, sizeof(buf)) < 0:
       raiseOSError(osLastError())
     result = buf 
 
-  proc createMySigCounter(): ptr MySigCounter = 
-    let p = cast[ptr MySigCounter](allocShared0(sizeof(MySigCounter)))
-    p.signalImpl = signalMySigCounter
-    p.waitImpl = waitMySigCounter
-    p.efd = eventfd(0, 0)
-    if p.efd < 0:
-      raiseOSError(osLastError())
-    result = p
-
-  proc destroy(c: ptr MySigCounter) =
-    if cast[ptr MySigCounter](c).efd.close() < 0:
-      raiseOSError(osLastError())
-    deallocShared(c)
+  proc initMySigCounter(fd: cint): MySigCounter = 
+    result.signalImpl = signalMySigCounter
+    result.waitImpl = waitMySigCounter
+    result.value = fd
 
   type 
     Task = object
@@ -141,8 +131,10 @@ when isMainModule and defined(linux):
 
   var counter = 0
   var sum = 0
-  var sigCounter = createMySigCounter()
-  var mq = initSpscQueue[ptr Task](sigCounter, 4)
+  var efd = eventfd(0, 0)
+  if efd < 0:
+    raiseOSError(osLastError())
+  var mq = initSpscQueue[ptr Task, cint](initMySigCounter(efd), 4)
 
   proc producerFunc() {.thread.} =
     for i in 1..10000:
@@ -164,7 +156,8 @@ when isMainModule and defined(linux):
     createThread(comsumer, consumerFunc)
     joinThread(producer)
     joinThread(comsumer)
-    sigCounter.destroy()
+    if close(efd) < 0:
+      raiseOSError(osLastError())
     doAssert sum == ((1 + 10000) * (10000 div 2)) * 1 # (1 + n) * n / 2
 
   test()
