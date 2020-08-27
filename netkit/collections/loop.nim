@@ -89,14 +89,16 @@ import netkit/aio/ident
 
 const
   MaxEventLoopPoolSize* {.intdefine.} = 256 ## Maximum size of the event loop pool. 
-  InitialTaskRegistrySize* {.intdefine.} = 4096
+  InitialTaskRegistrySpscSize* {.intdefine.} = 4096
+  InitialTaskRegistryMpscSize* {.intdefine.} = 4096
   InitialActionRegistrySize* {.intdefine.} = 4096
   EventLoopTimeout* {.intdefine.} = 500
 
 type
   EventLoop* = object
     id: Natural
-    taskCounterFd: cint
+    taskSpscCounterFd: cint
+    taskMpscCounterFd: cint
     taskRegistry: TaskRegistry
     actionRegistry: ActionRegistry
 
@@ -113,10 +115,14 @@ type
 
 proc initEventLoop(id: int): EventLoop {.raises: [OSError].} =
   result.id = id
-  result.taskCounterFd = eventfd(0, 0)
-  if result.taskCounterFd < 0:
+  result.taskSpscCounterFd = eventfd(0, 0)
+  if result.taskSpscCounterFd < 0:
     raiseOSError(osLastError())
-  result.taskRegistry = initTaskRegistry(result.taskCounterFd, InitialTaskRegistrySize)
+  result.taskMpscCounterFd = eventfd(0, 0)
+  if result.taskMpscCounterFd < 0:
+    raiseOSError(osLastError())
+  result.taskRegistry = initTaskRegistry(result.taskSpscCounterFd, InitialTaskRegistrySpscSize, 
+                                         result.taskMpscCounterFd, InitialTaskRegistryMpscSize)
   result.actionRegistry = initActionRegistry(InitialActionRegistrySize)
 
 proc initEventLoopPool(): EventLoopPool =
@@ -156,21 +162,29 @@ proc poll(timeout: cint) {.inline.} =
 proc spawn*(task: ptr TaskBase) =
   if currentEventLoopId == 0 and pool.capacity > 1:
     pool.recursiveEventLoopId = pool.recursiveEventLoopId mod (pool.capacity - 1) + 1
-    pool.eventLoops[pool.recursiveEventLoopId].taskRegistry.add(task)
+    pool.eventLoops[pool.recursiveEventLoopId].taskRegistry.addSpsc(task)
   else:
     task.run(task) # TODO: callsoon
 
-proc runCounterAction(r: ref ActionBase): bool =
+proc runSpscCounterAction(r: ref ActionBase): bool =
   result = false
-  currentEventLoop.taskRegistry.run()
+  currentEventLoop.taskRegistry.runSpsc()
+
+proc runMpscCounterAction(r: ref ActionBase): bool =
+  result = false
+  currentEventLoop.taskRegistry.runMpsc()
 
 proc runEventLoop(id: Natural) {.thread.} =
   currentEventLoopId = id
   currentEventLoop = pool.eventLoops[id].addr
-  let counterIdent = register(currentEventLoop.taskCounterFd)
-  let counterAction = new(ActionBase)
-  counterAction.run = runCounterAction
-  updateRead(counterIdent, counterAction)
+  let spscCounterIdent = register(currentEventLoop.taskSpscCounterFd)
+  let spscCounterAction = new(ActionBase)
+  spscCounterAction.run = runSpscCounterAction
+  updateRead(spscCounterIdent, spscCounterAction)
+  let mpscCounterIdent = register(currentEventLoop.taskMpscCounterFd)
+  let mpscCounterAction = new(ActionBase)
+  mpscCounterAction.run = runMpscCounterAction
+  updateRead(mpscCounterIdent, mpscCounterAction)
   poll(EventLoopTimeout)
 
 proc runEventLoopPool*() =
