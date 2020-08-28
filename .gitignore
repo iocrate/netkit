@@ -1,9 +1,10 @@
 *~
 build/
-benchmark/
+out/
 .vscode
 testresults
 nimcache
 *.exe
 megatest.nim
 outputGotten.txt
+htmldocs
