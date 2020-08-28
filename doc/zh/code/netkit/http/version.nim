@@ -20,5 +20,5 @@ proc parseHttpVersion*(s: string): HttpVersion  {.raises: [ValueError].} = disca
   ## 
   ## .. code-block::nim
   ## 
-  ##   let version = parseHttpVersion("HTTP/1.1")
-  ##   assert version == HttpVer11
+  ##   let ver = parseHttpVersion("HTTP/1.1")
+  ##   doAssert ver == HttpVer11
