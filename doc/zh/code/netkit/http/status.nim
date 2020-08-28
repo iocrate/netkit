@@ -72,5 +72,5 @@ proc parseHttpCode*(code: int): HttpCode  {.raises: [ValueError].} = discard
   ## 
   ## .. code-block::nim
   ## 
-  ##   assert parseHttpCode(100) == Http100
-  ##   assert parseHttpCode(200) == Http200
+  ##   doAssert parseHttpCode(100) == Http100
+  ##   doAssert parseHttpCode(200) == Http200

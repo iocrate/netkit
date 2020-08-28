@@ -32,13 +32,10 @@ type
 
 proc parseHttpMethod*(s: string): HttpMethod {.raises: [ValueError].} =
   ## Converts a string to an HTTP request method. A ``ValueError`` is raised when ``s`` is not a valid method.
-  ## 
-  ## Examples:
-  ## 
-  ## .. code-block::nim
-  ## 
-  ##   assert parseHttpMethod("GET") == HttpGet
-  ##   assert parseHttpMethod("POST") == HttpPost
+  runnableExamples:
+    doAssert parseHttpMethod("GET") == HttpGet
+    doAssert parseHttpMethod("POST") == HttpPost
+
   result =
     case s
     of "GET": HttpGet
