@@ -69,15 +69,11 @@ type
     Http504 = "504 Gateway Timeout"
     Http505 = "505 HTTP Version Not Supported"
 
-proc parseHttpCode*(code: int): HttpCode  {.raises: [ValueError].} =
+proc parseHttpCode*(code: int): HttpCode {.raises: [ValueError].} =
   ## Converts an integer to a status code. A ``ValueError`` is raised when ``code`` is not a valid code.
-  ## 
-  ## Examples:
-  ## 
-  ## .. code-block::nim
-  ## 
-  ##   assert parseHttpCode(100) == Http100
-  ##   assert parseHttpCode(200) == Http200
+  runnableExamples:
+    doAssert parseHttpCode(100) == Http100
+    doAssert parseHttpCode(200) == Http200
   case code
   of 100: Http100
   of 101: Http101

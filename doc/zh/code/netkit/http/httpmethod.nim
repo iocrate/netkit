@@ -35,5 +35,5 @@ proc parseHttpMethod*(s: string): HttpMethod {.raises: [ValueError].} = discard
   ## 
   ## .. code-block::nim
   ## 
-  ##   assert parseHttpMethod("GET") == HttpGet
-  ##   assert parseHttpMethod("POST") == HttpPost
+  ##   doAssert parseHttpMethod("GET") == HttpGet
+  ##   doAssert parseHttpMethod("POST") == HttpPost
