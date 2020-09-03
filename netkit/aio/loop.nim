@@ -1,360 +1,254 @@
-#[
-  
-                ========= 
-                LoopGroup
-                =========
-                    ↑
-                    |    [EventDataTable] 发起者
-         Thread ←→ Loop ←-------------------------------------------+ 
-                    ↑                                               |
-                    | 执行者                                         |
-                    |                                    ========================
-                  Channel ←-----------------------------           Task [Promise]
-                    ↑                                               ↑
-      +-------------+-------------+---------+              +------+-----+-----+
-      |             |             |         |              |      |     |     |
-  SocketChannel  PipeChannel  FileChannel   ...          Accept  Recv  Send  ...
-                                                         ========================
 
-  Call:
+when not compileOption("threads"):
+  {.error: "EventLoopExecutor requires --threads:on option.".}
 
-    Loop::Local
-
-      >> create Task
-      >> register or update
-
-    Loop::Remote
-
-      >> create Task
-      >> write Notify::Request 
-
-  Loop:
-
-    Event::Local[Channel]: (event.data.fd == 2 ...)
-
-      >> cast [Task] -> Task
-         case Task.code
-
-      >> check Task.loop == Local.loop
-         -> run Waker::Local  (Promise)
-         -> run Waker::Remote (Task.loop.write Notify::Response)
-
-    Event::Remote[Pipe]:   (event.data.fd == 0 | 1)
-
-      >> cast [Notify] -> Notify
-         case Notify.code
-         -> run Notify::Request  (Task)
-         -> run Notify::Response (Promise)
-]#
-
-# Now 
-#
-#   2020-06-05 09:31 - 创建一个小的异步操作原型: 执行一次异步函数的演示，以形成基本模型。
-#   2020-06-05 10:46 - 创建一个小的套接字读操作原型。
-#   TODO - 创建一个小的异步操作原型: 执行一次异步文件读的演示，以形成基本模型。
-
-import netkit/posix/linux/selector
-import netkit/posix/linux/socket
-import std/posix
+import std/cpuinfo
 import std/os
-
-import netkit/misc
-import netkit/collections/share/vecs
-import netkit/aio/ident
+import netkit/options
+import netkit/locks
+import netkit/aio/taskcounter
 import netkit/aio/task
-
-type
-  # TODO: 考虑全局变量；考虑主线程的 Loop (其线程不需要设置)；考虑获取当前 Loop 的状态
-  EventLoop* = object
-    ## 循环包括两个操作：
-    ## - 任务 (1) 添加任务 （2）执行任务（3）反馈任务
-    ## - 委派/委托 -> 任务 （1）发送委派（2）接收委派（3）交付委派
-    id*: int # TODO 使用 EventLoopId = distinct int
-    thread: Thread[int] 
-    pipe: array[2, cint] # TODO: 使用 PipeChannel 
-    selector: Selector
-    interests: SharedVec[InterestData] # 散列 handle -> data
-    identManager: IdentityManager
-
-  EventLoopId* = distinct int
-
-  InterestData = object
-    interest: Interest
-    readReady: bool
-    readHead: ptr Task 
-    readTail: ptr Task  
-    writeReady: bool
-    writeHead: ptr Task 
-    writeTail: ptr Task 
-
-  Delegate = object
-    code: DelegateCode
-    task: ptr Task 
-  
-  DelegateCode {.pure, size: sizeof(uint8).} = enum
-    Request, Response
-
-proc `=destroy`*(x: var EventLoop) {.raises: [OSError].} = 
-  if int(x.id) > 0:
-    if x.pipe[0].close() < 0:
-      raiseOSError(osLastError())
-    if x.pipe[1].close() < 0:
-      raiseOSError(osLastError())
-    x.selector.close()
-    `=destroy`(x.interests)
-    `=destroy`(x.identManager)
-    # joinThread(x.thread) TODO: 考虑线程清理
-
-proc init(x: var EventLoop, id: Natural) {.raises: [OSError].} = 
-  `=destroy`(x)
-  x.id = int(id)
-  x.selector = initSelector() 
-  x.interests.init(1024) # TODO: 使用 ptr；考虑散列 [] 增长缩小，handle -> data
-  if pipe(x.pipe) < 0:
-    raiseOSError(osLastError())
-
-type
-  EventLoopManager* = object 
-    loops: SharedVec[EventLoop]
-    cursor: int
+import netkit/aio/action
+import netkit/aio/error
 
 const
-  EventLoopCores* {.intDefine.} = 0
+  MaxEventLoopCount* {.intdefine.} = 256            ## Maximum size of the event loop gExecutor. 
+  InitialSpscRegistrySize* {.intdefine.} = 4096
+  InitialMpscRegistrySize* {.intdefine.} = 4096
+  InitialReactorSize* {.intdefine.} = 4096
+  EventLoopTimeout* {.intdefine.} = 500
 
-proc `=destroy`(x: var EventLoopManager) = 
-  `=destroy`(x.loops)
+type
+  EventLoop* = object
+    id: int
+    reactor: Reactor
+    taskCounterSpscFd: cint
+    taskCounterMpscFd: cint
+    taskRegistry: TaskRegistry
 
-proc init(x: var EventLoopManager) =
-  `=destroy`(x)
-  x.loops.init(8) # TODO
-  for i in 0..<8:
-    x.loops[i].init(i)
+  EventLoopGroup* = object
+    id: EventLoopGroupId
+    start: Natural
+    cap: Natural
+    recursiveEventLoopId: Natural
+    recursiveEventLoopLock: SpinLock
 
-var gManager: EventLoopManager
+  EventLoopGroupId* = int
 
-proc getEventLoop*(id: int): lent EventLoop =
-  gManager.loops[int(id)]
+  EventLoopExecutor* = object
+    threads: array[MaxEventLoopCount, Thread[Natural]] 
+    eventLoops: array[MaxEventLoopCount, EventLoop]    
+    eventLoopGroups: array[MaxEventLoopCount, Option[EventLoopGroup]] # TODO: ptr UncheckedArray[EventLoopGroup]
+    cpus: Natural
+    cap: Natural
+    mask: Natural
+    recursiveEventLoopId: Natural
+    recursiveEventLoopLock: SpinLock
+    recursiveEventLoopGroupId: Natural
+    recursiveEventLoopGroupLock: SpinLock
+    stateLock: SpinLock
+    state: EventLoopExecutorState
 
-proc round*(): int = 
-  result = int(gManager.cursor) 
-  gManager.cursor = (gManager.cursor + 1) mod gManager.loops.len
+  EventLoopExecutorState* {.pure.} = enum
+    CREATING, RUNNING, SHUTDOWN, CLOSED
 
-var eventLoopId* {.threadvar.}: int
+proc initEventLoop(loop: var EventLoop, id: Natural) {.raises: [OSError].} =
+  loop.id = id
+  loop.reactor.open(InitialReactorSize)
+  loop.taskCounterSpscFd = eventfd(0, 0)
+  if loop.taskCounterSpscFd < 0:
+    raiseOSError(osLastError())
+  loop.taskCounterMpscFd = eventfd(0, 0)
+  if loop.taskCounterMpscFd < 0:
+    raiseOSError(osLastError())
+  loop.taskRegistry = initTaskRegistry(loop.taskCounterSpscFd, InitialSpscRegistrySize, 
+                                       loop.taskCounterMpscFd, InitialMpscRegistrySize)
 
-proc current*(): int = 
-  result = eventLoopId
+proc initEventLoopExecutor(): EventLoopExecutor =
+  result.cpus = countProcessors()
+  result.cap = min(result.cpus, MaxEventLoopCount)
+  result.mask = result.cap - 1
+  result.recursiveEventLoopId = 1
+  result.recursiveEventLoopLock = initSpinLock()
+  result.recursiveEventLoopGroupId = 0
+  result.recursiveEventLoopGroupLock = initSpinLock()
+  result.stateLock = initSpinLock()
+  result.state = EventLoopExecutorState.CREATING
+  for i in 0..<result.cap:
+    result.eventLoops[i].initEventLoop(i)
 
-# proc runable(loop: int) {.thread.} =
-#   eventLoopId = loop
-#   echo "int: ", int(current())
+var
+  gExecutor: EventLoopExecutor = initEventLoopExecutor()
+  currentEventLoopId {.threadvar.}: int 
+  currentEventLoop {.threadvar.}: ptr EventLoop 
 
-#   var events = newSeq[Event](128)
-#   while true:
-#     let count = gManager.loops[int(loop)].selector.select(events, -1)
-#     for i in 0..<count:
-#       discard
-
-proc runable(loopId: int) {.thread.} =
-  eventLoopId = loopId
-  echo "EventLoop Id: ", int(current())
-  var loop = gManager.loops[eventLoopId]
-
-  var interest = initInterest()
-  interest.registerReadable()
+proc sliceEventLoopGroup*(cap: Natural): EventLoopGroupId =
+  result = 0
   
-  loop.selector.register(loop.pipe[0], UserData(fd: loop.pipe[0]), interest)
+  withLock gExecutor.recursiveEventLoopGroupLock:
+    result = gExecutor.recursiveEventLoopGroupId
+    gExecutor.recursiveEventLoopGroupId = gExecutor.recursiveEventLoopGroupId + 1
+    if gExecutor.recursiveEventLoopGroupId >= MaxEventLoopCount:
+      raise newException(RangeDefect, "too many EventLoopGroup slices")
+  
+  gExecutor.eventLoopGroups[result].has = true
 
-  var interest2 = initInterest()
-  interest.registerWritable()
-  loop.selector.register(loop.pipe[1], UserData(fd: loop.pipe[1]), interest2)
+  let group = gExecutor.eventLoopGroups[result].value.addr
+  group.cap = min(gExecutor.mask, cap)
+  if group.cap > 0:
+    group.recursiveEventLoopLock = initSpinLock()
+    withLock gExecutor.recursiveEventLoopLock:
+      group.start = gExecutor.recursiveEventLoopId - 1
+      gExecutor.recursiveEventLoopId = (group.start + group.cap) mod gExecutor.mask + 1
 
-  # TODO: 考虑 events 的容量；使用 Vec -> newSeq；Event kind
-  var events = newSeq[Event](128)
-  while true:
-    let count = loop.selector.select(events, -1)
-    for i in 0..<count:
-      let event = events[i].addr
-      if event[].data.fd == loop.pipe[0]:
-        if event[].isReadable:
-          discard
-        if event[].isError:
-          raise newException(Defect, "bug， 不应该遇到这个错误")
-      elif event[].data.fd == loop.pipe[1]:
-        if event[].isWritable:
-          discard
-        if event[].isError:
-          raise newException(Defect, "bug， 不应该遇到这个错误")
-      else:
-        discard
-      if event[].isError:
-        if event[].data.fd == loop.pipe[0]:
-          discard
-        elif event[].data.fd == loop.pipe[1]:
-          discard
-        else:
-          discard
-      if event[].isReadClosed:
-        discard
-      if event[].isReadable:
-        if event[].data.u64 == 1:
-          echo "[Loop ", loop.id, "] loop.pipe isReadable"
-          # POSIX.1 says that write(2)s of less than PIPE_BUF bytes must be atomic.
-          # POSIX.1 requires PIPE_BUF to be at least 512 bytes.  (On Linux, PIPE_BUF is 4096 bytes.)
-          #var buffer = cast[ptr CallableContext](allocShared0(sizeof(CallableContext)))
-          var buffer: uint64
-          if loop.pipe[0].read(buffer.addr, sizeof(uint64)) < 0: # TODO: 考虑 errorno enter,eagain,ewouldblock,...
-            raiseOSError(osLastError())
-          
-          var ctx = cast[ptr CallableContext](buffer)
-          if ctx.code == TaskCode.NotifyExec:
-            ctx.cb()
-            deallocShared(ctx)
-            echo "-------------------------"
-          else:
-            var notify = cast[ptr NotifyTask](buffer)
-            case notify.task.code
-            of TaskCode.Accept:
-              var taskNotify = cast[ptr AcceptTask](notify.task)
-              var data: ptr EventData
-              if loop.dataPool[taskNotify.channel.handle.cint] == nil:
-                data = cast[ptr EventData](allocShared0(sizeof(EventData)))
-                data.interest = initInterest()
-                data.interest.registerReadable()
-                loop.dataPool[taskNotify.channel.handle.cint] = data
+proc spawn*(id: EventLoopGroupId, task: ref TaskBase) =
+  if not gExecutor.eventLoopGroups[id].has:
+    raise newException(IndexDefect, "EventLoopGroup not found")
+  let group = gExecutor.eventLoopGroups[id].value.addr
+  if group.cap > 0:
+    var idInGroup = 0
+    withLock group.recursiveEventLoopLock:
+      idInGroup = group.recursiveEventLoopId
+      group.recursiveEventLoopId = (group.recursiveEventLoopId + 1) mod group.cap
+    let eventLoopId = (group.start + idInGroup) mod gExecutor.mask + 1
+    if currentEventLoopId > 0:
+      gExecutor.eventLoops[eventLoopId].taskRegistry.addMpsc(task)
+    else:
+      gExecutor.eventLoops[eventLoopId].taskRegistry.addSpsc(task)
+  else:
+    gExecutor.eventLoops[0].taskRegistry.addSpsc(task)
 
-                # TODO: 只有本地 loop 才允许直接添加
-                loop.selector.register(taskNotify.channel.handle.cint, UserData(data: data), data.interest)
-              
-              if data.readHead == nil:
-                data.readHead = taskNotify
-                data.readTail = taskNotify
-              else:
-                data.readTail.next = taskNotify
-                data.readTail = taskNotify
-            else:
-              discard
-        elif event[].data.u64 == 2:
-          discard
-        else:
-          var data = cast[ptr EventData](event[].data.data)
-          var task = data.readHead
-          while task != nil:
-            echo "code:", $task.code
-            case task.code
-            of TaskCode.Accept:
-              var task = cast[ptr AcceptTask](task)
-              echo "[Loop ", loop.id, "] loop.accept isReadable"
-              var sockAddress: Sockaddr_storage
-              var addrLen = sizeof(sockAddress).SockLen
-              var client = socket.accept4(
-                task.channel.handle,
-                cast[ptr SockAddr](addr(sockAddress)), 
-                addr(addrLen), 
-                SOCK_NONBLOCK or socket.SOCK_CLOEXEC
-              ) # TODO: 错误
-              
-              var clientChannel: SocketChannel
-              clientChannel.handle = client
-              # clientChannel.loop = loop() TODO
+proc runSpscCounterAction(r: ref ActionBase): bool =
+  result = false
+  currentEventLoop.taskRegistry.runSpsc()
 
-              # TODO: callback task.promise.setValue(TcpStream(inner: client))
-              # promise.setValue(TcpStream(inner: client))
-              
-              # TODO: 判断是否 loop 相同
-              #   if task.loop != getCurrentLoop():
-              #     write pipe
-              # let ctx = cast[ptr CallableContext](allocShared0(sizeof(CallableContext)))
-              # ctx.cb = cb
-              # var buffer: uint64 = cast[ByteAddress](ctx).uint64
-              # if task.loop.pipe[1].write(buffer.addr, sizeof(uint64)) < 0: # TODO: 考虑 errorno enter,eagain,ewouldblock,...
-              #   raiseOSError(osLastError())
-              # echo repr client
-              echo "-------------------------"
-            of TaskCode.NotifyRequest:
-              var buffer: uint64
-              if loop.pipe[0].read(buffer.addr, sizeof(uint64)) < 0: # TODO: 考虑 errorno enter,eagain,ewouldblock,...
-                raiseOSError(osLastError())
-              var notify = cast[ptr NotifyTask](buffer)
-              case notify.task.code
-              of TaskCode.Accept:
-                var taskNotify = cast[ptr AcceptTask](notify.task)
-                var data: ptr EventData
-                if loop.dataPool[taskNotify.channel.handle.cint] == nil:
-                  data = cast[ptr EventData](allocShared0(sizeof(EventData)))
-                  data.interest = initInterest()
-                  data.interest.registerReadable()
-                  loop.dataPool[taskNotify.channel.handle.cint] = data
+proc runMpscCounterAction(r: ref ActionBase): bool =
+  result = false
+  currentEventLoop.taskRegistry.runMpsc()
 
-                  # TODO: 只有本地 loop 才允许直接添加
-                  loop.selector.register(taskNotify.channel.handle.cint, UserData(data: data), data.interest)
-                
-                if data.readHead == nil:
-                  data.readHead = taskNotify
-                  data.readTail = taskNotify
-                else:
-                  data.readTail.next = taskNotify
-                  data.readTail = taskNotify
-              else:
-                discard
-            of TaskCode.NotifyResponse:
-              discard
-            else:
-              discard
-            task = task.next
-      if event[].isWriteClosed:
-        discard
-      if event[].isWritable:
-        discard
+proc runEventLoop(id: Natural) {.thread.} =
+  currentEventLoopId = id
+  currentEventLoop = gExecutor.eventLoops[id].addr
+  let spscCounterIdent = currentEventLoop.reactor.register(currentEventLoop.taskCounterSpscFd)
+  let spscCounterAction = new(ActionBase)
+  spscCounterAction.run = runSpscCounterAction
+  currentEventLoop.reactor.updateRead(spscCounterIdent, spscCounterAction)
+  let mpscCounterIdent = currentEventLoop.reactor.register(currentEventLoop.taskCounterMpscFd)
+  let mpscCounterAction = new(ActionBase)
+  mpscCounterAction.run = runMpscCounterAction
+  currentEventLoop.reactor.updateRead(mpscCounterIdent, mpscCounterAction)
+  currentEventLoop.reactor.runBlocking(EventLoopTimeout)
 
-proc run() = 
-  # TODO: 考虑主线程 loop 直接 runable(loop)
-  # TODO: 考虑 close 后 joinThread
+proc runEventLoopExceutor*() =
+  withLock gExecutor.stateLock:
+    # TODO: 考虑 restart
+    if gExecutor.state == EventLoopExecutorState.SHUTDOWN:
+      raise newException(IllegalStateError, "EventLoopExecutor still shutdown")
+    if gExecutor.state == EventLoopExecutorState.RUNNING:
+      raise newException(IllegalStateError, "EventLoopExecutor already running")
 
-  for i in 1..<gManager.loops.len:
-    let loop = gManager.loops[i].addr
-    createThread(loop.thread, runable, int(i))
+    gExecutor.state = EventLoopExecutorState.RUNNING
+  
+  for i in 1..<gExecutor.cap:
+    createThread(gExecutor.threads[i], runEventLoop, i)
+    when defined(PinToCpu):
+      assert gExecutor.cpus > 0
+      pinToCpu(gExecutor.threads[i], i mod gExecutor.cpus)
+  runEventLoop(0) 
 
-  runable(int(0))
+  for i in 1..<gExecutor.cap:
+    joinThread(gExecutor.threads[i])
+  gExecutor.state = EventLoopExecutorState.CLOSED
+
+proc shutdownEventLoopExceutor*() =
+  withLock gExecutor.stateLock:
+    # TODO: 考虑 restart
+    if gExecutor.state == EventLoopExecutorState.SHUTDOWN:
+      raise newException(IllegalStateError, "EventLoopExecutor already shutdown")
+    # TODO: 考虑 restart
+    if gExecutor.state == EventLoopExecutorState.CLOSED:
+      raise newException(IllegalStateError, "EventLoopExecutor already closed")
+
+    gExecutor.state = EventLoopExecutorState.SHUTDOWN
+
+    for i in 1..<gExecutor.cap:
+      # TODO: 考虑 fd shutdown 时的 hook 函数
+      gExecutor.eventLoops[i].reactor.shutdown()
+    gExecutor.eventLoops[0].reactor.shutdown()
+
+type
+  Reactivity* = object
+    fd: cint
+    reactiveId: Natural
+    eventLoopId: int
+
+  ReactivityTask[T] = object of TaskBase
+    reactivity: ref Reactivity
+    value: T
+
+proc register*(r: ref Reactivity) =
+  if r.eventLoopId == currentEventLoopId:
+    r.reactiveId = currentEventLoop.reactor.register(r.fd)
+  else:
+    var task = new(ReactivityTask[void]) 
+    task.run = proc (task: ref TaskBase) =
+      let r = (ref Task[ref Reactivity])(task).value
+      r.reactiveId = currentEventLoop.reactor.register(r.fd)
+    task.reactivity = r
+    gExecutor.eventLoops[r.eventLoopId].taskRegistry.addMpsc(task)
+
+proc unregister*(r: ref Reactivity) =
+  if r.eventLoopId == currentEventLoopId:
+    currentEventLoop.reactor.unregister(r.reactiveId)
+  else:
+    var task = new(ReactivityTask[void]) 
+    task.run = proc (task: ref TaskBase) =
+      currentEventLoop.reactor.unregister((ref Task[ref Reactivity])(task).value.reactiveId)
+    task.reactivity = r
+    gExecutor.eventLoops[r.eventLoopId].taskRegistry.addMpsc(task)
     
-  for i in 1..<gManager.loops.len:
-    let loop = gManager.loops[i].addr
-    joinThread(loop.thread)
+proc unregisterReadable*(r: ref Reactivity) =
+  if r.eventLoopId == currentEventLoopId:
+    currentEventLoop.reactor.unregisterReadable(r.reactiveId)
+  else:
+    var task = new(ReactivityTask[void]) 
+    task.run = proc (task: ref TaskBase) =
+      currentEventLoop.reactor.unregisterReadable((ref Task[ref Reactivity])(task).value.reactiveId)
+    task.reactivity = r
+    gExecutor.eventLoops[r.eventLoopId].taskRegistry.addMpsc(task)
 
-# TODO: 添加编译选项
-gManager.init()
-run()
+proc unregisterWritable*(r: ref Reactivity) =
+  if r.eventLoopId == currentEventLoopId:
+    currentEventLoop.reactor.unregisterWritable(r.reactiveId)
+  else:
+    var task = new(ReactivityTask[void]) 
+    task.run = proc (task: ref TaskBase) =
+      currentEventLoop.reactor.unregisterWritable((ref Task[ref Reactivity])(task).value.reactiveId)
+    task.reactivity = r
+    gExecutor.eventLoops[r.eventLoopId].taskRegistry.addMpsc(task)
 
-# proc sendDelegate*(loop: ptr EventLoop, task: pointer) {.raises: [OSError].} = 
-#   # TODO: 考虑提供 ref 或者 object API
-#   var dlg = cast[ptr Delegate](allocShared0(sizeof(Delegate)))
-#   dlg.code = DelegateCode.Request
-#   dlg.task = task
-#   var buffer: uint64 = cast[ByteAddress](dlg).uint64
-#   if loop.pipe[1].write(buffer.addr, sizeof(uint64)) < 0: # TODO: 考虑 errorno enter,eagain,ewouldblock,...
-#     raiseOSError(osLastError())
+proc updateRead*(r: ref Reactivity, action: ref ActionBase) =
+  if r.eventLoopId == currentEventLoopId:
+    currentEventLoop.reactor.updateRead(r.reactiveId, action)
+  else:
+    var task = new(ReactivityTask[ref ActionBase]) 
+    task.run = proc (task: ref TaskBase) =
+      let t = (ref ReactivityTask[ref ActionBase])(task)
+      currentEventLoop.reactor.updateRead(t.reactivity.reactiveId, t.value)
+    task.reactivity = r
+    task.value = action
+    gExecutor.eventLoops[r.eventLoopId].taskRegistry.addMpsc(task)
 
-# proc deliverDelegate*(loop: ptr EventLoop, task: pointer) {.raises: [OSError].} = 
-#   # TODO: 考虑提供 ref 或者 object API
-#   var dlg = cast[ptr Delegate](allocShared0(sizeof(Delegate)))
-#   dlg.code = DelegateCode.Response
-#   dlg.task = task
-#   var buffer: uint64 = cast[ByteAddress](dlg).uint64
-#   if loop.pipe[1].write(buffer.addr, sizeof(uint64)) < 0: # TODO: 考虑 errorno enter,eagain,ewouldblock,...
-#     raiseOSError(osLastError())
+proc updateWrite*(r: ref Reactivity, action: ref ActionBase) =
+  if r.eventLoopId == currentEventLoopId:
+    currentEventLoop.reactor.updateWrite(r.reactiveId, action)
+  else:
+    var task = new(ReactivityTask[ref ActionBase]) 
+    task.run = proc (task: ref TaskBase) =
+      let t = (ref ReactivityTask[ref ActionBase])(task)
+      currentEventLoop.reactor.updateWrite(t.reactivity.reactiveId, t.value)
+    task.reactivity = r
+    task.value = action
+    gExecutor.eventLoops[r.eventLoopId].taskRegistry.addMpsc(task)
 
-# proc recvDelegate*(loop: ptr EventLoop): ptr Delegate {.raises: [OSError].} = 
-#   # TODO: 考虑提供 ref 或者 object API
-#   var buffer: uint64
-#   if loop.pipe[0].read(buffer.addr, sizeof(uint64)) < 0: # TODO: 考虑 errorno enter,eagain,ewouldblock,...
-#     raiseOSError(osLastError())
-#   cast[ptr Delegate](buffer)
 
-# proc createEventLoopManager(n: Natural): ptr EventLoopManager =
-#   result = cast[ptr EventLoopManager](allocShared0(sizeof(EventLoopManager)))
-#   result.loops = createSharedVec[EventLoop](n)
-#   for i in 0..<n:
-#     result.loops[i] = createEventLoop(result, i)
-
-# proc close(g: ptr EventLoopManager) = 
-#   `=destroy`(g.loops)
-#   deallocShared(g)

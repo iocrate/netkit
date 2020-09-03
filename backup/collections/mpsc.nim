@@ -1,19 +1,21 @@
 
 
 import std/math
-import netkit/sigcounter
+import netkit/locks
+import netkit/collections/sigcounter
 
 type
-  SpscQueue*[D, C] = object 
+  MpscQueue*[D, C] = object 
+    writeLock: SpinLock
     data: ptr UncheckedArray[D]
     head: Natural
     tail: Natural 
     cap: Natural
     len: Natural
     mask: Natural
-    counter*: SigCounter[C]
+    counter: SigCounter[C]
 
-proc `=destroy`*[D, C](x: var SpscQueue[D, C]) = 
+proc `=destroy`*[D, C](x: var MpscQueue[D, C]) = 
   if x.data != nil:
     for i in 0..<x.len: 
       `=destroy`(x.data[i])
@@ -21,7 +23,7 @@ proc `=destroy`*[D, C](x: var SpscQueue[D, C]) =
     x.data = nil
     `=destroy`(x.counter)
 
-proc `=sink`*[D, C](dest: var SpscQueue[D, C], source: SpscQueue[D, C]) = 
+proc `=sink`*[D, C](dest: var MpscQueue[D, C], source: MpscQueue[D, C]) = 
   `=destroy`(dest)
   dest.data = source.data
   dest.head = source.head
@@ -31,7 +33,7 @@ proc `=sink`*[D, C](dest: var SpscQueue[D, C], source: SpscQueue[D, C]) =
   dest.mask = source.mask
   dest.counter = source.counter
 
-proc `=`*[D, C](dest: var SpscQueue[D, C], source: SpscQueue[D, C]) =
+proc `=`*[D, C](dest: var MpscQueue[D, C], source: MpscQueue[D, C]) =
   if dest.data != source.data: 
     `=destroy`(dest)
     dest.head = source.head
@@ -44,8 +46,9 @@ proc `=`*[D, C](dest: var SpscQueue[D, C], source: SpscQueue[D, C]) =
       dest.data = cast[ptr UncheckedArray[D]](allocShared0(sizeof(D) * source.cap))
       copyMem(dest.data, source.data, sizeof(D) * source.len)
 
-proc initSpscQueue*[D, C](counter: SigCounter[C], cap: Natural = 4096): SpscQueue[D, C] =
+proc initMpscQueue*[D, C](counter: SigCounter[C], cap: Natural = 4096): MpscQueue[D, C] =
   assert isPowerOfTwo(cap)
+  result.writeLock = initSpinLock()
   result.data = cast[ptr UncheckedArray[D]](allocShared0(sizeof(D) * cap))
   result.head = 0
   result.tail = 0
@@ -54,32 +57,34 @@ proc initSpscQueue*[D, C](counter: SigCounter[C], cap: Natural = 4096): SpscQueu
   result.len = 0
   result.counter = counter
 
-proc tryAdd*[D, C](x: var SpscQueue[D, C], item: sink D): bool = 
+proc tryAdd*[D, C](x: var MpscQueue[D, C], item: sink D): bool = 
   result = true
-  let next = (x.tail + 1) and x.mask
-  if unlikely(next == x.head):
-    return false
-  x.data[x.tail] = item
-  x.tail = next
+  withLock x.writeLock:
+    let next = (x.tail + 1) and x.mask
+    if unlikely(next == x.head):
+      return false
+    x.data[x.tail] = item
+    x.tail = next
   fence()
   x.counter.signal()
 
-proc add*[D, C](x: var SpscQueue[D, C], item: sink D) = 
-  let next = (x.tail + 1) and x.mask
-  while unlikely(next == x.head):
-    cpuRelax()
-  x.data[x.tail] = item
-  x.tail = next
+proc add*[D, C](x: var MpscQueue[D, C], item: sink D) = 
+  withLock x.writeLock:
+    let next = (x.tail + 1) and x.mask
+    while unlikely(next == x.head):
+      cpuRelax()
+    x.data[x.tail] = item
+    x.tail = next
   fence()
   x.counter.signal()
 
-proc len*[D, C](x: var SpscQueue[D, C]): Natural {.inline.} = 
+proc len*[D, C](x: var MpscQueue[D, C]): Natural {.inline.} = 
   x.len
   
-proc sync*[D, C](x: var SpscQueue[D, C]) {.inline.} = 
+proc sync*[D, C](x: var MpscQueue[D, C]) {.inline.} = 
   x.len.inc(Natural(x.counter.wait()))
   
-proc take*[D, C](x: var SpscQueue[D, C]): D = 
+proc take*[D, C](x: var MpscQueue[D, C]): D = 
   result = move(x.data[x.head])
   x.head = (x.head + 1) and x.mask
   x.len.dec()
@@ -107,7 +112,7 @@ when isMainModule and defined(linux):
       raiseOSError(osLastError())
     result = buf 
 
-  proc initMySigCounter(fd: cint): MySigCounter = 
+  proc intMySigCounter(fd: cint): MySigCounter = 
     result.signalImpl = signalMySigCounter
     result.waitImpl = waitMySigCounter
     result.value = fd
@@ -134,14 +139,14 @@ when isMainModule and defined(linux):
   var efd = eventfd(0, 0)
   if efd < 0:
     raiseOSError(osLastError())
-  var mq = initSpscQueue[ptr Task, cint](initMySigCounter(efd), 4)
+  var mq = initMpscQueue[ptr Task, cint](intMySigCounter(efd), 4)
 
   proc producerFunc() {.thread.} =
     for i in 1..10000:
       mq.add(createTask(i)) 
 
   proc consumerFunc() {.thread.} =
-    while counter < 10000:
+    while counter < 40000:
       mq.sync()
       while mq.len > 0:
         counter.inc()
@@ -150,15 +155,16 @@ when isMainModule and defined(linux):
         task.destroy()
 
   proc test() = 
-    var producer: Thread[void]
+    var producers: array[4, Thread[void]]
     var comsumer: Thread[void]
-    createThread(producer, producerFunc)
+    for i in 0..<4:
+      createThread(producers[i], producerFunc)
     createThread(comsumer, consumerFunc)
-    joinThread(producer)
-    joinThread(comsumer)
+    joinThreads(producers)
+    joinThreads(comsumer)
     if close(efd) < 0:
       raiseOSError(osLastError())
-    doAssert sum == ((1 + 10000) * (10000 div 2)) * 1 # (1 + n) * n / 2
+    doAssert sum == ((1 + 10000) * (10000 div 2)) * 4 # (1 + n) * n / 2
 
   test()
 

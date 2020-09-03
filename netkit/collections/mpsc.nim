@@ -2,7 +2,7 @@
 
 import std/math
 import netkit/locks
-import netkit/collections/sigcounter
+import netkit/sigcounter
 
 type
   MpscQueue*[D, C] = object 

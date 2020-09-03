@@ -1,12 +1,12 @@
 
 import std/os
 import std/posix
-import netkit/collections/error
-import netkit/collections/options
+import netkit/posix/linux/selector
+import netkit/options
 import netkit/collections/simplequeue
 import netkit/collections/vecs
-import netkit/collections/numbergen
-import netkit/posix/linux/selector
+import netkit/aio/error
+import netkit/numbergen
 
 const
   MaxReactiveEventCount* {.intdefine.} = 1024

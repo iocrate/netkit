@@ -1,7 +1,7 @@
 
 
 import std/math
-import netkit/sigcounter
+import netkit/collections/sigcounter
 
 type
   SpscQueue*[D, C] = object 

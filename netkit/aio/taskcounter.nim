@@ -1,7 +1,7 @@
 
 import std/os
 import std/posix
-import netkit/collections/sigcounter
+import netkit/sigcounter
 
 type
   TaskCounter* = SigCounter[cint]
