@@ -301,17 +301,94 @@ discard """
 # var gCpus: Natural = countProcessors()
 # echo gCpus
 
-var a: uint64 = high(uint64)
-var b: int64 = high(int64)
+# var a: uint64 = high(uint64)
+# var b: int64 = high(int64)
 
-echo "a:", a
-echo "b:", b
+# echo "a:", a
+# echo "b:", b
 
-var m = 0
-for i in b.uint64..<a:
-  m.inc()
-  if m > 10:
-    echo "c:", i
-    break
+# var m = 0
+# for i in b.uint64..<a:
+#   m.inc()
+#   if m > 10:
+#     echo "c:", i
+#     break
 
-  
+# import os 
+
+# type
+#   Obj = object
+#     val: int
+
+# proc threadFunc1(o: pointer) {.thread.} =
+#   sleep(100)
+#   echo "v1:", cast[ref Obj](o).val
+
+# proc threadFunc2(o: ref Obj) {.thread.} =
+#   sleep(100)
+#   echo "v2:", o.val
+
+# var thread1: Thread[pointer]
+# var thread2: Thread[ref Obj]
+
+# proc run1() =
+#   var o = new(Obj)
+#   o.val = 100
+#   createThread(thread1, threadFunc1, cast[pointer](o))
+
+# proc run2() =
+#   var o = new(Obj)
+#   o.val = 100
+#   createThread(thread2, threadFunc2, o)
+
+# proc main() = 
+#   run1()
+#   run2()
+#   GC_fullCollect()
+
+#   var o1 = new(Obj)
+#   o1.val = 1
+#   var o2 = new(Obj)
+#   o2.val = 2
+
+#   joinThread(thread1)
+#   joinThread(thread2)
+
+# main()
+
+# type
+#   Obj = object
+#     val: int
+
+# proc f() =
+#   var a = Obj(val: 100)
+#   var b = a.addr
+#   reset(b[])
+#   echo b.val
+#   echo a.val
+
+# f()
+
+type
+  Obj = object
+    val: int
+
+var container: pointer = alloc0(sizeof(pointer))
+
+proc f() =
+  var obj1: ref Obj = new(Obj)
+  obj1.val = 100
+  (cast[ref ref Obj](container))[] = obj1
+
+  # GC_ref(obj) # still necessary? If not, can arc collect garbage correctly?
+
+proc main() =
+  f()
+  GC_fullCollect()
+
+  var obj2 = new(Obj)
+  obj2.val = 1000
+
+  echo cast[ref ref Obj](container)[].val # Output: 100? 1000? unknown?
+
+main()

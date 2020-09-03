@@ -10,21 +10,21 @@ type
   Task*[T] = object of TaskBase
     value*: T
 
-  TaskProc* = proc (r: ptr TaskBase) {.nimcall, gcsafe.}
+  TaskProc* = proc (task: ref TaskBase) {.nimcall, gcsafe.}
 
   TaskRegistry* = object
-    spscQueue: SpscQueue[ptr TaskBase, cint]
-    mpscQueue: MpscQueue[ptr TaskBase, cint]
+    spscQueue: SpscQueue[ref TaskBase, cint]
+    mpscQueue: MpscQueue[ref TaskBase, cint]
 
 proc initTaskRegistry*(spscFd: cint, spscCap: Natural, mpscFd: cint, mpscCap: Natural): TaskRegistry =
-  result.spscQueue = initSpscQueue[ptr TaskBase, cint](initTaskCounter(spscFd), spscCap)
-  result.mpscQueue = initMpscQueue[ptr TaskBase, cint](initTaskCounter(mpscFd), mpscCap)
+  result.spscQueue = initSpscQueue[ref TaskBase, cint](initTaskCounter(spscFd), spscCap)
+  result.mpscQueue = initMpscQueue[ref TaskBase, cint](initTaskCounter(mpscFd), mpscCap)
 
-proc addSpsc*(r: var TaskRegistry, t: ptr TaskBase) {.inline.} =
-  r.spscQueue.add(t)
+proc addSpsc*(r: var TaskRegistry, task: ref TaskBase) {.inline.} =
+  r.spscQueue.add(task)
 
-proc addMpsc*(r: var TaskRegistry, t: ptr TaskBase) {.inline.} =
-  r.mpscQueue.add(t)
+proc addMpsc*(r: var TaskRegistry, task: ref TaskBase) {.inline.} =
+  r.mpscQueue.add(task)
 
 proc runSpsc*(r: var TaskRegistry) =
   r.spscQueue.sync()

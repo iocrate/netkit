@@ -80,7 +80,7 @@ iterator nodes*[T](Q: var SimpleQueue[T]): ref SimpleNode[T] =
     yield node
     node = next
 
-iterator nodesReverse*[T](Q: var SimpleQueue[T]): ref SimpleNode[T] = 
+iterator nodesBackwards*[T](Q: var SimpleQueue[T]): ref SimpleNode[T] = 
   var node = Q.head.prev
   var prev: ref SimpleNode[T]
   while node != Q.head:

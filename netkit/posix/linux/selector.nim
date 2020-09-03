@@ -105,10 +105,12 @@ proc close*(s: var Selector) {.raises: [OSError].} =
 proc select*(s: var Selector, events: var openArray[Event], timeout: cint): Natural {.raises: [OSError].} =
   # TODO: timeout: cint 设计一个超时数据结构以提供更好的兼容 ? how about Option<Duration> ?
   result = epoll_wait(s.epollFD, events[0].value.addr, cint(events.len), timeout)
-  if result < 0:
-    result = 0
+  while result < 0:
     let err = osLastError()
-    if cint(err) != EINTR: # TODO: 需不需要循环直到创建成功呢？
+    if cint(err) == EINTR:
+      discard
+    else:
+      result = 0
       raiseOSError(err)
 
 proc register*(s: var Selector, fd: cint, data: UserData, interest: Interest) {.raises: [OSError].} =

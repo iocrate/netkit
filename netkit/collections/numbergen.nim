@@ -4,17 +4,17 @@ import netkit/collections/deques
 type
   NaturalGenerator* = object
     curr: Natural
-    reclaimed: Deque[Natural]
+    reclaims: Deque[Natural]
 
 proc `=destroy`*(x: var NaturalGenerator) =
-  `=destroy`(x.reclaimed)
+  `=destroy`(x.reclaims)
 
-proc initNaturalGenerator*(x: var NaturalGenerator) =
-  x.reclaimed.initDeque(kind = DequeKind.THREAD_LOCAL)
+proc initNaturalGenerator*(x: var NaturalGenerator, initialSize: Natural = 4, kind = DequeKind.THREAD_LOCAL) =
+  x.reclaims.initDeque(initialSize, kind)
 
 proc acquire*(x: var NaturalGenerator): Natural =
-  if x.reclaimed.len > 0:
-    result = Natural(x.reclaimed.popFirst())
+  if x.reclaims.len > 0:
+    result = Natural(x.reclaims.popFirst())
   else:
     result = Natural(x.curr)
     inc(x.curr)
@@ -23,7 +23,7 @@ proc release*(x: var NaturalGenerator, id: Natural) =
   when compileOption("boundChecks"): 
     if unlikely(x.curr <= Natural(id)): 
       raise newException(RangeDefect, "value out of range: " & $Natural(id) & " notin 0 .. " & $(x.curr - 1))
-  x.reclaimed.addLast(Natural(id))
+  x.reclaims.addLast(Natural(id))
 
 when isMainModule:
   proc tBase = 

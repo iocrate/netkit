@@ -1,112 +1,149 @@
 
 import std/os
 import std/posix
-
+import netkit/collections/error
+import netkit/collections/options
 import netkit/collections/simplequeue
-import netkit/collections/future
-import netkit/collections/share/vecs
+import netkit/collections/vecs
+import netkit/collections/numbergen
 import netkit/posix/linux/selector
-import netkit/aio/ident
 
 const
-  MaxEventCount* {.intdefine.} = 128
+  MaxReactiveEventCount* {.intdefine.} = 1024
 
 type
   ActionBase* = object of RootObj
-    future: ref Future
+    # future: ref Future
     run*: ActionProc
 
   Action*[T] = object of ActionBase
     value*: T
 
-  ActionProc* = proc (c: ref ActionBase): bool {.nimcall, gcsafe.}
+  ActionProc* = proc (action: ref ActionBase): bool {.nimcall, gcsafe.}
 
-  ActionRegistry* = object
+  Reactor* = object
     selector: Selector
-    interests: SharedVec[InterestData] # 散列 handle -> data
-    identManager: IdentityManager
+    interests: InterestVec
+    state: ReactorState
+
+  ReactorState* {.pure.} = enum
+    CREATING, RUNNING, SHUTDOWN, CLOSED
+
+  InterestVec = object
+    data: Vec[Option[InterestData]]
+    len: Natural
+    idGenerator: NaturalGenerator
     
   InterestData = object
     fd: cint
     interest: Interest
     readQueue: SimpleQueue[ref ActionBase]
     writeQueue: SimpleQueue[ref ActionBase]
-    has: bool
 
-proc initActionRegistry*(cap: int): ActionRegistry =
-  result.selector = initSelector()
-  result.interests.init(cap)
-  result.identManager.init()
+proc open*(r: var Reactor, initialSize: int) = 
+  r.selector = initSelector()
+  r.interests.data.initVec(initialSize, VecKind.THREAD_LOCAL)
+  r.interests.idGenerator.initNaturalGenerator(initialSize)
+  r.state = ReactorState.CREATING
 
-proc register*(r: var ActionRegistry, fd: cint): Identity =
+proc register*(r: var Reactor, fd: cint): Natural =
+  # if r.state == ReactorState.SHUTDOWN:
+  #   raise newException(IllegalStateError, "reactor already shutdown")
+  # if r.state == ReactorState.CLOSED:
+  #   raise newException(IllegalStateError, "reactor already closed")  
   let interest = initInterest()
-  result = r.identManager.acquire()
-  if r.interests.len <= result.int:
-    r.interests.resize(r.interests.len * 2)
-    assert r.interests.len > result.int
-  let data = r.interests[result.int].addr
-  data.fd = fd
-  data.interest = interest
-  data.readQueue = initSimpleQueue[ref ActionBase]()
-  data.writeQueue = initSimpleQueue[ref ActionBase]()
-  data.has = true
+  result = r.interests.idGenerator.acquire()
   r.selector.register(fd, UserData(u64: result.uint64), interest)
+  if r.interests.data.cap <= result:
+    r.interests.data.resize(r.interests.data.cap * 2)
+    assert r.interests.data.cap > result
+  let data = r.interests.data[result].addr
+  data.value.fd = fd
+  data.value.interest = interest
+  data.value.readQueue = initSimpleQueue[ref ActionBase]()
+  data.value.writeQueue = initSimpleQueue[ref ActionBase]()
+  data.has = true
+  r.interests.len.inc()
 
-proc unregister*(r: var ActionRegistry, ident: Identity) =
-  let data = r.interests[ident.int].addr
+proc unregister*(r: var Reactor, id: Natural) =
+  let data = r.interests.data[id].addr
   if not data.has:
     raise newException(ValueError, "file descriptor not registered")
-  reset(r.interests[ident.int]) 
-  r.selector.unregister(data.fd)
-  r.identManager.release(ident)
+  r.selector.unregister(data.value.fd)
+  r.interests.idGenerator.release(id)
+  r.interests.len.dec()
+  reset(data[]) 
 
-proc unregisterReadable*(r: var ActionRegistry, ident: Identity) =
-  let data = r.interests[ident.int].addr
+iterator idItems*(r: var Reactor): Natural =
+  for i, data in r.interests.data.mpairs():
+    if data.has:
+      yield Natural(i)
+
+proc unregisterReadable*(r: var Reactor, id: Natural) =
+  let data = r.interests.data[id].addr
   if not data.has:
     raise newException(ValueError, "file descriptor not registered")
-  if data.interest.isReadable():
-    data.interest.unregisterReadable()
-    r.selector.update(data.fd, UserData(u64: ident.uint64), data.interest)
+  if data.value.interest.isReadable():
+    data.value.interest.unregisterReadable()
+    r.selector.update(data.value.fd, UserData(u64: id.uint64), data.value.interest)
 
-proc unregisterWritable*(r: var ActionRegistry, ident: Identity) =
-  let data = r.interests[ident.int].addr
+proc unregisterWritable*(r: var Reactor, id: Natural) =
+  let data = r.interests.data[id].addr
   if not data.has:
     raise newException(ValueError, "file descriptor not registered")
-  if data.interest.isWritable():
-    data.interest.unregisterWritable()
-    r.selector.update(data.fd, UserData(u64: ident.uint64), data.interest)
+  if data.value.interest.isWritable():
+    data.value.interest.unregisterWritable()
+    r.selector.update(data.value.fd, UserData(u64: id.uint64), data.value.interest)
 
-proc updateRead*(r: var ActionRegistry, ident: Identity, c: ref ActionBase) =
-  let data = r.interests[ident.int].addr
+proc updateRead*(r: var Reactor, id: Natural, action: ref ActionBase) =
+  let data = r.interests.data[id].addr
   if not data.has:
     raise newException(ValueError, "file descriptor not registered")
-  data.readQueue.addLast(newSimpleNode[ref ActionBase](c))
-  if not data.interest.isReadable():
-    data.interest.registerReadable()
-    r.selector.update(data.fd, UserData(u64: ident.uint64), data.interest)
+  data.value.readQueue.addLast(newSimpleNode[ref ActionBase](action))
+  if not data.value.interest.isReadable():
+    data.value.interest.registerReadable()
+    r.selector.update(data.value.fd, UserData(u64: id.uint64), data.value.interest)
 
-proc updateWrite*(r: var ActionRegistry, ident: Identity, c: ref ActionBase) =
-  let data = r.interests[ident.int].addr
+proc updateWrite*(r: var Reactor, id: Natural, action: ref ActionBase) =
+  let data = r.interests.data[id].addr
   if not data.has:
     raise newException(ValueError, "file descriptor not registered")
-  data.writeQueue.addLast(newSimpleNode[ref ActionBase](c))
-  if not data.interest.isWritable():
-    data.interest.registerWritable()
-    r.selector.update(data.fd, UserData(u64: ident.uint64), data.interest)
+  data.value.writeQueue.addLast(newSimpleNode[ref ActionBase](action))
+  if not data.value.interest.isWritable():
+    data.value.interest.registerWritable()
+    r.selector.update(data.value.fd, UserData(u64: id.uint64), data.value.interest)
 
-proc poll*(r: var ActionRegistry, timeout: cint) =
-  template handleIoEvent(queue: SimpleQueue[ref ActionBase]) =
+proc shutdown*(r: var Reactor) = 
+  if r.state == ReactorState.SHUTDOWN:
+    raise newException(IllegalStateError, "reactor already shutdown")
+  if r.state == ReactorState.CLOSED:
+    raise newException(IllegalStateError, "reactor already closed")
+  r.state = ReactorState.SHUTDOWN
+
+proc runBlocking*(r: var Reactor, timeout: cint) =
+  template handleEvent(queue: SimpleQueue[ref ActionBase]) =
     for node in queue.nodes():
       if node.value.run(node.value):
         queue.remove(node)
       else:
         break
   
-  var events: array[MaxEventCount, Event] 
+  if r.state == ReactorState.CREATING:
+    r.state = ReactorState.RUNNING
+  else:
+    case r.state 
+    of ReactorState.RUNNING:
+      raise newException(IllegalStateError, "reactor already running")
+    of ReactorState.SHUTDOWN:
+      raise newException(IllegalStateError, "reactor already shutdown")
+    of ReactorState.CLOSED:
+      raise newException(IllegalStateError, "reactor already closed")
+    else:
+      discard
+  
+  var events: array[MaxReactiveEventCount, Event] 
   while true:
     let count = r.selector.select(events, timeout) 
-    # if currentThreadPoolState == ThreadPoolState.SHUTDOWN:
-    #   return
     if count < 0:
       let errorCode = osLastError()
       if errorCode.int32 != EINTR:
@@ -114,23 +151,13 @@ proc poll*(r: var ActionRegistry, timeout: cint) =
     else:
       for i in 0..<count:
         let event = events[i]
-        let data = r.interests[event.data.u64].addr
-        if event.isReadable or event.isError:
-          data.readQueue.handleIoEvent()
-        if event.isWritable or event.isError:
-          data.writeQueue.handleIoEvent()
-
-        # if event.data.u64 == taskCounterIdent.uint64:
-        #   if event.isReadable: 
-        #     w.taskQueue.handleTaskEvent()
-        #   else:
-        #     raise newException(Defect, "bug， 不应该遇到这个错误")
-        # else:
-        #   let data = w.ioInterests[event.data.u64].addr
-        #   if event.isReadable or event.isError:
-        #     echo "isReadable or isError...", data.readQueue.len, " [", currentThreadId, "]"
-        #     data.readQueue.handleIoEvent()
-        #   if event.isWritable or event.isError:
-        #     echo "isWritable or isError...", data.writeQueue.len, " [", currentThreadId, "]"
-        #     data.writeQueue.handleIoEvent()
-
+        let data = r.interests.data[event.data.u64].addr
+        if data.has:
+          if event.isReadable or event.isError:
+            data.value.readQueue.handleEvent()
+          if event.isWritable or event.isError:
+            data.value.writeQueue.handleEvent()
+    if r.state == ReactorState.SHUTDOWN and r.interests.len == 0:
+      r.selector.close()
+      r.state = ReactorState.CLOSED
+      return
