@@ -178,78 +178,78 @@ proc shutdownEventLoopExceutor*() =
     gExecutor.eventLoops[0].reactor.shutdown()
 
 type
-  Channel = object
+  Reactivity* = object
     fd: cint
     reactiveId: Natural
     eventLoopId: int
 
-  ActionTask[T] = object of TaskBase
-    chan: ref Channel
+  ReactivityTask[T] = object of TaskBase
+    reactivity: ref Reactivity
     value: T
 
-proc register*(chan: ref Channel) =
-  if chan.eventLoopId == currentEventLoopId:
-    chan.reactiveId = currentEventLoop.reactor.register(chan.fd)
+proc register*(r: ref Reactivity) =
+  if r.eventLoopId == currentEventLoopId:
+    r.reactiveId = currentEventLoop.reactor.register(r.fd)
   else:
-    var task = new(Task[ref Channel]) 
+    var task = new(ReactivityTask[void]) 
     task.run = proc (task: ref TaskBase) =
-      let chan = (ref Task[ref Channel])(task).value
-      chan.reactiveId = currentEventLoop.reactor.register(chan.fd)
-    task.value = chan
-    gExecutor.eventLoops[chan.eventLoopId].taskRegistry.addMpsc(task)
+      let r = (ref Task[ref Reactivity])(task).value
+      r.reactiveId = currentEventLoop.reactor.register(r.fd)
+    task.reactivity = r
+    gExecutor.eventLoops[r.eventLoopId].taskRegistry.addMpsc(task)
 
-proc unregister*(chan: ref Channel) =
-  if chan.eventLoopId == currentEventLoopId:
-    currentEventLoop.reactor.unregister(chan.reactiveId)
+proc unregister*(r: ref Reactivity) =
+  if r.eventLoopId == currentEventLoopId:
+    currentEventLoop.reactor.unregister(r.reactiveId)
   else:
-    var task = new(Task[ref Channel]) 
+    var task = new(ReactivityTask[void]) 
     task.run = proc (task: ref TaskBase) =
-      currentEventLoop.reactor.unregister((ref Task[ref Channel])(task).value.reactiveId)
-    task.value = chan
-    gExecutor.eventLoops[chan.eventLoopId].taskRegistry.addMpsc(task)
+      currentEventLoop.reactor.unregister((ref Task[ref Reactivity])(task).value.reactiveId)
+    task.reactivity = r
+    gExecutor.eventLoops[r.eventLoopId].taskRegistry.addMpsc(task)
     
-proc unregisterReadable*(chan: ref Channel) =
-  if chan.eventLoopId == currentEventLoopId:
-    currentEventLoop.reactor.unregisterReadable(chan.reactiveId)
+proc unregisterReadable*(r: ref Reactivity) =
+  if r.eventLoopId == currentEventLoopId:
+    currentEventLoop.reactor.unregisterReadable(r.reactiveId)
   else:
-    var task = new(Task[ref Channel]) 
+    var task = new(ReactivityTask[void]) 
     task.run = proc (task: ref TaskBase) =
-      currentEventLoop.reactor.unregisterReadable((ref Task[ref Channel])(task).value.reactiveId)
-    task.value = chan
-    gExecutor.eventLoops[chan.eventLoopId].taskRegistry.addMpsc(task)
+      currentEventLoop.reactor.unregisterReadable((ref Task[ref Reactivity])(task).value.reactiveId)
+    task.reactivity = r
+    gExecutor.eventLoops[r.eventLoopId].taskRegistry.addMpsc(task)
 
-proc unregisterWritable*(chan: ref Channel) =
-  if chan.eventLoopId == currentEventLoopId:
-    currentEventLoop.reactor.unregisterWritable(chan.reactiveId)
+proc unregisterWritable*(r: ref Reactivity) =
+  if r.eventLoopId == currentEventLoopId:
+    currentEventLoop.reactor.unregisterWritable(r.reactiveId)
   else:
-    var task = new(Task[ref Channel]) 
+    var task = new(ReactivityTask[void]) 
     task.run = proc (task: ref TaskBase) =
-      currentEventLoop.reactor.unregisterWritable((ref Task[ref Channel])(task).value.reactiveId)
-    task.value = chan
-    gExecutor.eventLoops[chan.eventLoopId].taskRegistry.addMpsc(task)
+      currentEventLoop.reactor.unregisterWritable((ref Task[ref Reactivity])(task).value.reactiveId)
+    task.reactivity = r
+    gExecutor.eventLoops[r.eventLoopId].taskRegistry.addMpsc(task)
 
-proc updateRead*(chan: ref Channel, action: ref ActionBase) =
-  if chan.eventLoopId == currentEventLoopId:
-    currentEventLoop.reactor.updateRead(chan.reactiveId, action)
+proc updateRead*(r: ref Reactivity, action: ref ActionBase) =
+  if r.eventLoopId == currentEventLoopId:
+    currentEventLoop.reactor.updateRead(r.reactiveId, action)
   else:
-    var task = new(ActionTask[ref ActionBase]) 
+    var task = new(ReactivityTask[ref ActionBase]) 
     task.run = proc (task: ref TaskBase) =
-      let t = (ref ActionTask[ref ActionBase])(task)
-      currentEventLoop.reactor.updateRead(t.chan.reactiveId, t.value)
-    task.chan = chan
+      let t = (ref ReactivityTask[ref ActionBase])(task)
+      currentEventLoop.reactor.updateRead(t.reactivity.reactiveId, t.value)
+    task.reactivity = r
     task.value = action
-    gExecutor.eventLoops[chan.eventLoopId].taskRegistry.addMpsc(task)
+    gExecutor.eventLoops[r.eventLoopId].taskRegistry.addMpsc(task)
 
-proc updateWrite*(chan: ref Channel, action: ref ActionBase) =
-  if chan.eventLoopId == currentEventLoopId:
-    currentEventLoop.reactor.updateWrite(chan.reactiveId, action)
+proc updateWrite*(r: ref Reactivity, action: ref ActionBase) =
+  if r.eventLoopId == currentEventLoopId:
+    currentEventLoop.reactor.updateWrite(r.reactiveId, action)
   else:
-    var task = new(ActionTask[ref ActionBase]) 
+    var task = new(ReactivityTask[ref ActionBase]) 
     task.run = proc (task: ref TaskBase) =
-      let t = (ref ActionTask[ref ActionBase])(task)
-      currentEventLoop.reactor.updateWrite(t.chan.reactiveId, t.value)
-    task.chan = chan
+      let t = (ref ReactivityTask[ref ActionBase])(task)
+      currentEventLoop.reactor.updateWrite(t.reactivity.reactiveId, t.value)
+    task.reactivity = r
     task.value = action
-    gExecutor.eventLoops[chan.eventLoopId].taskRegistry.addMpsc(task)
+    gExecutor.eventLoops[r.eventLoopId].taskRegistry.addMpsc(task)
 
 
