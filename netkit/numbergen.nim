@@ -1,5 +1,6 @@
 
 import netkit/collections/deques
+import netkit/allocmode
 
 type
   NaturalGenerator* = object
@@ -9,8 +10,8 @@ type
 proc `=destroy`*(x: var NaturalGenerator) =
   `=destroy`(x.reclaims)
 
-proc initNaturalGenerator*(x: var NaturalGenerator, initialSize: Natural = 4, kind = DequeKind.THREAD_LOCAL) =
-  x.reclaims.initDeque(initialSize, kind)
+proc initNaturalGenerator*(x: var NaturalGenerator, initialSize: Natural = 4, mode = AllocMode.THREAD_LOCAL) =
+  x.reclaims.initDeque(initialSize, mode)
 
 proc acquire*(x: var NaturalGenerator): Natural =
   if x.reclaims.len > 0:

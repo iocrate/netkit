@@ -369,26 +369,42 @@ discard """
 
 # f()
 
+# type
+#   Obj = object
+#     val: int
+
+# var container: pointer = alloc0(sizeof(pointer))
+
+# proc f() =
+#   var obj1: ref Obj = new(Obj)
+#   obj1.val = 100
+#   (cast[ref ref Obj](container))[] = obj1
+
+#   # GC_ref(obj) # still necessary? If not, can arc collect garbage correctly?
+
+# proc main() =
+#   f()
+#   GC_fullCollect()
+
+#   var obj2 = new(Obj)
+#   obj2.val = 1000
+
+#   echo cast[ref ref Obj](container)[].val # Output: 100? 1000? unknown?
+
+# main()
+
 type
-  Obj = object
-    val: int
+  A = object of RootObj
+    val1: int
+    val2: int
+    val3: int16
+    val4: int
 
-var container: pointer = alloc0(sizeof(pointer))
+echo sizeof(A)
 
-proc f() =
-  var obj1: ref Obj = new(Obj)
-  obj1.val = 100
-  (cast[ref ref Obj](container))[] = obj1
 
-  # GC_ref(obj) # still necessary? If not, can arc collect garbage correctly?
+var a: A
+a.val1 = 100
+echo repr offsetOf(A, val3)
 
-proc main() =
-  f()
-  GC_fullCollect()
-
-  var obj2 = new(Obj)
-  obj2.val = 1000
-
-  echo cast[ref ref Obj](container)[].val # Output: 100? 1000? unknown?
-
-main()
+echo cast[ptr A](cast[ByteAddress](a.val3.addr) - offsetOf(A, val3))[]

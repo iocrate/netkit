@@ -1,13 +1,12 @@
 # PS: 这个模块实现了一个面向线程本地堆的向量，文档以后补充。
 
+import netkit/allocmode
+
 type
   Vec*[T] = object
-    kind: VecKind
+    mode: AllocMode
     data: ptr UncheckedArray[T]
     cap: Natural
-
-  VecKind* {.pure.} = enum
-    THREAD_SHARED, THREAD_LOCAL
 
 template checkMaxBounds[T](vec: Vec[T], i: Natural) =
   # ``-d:release`` should disable this.
@@ -25,10 +24,10 @@ proc `=destroy`*[T](vec: var Vec[T]) =
   if vec.data != nil:
     for i in 0..<vec.cap: 
       `=destroy`(vec.data[i])
-    case vec.kind
-    of VecKind.THREAD_SHARED:
+    case vec.mode
+    of AllocMode.THREAD_SHARED:
       deallocShared(vec.data)
-    of VecKind.THREAD_LOCAL:
+    of AllocMode.THREAD_LOCAL:
       dealloc(vec.data)
     vec.data = nil
 
@@ -43,10 +42,10 @@ proc `=`*[T](dest: var Vec[T], source: Vec[T]) =
     dest.cap = source.cap
     if source.data != nil:
       let blockLen = sizeof(T) * source.cap
-      case dest.kind
-      of VecKind.THREAD_SHARED:
+      case dest.mode
+      of AllocMode.THREAD_SHARED:
         dest.data = cast[ptr UncheckedArray[T]](allocShared0(blockLen))
-      of VecKind.THREAD_LOCAL:
+      of AllocMode.THREAD_LOCAL:
         dest.data = cast[ptr UncheckedArray[T]](alloc0(blockLen))
       copyMem(dest.data, source.data, blockLen)
 
@@ -101,11 +100,11 @@ iterator mitemsBackwards*[T](vec: Vec[T]): var T =
 
 iterator pairs*[T](vec: Vec[T]): tuple[key: Natural, val: lent T] = 
   for i in 0..<vec.cap: 
-    yield (i, vec.data[i])
+    yield (Natural(i), vec.data[i])
 
 iterator pairsBackwards*[T](vec: Vec[T]): tuple[key: Natural, val: lent T] = 
   for i in countdown(vec.cap-1, 0): 
-    yield (i, vec.data[i])
+    yield (Natural(i), vec.data[i])
 
 iterator mpairs*[T](vec: var Vec[T]): tuple[key: Natural, val: var T] = 
   for i in 0..<vec.cap: 
@@ -113,7 +112,7 @@ iterator mpairs*[T](vec: var Vec[T]): tuple[key: Natural, val: var T] =
 
 iterator mpairsBackwards*[T](vec: Vec[T]): tuple[key: Natural, val: lent T] = 
   for i in countdown(vec.cap-1, 0): 
-    yield (i, vec.data[i])
+    yield (Natural(i), vec.data[i])
 
 proc resize*[T](vec: var Vec[T], cap: Natural) =
   if vec.cap > cap: 
@@ -122,21 +121,21 @@ proc resize*[T](vec: var Vec[T], cap: Natural) =
   vec.data = cast[ptr UncheckedArray[T]](realloc0(vec.data, sizeof(T) * vec.cap, sizeof(T) * cap))
   vec.cap = cap
 
-proc initVec*[T](vec: var Vec[T], cap: Natural = 4, kind = VecKind.THREAD_SHARED) = 
+proc initVec*[T](vec: var Vec[T], cap: Natural = 4, mode = AllocMode.THREAD_SHARED) = 
   `=destroy`(vec)
-  vec.kind = kind
+  vec.mode = mode
   vec.cap = cap
-  case vec.kind
-  of VecKind.THREAD_SHARED:
+  case vec.mode
+  of AllocMode.THREAD_SHARED:
     vec.data = cast[ptr UncheckedArray[T]](allocShared0(sizeof(T) * cap))
-  of VecKind.THREAD_LOCAL:
+  of AllocMode.THREAD_LOCAL:
     vec.data = cast[ptr UncheckedArray[T]](alloc0(sizeof(T) * cap))
 
 when isMainModule:
   proc testInt() = 
     var vec: Vec[int]
 
-    vec.initVec(10, VecKind.THREAD_LOCAL)
+    vec.initVec(10, AllocMode.THREAD_LOCAL)
     for i in 0..<10: vec[i] = i
 
     block base:
@@ -158,7 +157,7 @@ when isMainModule:
     block sink:
       var vec2: Vec[int]
       
-      vec2.initVec(10, VecKind.THREAD_LOCAL)
+      vec2.initVec(10, AllocMode.THREAD_LOCAL)
       vec2 = vec
       doAssert vec2.cap == 4
       doAssert vec2[1] == 1

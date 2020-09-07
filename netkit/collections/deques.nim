@@ -45,6 +45,7 @@
 
 import std/math
 import netkit/misc
+import netkit/allocmode
 
 type
   Deque*[T] = object
@@ -53,10 +54,7 @@ type
     ## To initialize an empty deque use `initSharedDeque proc <#initSharedDeque,int>`_.
     data: ptr UncheckedArray[T]
     head, tail, cap, len, mask: Natural
-    kind: DequeKind
-
-  DequeKind* {.pure.} = enum
-    THREAD_SHARED, THREAD_LOCAL
+    mode: AllocMode
 
 template checkMaxBounds[T](x: Deque[T], i: Natural) =
   # ``-d:release`` should disable this.
@@ -80,10 +78,10 @@ proc `=destroy`*[T](x: var Deque[T]) =
   if x.data != nil:
     for i in 0..<x.len: 
       `=destroy`(x.data[i])
-    case x.kind
-    of DequeKind.THREAD_SHARED:
+    case x.mode
+    of AllocMode.THREAD_SHARED:
       deallocShared(x.data)
-    of DequeKind.THREAD_LOCAL:
+    of AllocMode.THREAD_LOCAL:
       dealloc(x.data)  
     x.data = nil
 
@@ -106,14 +104,14 @@ proc `=`*[T](dest: var Deque[T], source: Deque[T]) =
     dest.mask = source.mask
     if source.data != nil:
       let blockLen = sizeof(T) * source.len
-      case dest.kind
-      of DequeKind.THREAD_SHARED:
+      case dest.mode
+      of AllocMode.THREAD_SHARED:
         dest.data = cast[ptr UncheckedArray[T]](allocShared0(blockLen))
-      of DequeKind.THREAD_LOCAL:
+      of AllocMode.THREAD_LOCAL:
         dest.data = cast[ptr UncheckedArray[T]](alloc0(blockLen))
       copyMem(dest.data, source.data, blockLen)
 
-proc initDeque*[T](x: var Deque[T], initialSize: Natural = 4, kind = DequeKind.THREAD_SHARED) =
+proc initDeque*[T](x: var Deque[T], initialSize: Natural = 4, mode = AllocMode.THREAD_SHARED) =
   ## Create a new empty deque.
   ##
   ## Optionally, the initial capacity can be reserved via `initialSize`
@@ -127,11 +125,11 @@ proc initDeque*[T](x: var Deque[T], initialSize: Natural = 4, kind = DequeKind.T
   assert isPowerOfTwo(initialSize)
   x.cap = initialSize
   x.mask = initialSize - 1
-  x.kind = kind
-  case x.kind
-  of DequeKind.THREAD_SHARED:
+  x.mode = mode
+  case x.mode
+  of AllocMode.THREAD_SHARED:
     x.data = cast[ptr UncheckedArray[T]](allocShared0(sizeof(T) * initialSize))
-  of DequeKind.THREAD_LOCAL:
+  of AllocMode.THREAD_LOCAL:
     x.data = cast[ptr UncheckedArray[T]](alloc0(sizeof(T) * initialSize))
 
 proc len*[T](x: Deque[T]): Natural {.inline.} =
@@ -332,10 +330,10 @@ proc expandIfNeeded[T](x: var Deque[T]) =
   if unlikely(x.len >= x.cap):
     assert x.len == x.cap
     x.cap = x.cap shl 1
-    var data = case x.kind
-               of DequeKind.THREAD_SHARED:
+    var data = case x.mode
+               of AllocMode.THREAD_SHARED:
                  cast[ptr UncheckedArray[T]](allocShared0(sizeof(T) * x.cap))
-               of DequeKind.THREAD_LOCAL:
+               of AllocMode.THREAD_LOCAL:
                  cast[ptr UncheckedArray[T]](alloc0(sizeof(T) * x.cap))
     if x.head == 0:
       copyMem(data, x.data, sizeof(T) * x.len)
@@ -345,10 +343,10 @@ proc expandIfNeeded[T](x: var Deque[T]) =
       copyMem(data, x.data.offset(headOffset), firstOffset)
       copyMem(data.offset(firstOffset), x.data, headOffset)
     
-    case x.kind
-    of DequeKind.THREAD_SHARED:
+    case x.mode
+    of AllocMode.THREAD_SHARED:
       deallocShared(x.data)
-    of DequeKind.THREAD_LOCAL:
+    of AllocMode.THREAD_LOCAL:
       dealloc(x.data)
 
     x.data = data
