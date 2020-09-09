@@ -4,16 +4,16 @@ import std/posix
 import netkit/sigcounter
 
 type
-  FiberCounter* = SigCounter[cint]
+  EventCounter* = SigCounter[cint]
 
 proc eventfd*(initval: cuint, flags: cint): cint {.
   importc: "eventfd", 
   header: "<sys/eventfd.h>"
 .}
 
-proc signalFiberCounter*(c: var SigCounterBase) = 
+proc signalEventCounter*(c: var SigCounterBase) = 
   var buf = 1'u64
-  while FiberCounter(c).value.write(buf.addr, sizeof(buf)) < 0:
+  while EventCounter(c).value.write(buf.addr, sizeof(buf)) < 0:
     let errorCode = osLastError()
     if errorCode.int32 == EINTR:
       discard
@@ -22,9 +22,9 @@ proc signalFiberCounter*(c: var SigCounterBase) =
     else:
       raiseOSError(errorCode) 
 
-proc waitFiberCounter*(c: var SigCounterBase): uint64 = 
+proc waitEventCounter*(c: var SigCounterBase): uint64 = 
   var buf = 0'u64
-  while FiberCounter(c).value.read(buf.addr, sizeof(buf)) < 0:
+  while EventCounter(c).value.read(buf.addr, sizeof(buf)) < 0:
     let errorCode = osLastError()
     if errorCode.int32 == EINTR:
       discard
@@ -34,7 +34,7 @@ proc waitFiberCounter*(c: var SigCounterBase): uint64 =
       raiseOSError(osLastError()) 
   result = buf 
 
-proc initFiberCounter*(fd: cint): FiberCounter =
+proc initEventCounter*(fd: cint): EventCounter =
   result.value = fd
-  result.signalImpl = signalFiberCounter
-  result.waitImpl = waitFiberCounter
+  result.signalImpl = signalEventCounter
+  result.waitImpl = waitEventCounter

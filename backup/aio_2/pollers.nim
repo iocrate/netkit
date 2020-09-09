@@ -4,7 +4,7 @@ import std/posix
 import netkit/posix/linux/selector
 import netkit/collections/simplelists
 import netkit/collections/vecs
-import netkit/aio/errors
+import netkit/aio/error
 import netkit/numbergen
 import netkit/options
 import netkit/allocmode

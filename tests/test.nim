@@ -393,18 +393,94 @@ discard """
 
 # main()
 
+# type
+#   A = object of RootObj
+#     val1: int
+#     val2: int
+#     val3: int16
+#     val4: int
+
+# echo sizeof(A)
+
+
+# var a: A
+# a.val1 = 100
+# echo repr offsetOf(A, val3)
+
+# echo cast[ptr A](cast[ByteAddress](a.val3.addr) - offsetOf(A, val3))[]
+
+# import os
+
+# type
+#   Opt = object
+#     val: 100
+
+# proc run1() =
+#   sleep(100)
+#   echo 1
+
+# proc run2() =
+#   sleep(100)
+#   echo 2
+
+# proc main() =
+#   var t1: Thread[void]
+#   var t2: Thread[void]
+#   createThread(t1, run1)
+#   createThread(t1, run2)
+#   createThread(t1, run2)
+#   createThread(t1, run1)
+#   joinThread(t1)
+#   createThread(t1, run1)
+#   createThread(t1, run2)
+#   createThread(t1, run2)
+#   createThread(t1, run1)
+#   joinThread(t1)
+#   # joinThread(t2)
+
+# main()
+
 type
-  A = object of RootObj
+  Opt = object
     val1: int
     val2: int
-    val3: int16
-    val4: int
 
-echo sizeof(A)
+  A = object of RootObj
+    o: Opt
 
+proc finalizer(a: ref A) =
+  echo "finalizer was called"
 
-var a: A
-a.val1 = 100
-echo repr offsetOf(A, val3)
+# proc `=destroy`*(a: var Opt) = 
+#   echo "Opt destroy"
 
-echo cast[ptr A](cast[ByteAddress](a.val3.addr) - offsetOf(A, val3))[]
+# proc `=destroy`*(a: var A) = 
+#   echo "A destroy"
+
+proc f() =
+  var a = new(A)
+  a.o.val1 = 1
+  a = nil
+
+proc main() =
+  f()
+  GC_fullCollect()
+
+main()
+
+# var a = new(Opt)
+# a.val1 = 1
+# a.val2 = 2
+# var opt = a
+
+# proc currentOpt(): ref Opt =
+#   opt
+
+# echo repr opt
+# echo repr currentOpt()
+
+# currentOpt()[] = Opt()
+
+# echo repr opt
+# echo repr currentOpt()
+
