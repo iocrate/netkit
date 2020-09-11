@@ -1,9 +1,3 @@
-#            netkit 
-#        (c) Copyright 2020 Wang Tong
-#
-#    See the file "LICENSE", included in this
-#    distribution, for details about the copyright.
-
 ## This module contains a few possible errors associated with HTTP operations.
 
 import netkit/http/status

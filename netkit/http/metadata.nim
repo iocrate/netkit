@@ -1,9 +1,3 @@
-#            netkit 
-#        (c) Copyright 2020 Wang Tong
-#
-#    See the file "LICENSE", included in this
-#    distribution, for details about the copyright.
-
 ## This module defines a general object ``HttpMetadata`` to abstract HTTP metadata in order to simplify 
 ## the use of metadata. 
 ## 

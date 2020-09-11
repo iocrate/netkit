@@ -10,64 +10,64 @@ proc initSimpleNode*(node: ref SimpleNode) =
   node.next = node
   node.prev = node
 
-proc initSimpleList*(): SimpleList = 
-  result.head = new(SimpleNode)
-  result.head.initSimpleNode()
+proc initSimpleList*(L: var SimpleList) = 
+  L.head = new(SimpleNode)
+  L.head.initSimpleNode()
 
-proc addLast*(Q: var SimpleList, node: ref SimpleNode) = 
-  node.next = Q.head
-  node.prev = Q.head.prev
-  Q.head.prev.next = node
-  Q.head.prev = node
+proc addLast*(L: var SimpleList, node: ref SimpleNode) = 
+  node.next = L.head
+  node.prev = L.head.prev
+  L.head.prev.next = node
+  L.head.prev = node
 
-proc addFirst*(Q: var SimpleList, node: ref SimpleNode) = 
-  node.next = Q.head.next
-  node.prev = Q.head
-  Q.head.next.prev = node
-  Q.head.next = node
+proc addFirst*(L: var SimpleList, node: ref SimpleNode) = 
+  node.next = L.head.next
+  node.prev = L.head
+  L.head.next.prev = node
+  L.head.next = node
 
-proc popLast*(Q: var SimpleList): ref SimpleNode = 
-  if Q.head.prev != Q.head:
-    result = Q.head.prev
-    Q.head.prev = result.prev
-    result.prev.next = Q.head
+proc popLast*(L: var SimpleList): ref SimpleNode = 
+  if L.head.prev != L.head:
+    result = L.head.prev
+    L.head.prev = result.prev
+    result.prev.next = L.head
     result.next = result
     result.prev = result
 
-proc popFirst*(Q: var SimpleList): ref SimpleNode = 
-  if Q.head.next != Q.head:
-    result = Q.head.next
-    Q.head.next = result.next
-    result.next.prev = Q.head
+proc popFirst*(L: var SimpleList): ref SimpleNode = 
+  if L.head.next != L.head:
+    result = L.head.next
+    L.head.next = result.next
+    result.next.prev = L.head
     result.next = result
     result.prev = result
 
-proc peekLast*(Q: var SimpleList): ref SimpleNode = 
-  if Q.head.prev != Q.head:
-    result = Q.head.prev
+proc peekLast*(L: var SimpleList): ref SimpleNode = 
+  if L.head.prev != L.head:
+    result = L.head.prev
 
-proc peekFirst*(Q: var SimpleList): ref SimpleNode = 
-  if Q.head.next != Q.head:
-    result = Q.head.next
+proc peekFirst*(L: var SimpleList): ref SimpleNode = 
+  if L.head.next != L.head:
+    result = L.head.next
 
-proc remove*(Q: var SimpleList, node: ref SimpleNode) = 
+proc remove*(L: var SimpleList, node: ref SimpleNode) = 
   node.next.prev = node.prev
   node.prev.next = node.next
   node.next = node
   node.prev = node
 
-iterator nodes*(Q: var SimpleList): ref SimpleNode = 
-  var node = Q.head.next
+iterator nodes*(L: var SimpleList): ref SimpleNode = 
+  var node = L.head.next
   var next: ref SimpleNode
-  while node != Q.head:
+  while node != L.head:
     next = node.next
     yield node
     node = next
 
-iterator nodesBackwards*(Q: var SimpleList): ref SimpleNode = 
-  var node = Q.head.prev
+iterator nodesBackwards*(L: var SimpleList): ref SimpleNode = 
+  var node = L.head.prev
   var prev: ref SimpleNode
-  while node != Q.head:
+  while node != L.head:
     prev = node.prev
     yield node
     node = prev

@@ -56,34 +56,34 @@ type
     head, tail, cap, len, mask: Natural
     mode: AllocMode
 
-template checkMaxBounds[T](x: Deque[T], i: Natural) =
+template checkMaxBounds[T](Q: Deque[T], i: Natural) =
   # ``-d:release`` should disable this.
   when compileOption("boundChecks"): 
-    if unlikely(i >= x.len): 
-      raise newException(IndexDefect, "value out of bounds: " & $i & " > " & $(x.len - 1))
+    if unlikely(i >= Q.len): 
+      raise newException(IndexDefect, "value out of bounds: " & $i & " > " & $(Q.len - 1))
 
-template checkMinBounds[T](x: Deque[T], i: Natural) =
+template checkMinBounds[T](Q: Deque[T], i: Natural) =
   # ``-d:release`` should disable this.
   when compileOption("boundChecks"): 
     if unlikely(i < 0): 
       raise newException(IndexDefect, "value out of bounds: " & $i & " < 0")
 
-template checkEmpty[T](x: Deque[T]) =
+template checkEmpty[T](Q: Deque[T]) =
   # Bounds check for the regular deque access.
   when compileOption("boundChecks"):
-    if unlikely(x.len < 1):
+    if unlikely(Q.len < 1):
       raise newException(IndexDefect, "empty deque")
 
-proc `=destroy`*[T](x: var Deque[T]) = 
-  if x.data != nil:
-    for i in 0..<x.len: 
-      `=destroy`(x.data[i])
-    case x.mode
+proc `=destroy`*[T](Q: var Deque[T]) = 
+  if Q.data != nil:
+    for i in 0..<Q.len: 
+      `=destroy`(Q.data[i])
+    case Q.mode
     of AllocMode.THREAD_SHARED:
-      deallocShared(x.data)
+      deallocShared(Q.data)
     of AllocMode.THREAD_LOCAL:
-      dealloc(x.data)  
-    x.data = nil
+      dealloc(Q.data)  
+    Q.data = nil
 
 proc `=sink`*[T](dest: var Deque[T], source: Deque[T]) = 
   `=destroy`(dest)
@@ -111,7 +111,7 @@ proc `=`*[T](dest: var Deque[T], source: Deque[T]) =
         dest.data = cast[ptr UncheckedArray[T]](alloc0(blockLen))
       copyMem(dest.data, source.data, blockLen)
 
-proc initDeque*[T](x: var Deque[T], initialSize: Natural = 4, mode = AllocMode.THREAD_SHARED) =
+proc initDeque*[T](Q: var Deque[T], initialSize: Natural = 4, mode = AllocMode.THREAD_SHARED) =
   ## Create a new empty deque.
   ##
   ## Optionally, the initial capacity can be reserved via `initialSize`
@@ -123,20 +123,24 @@ proc initDeque*[T](x: var Deque[T], initialSize: Natural = 4, mode = AllocMode.T
   ## `nextPowerOfTwo proc<math.html#nextPowerOfTwo,int>`_ from the
   ## `math module<math.html>`_.
   assert isPowerOfTwo(initialSize)
-  x.cap = initialSize
-  x.mask = initialSize - 1
-  x.mode = mode
-  case x.mode
+  Q.cap = initialSize
+  Q.mask = initialSize - 1
+  Q.mode = mode
+  case Q.mode
   of AllocMode.THREAD_SHARED:
-    x.data = cast[ptr UncheckedArray[T]](allocShared0(sizeof(T) * initialSize))
+    Q.data = cast[ptr UncheckedArray[T]](allocShared0(sizeof(T) * initialSize))
   of AllocMode.THREAD_LOCAL:
-    x.data = cast[ptr UncheckedArray[T]](alloc0(sizeof(T) * initialSize))
+    Q.data = cast[ptr UncheckedArray[T]](alloc0(sizeof(T) * initialSize))
 
-proc len*[T](x: Deque[T]): Natural {.inline.} =
+proc cap*[T](Q: Deque[T]): Natural {.inline.} =
+  ## Return the capacity of `deq`.
+  Q.cap
+
+proc len*[T](Q: Deque[T]): Natural {.inline.} =
   ## Return the number of elements of `deq`.
-  x.len
+  Q.len
 
-proc `[]`*[T](x: Deque[T], i: Natural): lent T {.inline.} =
+proc `[]`*[T](Q: Deque[T], i: Natural): lent T {.inline.} =
   ## Access the i-th element of `deq`.
   runnableExamples:
     var a: Deque[int]
@@ -147,10 +151,10 @@ proc `[]`*[T](x: Deque[T], i: Natural): lent T {.inline.} =
     assert a[3] == 40
     doAssertRaises(IndexDefect, echo a[8])
 
-  checkMaxBounds(x, i)
-  x.data[(x.head + i) and x.mask]
+  checkMaxBounds(Q, i)
+  Q.data[(Q.head + i) and Q.mask]
 
-proc `[]`*[T](x: var Deque[T], i: Natural): var T {.inline.} =
+proc `[]`*[T](Q: var Deque[T], i: Natural): var T {.inline.} =
   ## Access the i-th element of `deq` and return a mutable
   ## reference to it.
   runnableExamples:
@@ -162,10 +166,10 @@ proc `[]`*[T](x: var Deque[T], i: Natural): var T {.inline.} =
     assert a[3] == 40
     doAssertRaises(IndexDefect, echo a[8])
 
-  checkMaxBounds(x, i)
-  x.data[(x.head + i) and x.mask]
+  checkMaxBounds(Q, i)
+  Q.data[(Q.head + i) and Q.mask]
 
-proc `[]=`*[T](x: var Deque[T], i: Natural, val: sink T) {.inline.} =
+proc `[]=`*[T](Q: var Deque[T], i: Natural, val: sink T) {.inline.} =
   ## Change the i-th element of `deq`.
   runnableExamples:
     var a: Deque[int]
@@ -176,10 +180,10 @@ proc `[]=`*[T](x: var Deque[T], i: Natural, val: sink T) {.inline.} =
     a[3] = 66
     assert $a == "[99, 20, 30, 66, 50]"
 
-  checkMaxBounds(x, i)
-  x.data[(x.head + i) and x.mask] = val
+  checkMaxBounds(Q, i)
+  Q.data[(Q.head + i) and Q.mask] = val
 
-proc `[]`*[T](x: Deque[T], i: BackwardsIndex): lent T {.inline.} =
+proc `[]`*[T](Q: Deque[T], i: BackwardsIndex): lent T {.inline.} =
   ## Access the backwards indexed i-th element.
   ##
   ## `deq[^1]` is the last element.
@@ -192,11 +196,11 @@ proc `[]`*[T](x: Deque[T], i: BackwardsIndex): lent T {.inline.} =
     assert a[^4] == 20
     doAssertRaises(IndexDefect, echo a[^9])
 
-  let j = int(x.len) - int(i)
-  checkMinBounds(x, j)
-  x[j]
+  let j = int(Q.len) - int(i)
+  checkMinBounds(Q, j)
+  Q[j]
 
-proc `[]`*[T](x: var Deque[T], i: BackwardsIndex): var T {.inline.} =
+proc `[]`*[T](Q: var Deque[T], i: BackwardsIndex): var T {.inline.} =
   ## Access the backwards indexed i-th element.
   ##
   ## `deq[^1]` is the last element.
@@ -209,11 +213,11 @@ proc `[]`*[T](x: var Deque[T], i: BackwardsIndex): var T {.inline.} =
     assert a[^4] == 20
     doAssertRaises(IndexDefect, echo a[^9])
 
-  let j = int(x.len) - int(i)
-  checkMinBounds(x, j)
-  x[j]
+  let j = int(Q.len) - int(i)
+  checkMinBounds(Q, j)
+  Q[j]
 
-proc `[]=`*[T](x: var Deque[T], i: BackwardsIndex, val: sink T) {.inline.} =
+proc `[]=`*[T](Q: var Deque[T], i: BackwardsIndex, val: sink T) {.inline.} =
   ## Change the backwards indexed i-th element.
   ##
   ## `deq[^1]` is the last element.
@@ -226,11 +230,11 @@ proc `[]=`*[T](x: var Deque[T], i: BackwardsIndex, val: sink T) {.inline.} =
     a[^3] = 77
     assert $a == "[10, 20, 77, 40, 99]"
 
-  let j = int(x.len) - int(i)
+  let j = int(Q.len) - int(i)
   checkMinBounds(j)
-  x[j] = val
+  Q[j] = val
 
-iterator items*[T](x: Deque[T]): lent T =
+iterator items*[T](Q: Deque[T]): lent T =
   ## Yield every element of `deq`.
   ##
   ## **Examples:**
@@ -240,19 +244,19 @@ iterator items*[T](x: Deque[T]): lent T =
   ##   for i in 1 .. 3:
   ##     a.addLast(10*i)
   ##
-  ##   for x in a:  # the same as: for x in items(a):
-  ##     echo x
+  ##   for Q in a:  # the same as: for Q in items(a):
+  ##     echo Q
   ##
   ##   # 10
   ##   # 20
   ##   # 30
   ##
-  var i = x.head
-  for c in 0..<x.len:
-    yield x.data[i]
-    i = (i + 1) and x.mask
+  var i = Q.head
+  for c in 0..<Q.len:
+    yield Q.data[i]
+    i = (i + 1) and Q.mask
 
-iterator mitems*[T](x: var Deque[T]): var T =
+iterator mitems*[T](Q: var Deque[T]): var T =
   ## Yield every element of `deq`, which can be modified.
   runnableExamples:
     var a: Deque[int]
@@ -260,16 +264,16 @@ iterator mitems*[T](x: var Deque[T]): var T =
     for i in 1 .. 5:
       a.addLast(10*i)
     assert $a == "[10, 20, 30, 40, 50]"
-    for x in mitems(a):
-      x = 5*x - 1
+    for Q in mitems(a):
+      Q = 5*Q - 1
     assert $a == "[49, 99, 149, 199, 249]"
 
-  var i = x.head
-  for c in 0..<x.len:
-    yield x.data[i]
-    i = (i + 1) and x.mask
+  var i = Q.head
+  for c in 0..<Q.len:
+    yield Q.data[i]
+    i = (i + 1) and Q.mask
 
-iterator pairs*[T](x: Deque[T]): tuple[key: Natural, val: lent T] =
+iterator pairs*[T](Q: Deque[T]): tuple[key: Natural, val: lent T] =
   ## Yield every (position, value) of `deq`.
   ##
   ## **Examples:**
@@ -286,12 +290,12 @@ iterator pairs*[T](x: Deque[T]): tuple[key: Natural, val: lent T] =
   ##   # key: 1, value: 20
   ##   # key: 2, value: 30
   ##
-  var i = x.head
-  for c in 0..<x.len:
-    yield (c, x.data[i])
-    i = (i + 1) and x.mask
+  var i = Q.head
+  for c in 0..<Q.len:
+    yield (c, Q.data[i])
+    i = (i + 1) and Q.mask
 
-iterator mpairs*[T](x: var Deque[T]): tuple[key: Natural, val: var T] =
+iterator mpairs*[T](Q: var Deque[T]): tuple[key: Natural, val: var T] =
   ## Yield every (position, value) of `deq`.
   ##
   ## **Examples:**
@@ -308,53 +312,53 @@ iterator mpairs*[T](x: var Deque[T]): tuple[key: Natural, val: var T] =
   ##   # key: 1, value: 20
   ##   # key: 2, value: 30
   ##
-  var i = x.head
-  for c in 0..<x.len:
-    yield (c, x.data[i])
-    i = (i + 1) and x.mask
+  var i = Q.head
+  for c in 0..<Q.len:
+    yield (c, Q.data[i])
+    i = (i + 1) and Q.mask
 
-proc contains*[T](x: Deque[T], item: T): bool {.inline.} =
-  ## Return true if `item` is in `x` or false if not found.
+proc contains*[T](Q: Deque[T], item: T): bool {.inline.} =
+  ## Return true if `item` is in `Q` or false if not found.
   ##
   ## Usually used via the ``in`` operator.
-  ## It is the equivalent of ``x.find(item) >= 0``.
+  ## It is the equivalent of ``Q.find(item) >= 0``.
   ##
   ## .. code-block:: Nim
-  ##   if a in x:
-  ##     assert x.contains(a)
-  for e in x: 
+  ##   if a in Q:
+  ##     assert Q.contains(a)
+  for e in Q: 
     if e == item: return true
   return false
 
-proc expandIfNeeded[T](x: var Deque[T]) =
-  if unlikely(x.len >= x.cap):
-    assert x.len == x.cap
-    x.cap = x.cap shl 1
-    var data = case x.mode
+proc expandIfNeeded[T](Q: var Deque[T]) =
+  if unlikely(Q.len >= Q.cap):
+    assert Q.len == Q.cap
+    Q.cap = Q.cap shl 1
+    var data = case Q.mode
                of AllocMode.THREAD_SHARED:
-                 cast[ptr UncheckedArray[T]](allocShared0(sizeof(T) * x.cap))
+                 cast[ptr UncheckedArray[T]](allocShared0(sizeof(T) * Q.cap))
                of AllocMode.THREAD_LOCAL:
-                 cast[ptr UncheckedArray[T]](alloc0(sizeof(T) * x.cap))
-    if x.head == 0:
-      copyMem(data, x.data, sizeof(T) * x.len)
+                 cast[ptr UncheckedArray[T]](alloc0(sizeof(T) * Q.cap))
+    if Q.head == 0:
+      copyMem(data, Q.data, sizeof(T) * Q.len)
     else:
-      let firstOffset = sizeof(T) * (x.len - x.head)
-      let headOffset = sizeof(T) * x.head
-      copyMem(data, x.data.offset(headOffset), firstOffset)
-      copyMem(data.offset(firstOffset), x.data, headOffset)
+      let firstOffset = sizeof(T) * (Q.len - Q.head)
+      let headOffset = sizeof(T) * Q.head
+      copyMem(data, Q.data.offset(headOffset), firstOffset)
+      copyMem(data.offset(firstOffset), Q.data, headOffset)
     
-    case x.mode
+    case Q.mode
     of AllocMode.THREAD_SHARED:
-      deallocShared(x.data)
+      deallocShared(Q.data)
     of AllocMode.THREAD_LOCAL:
-      dealloc(x.data)
+      dealloc(Q.data)
 
-    x.data = data
-    x.mask = x.cap - 1
-    x.tail = x.len
-    x.head = 0
+    Q.data = data
+    Q.mask = Q.cap - 1
+    Q.tail = Q.len
+    Q.head = 0
 
-proc addFirst*[T](x: var Deque[T], item: sink T) =
+proc addFirst*[T](Q: var Deque[T], item: sink T) =
   ## Add an `item` to the beginning of the `deq`.
   ##
   ## See also:
@@ -370,12 +374,12 @@ proc addFirst*[T](x: var Deque[T], item: sink T) =
       a.addFirst(10*i)
     assert $a == "[50, 40, 30, 20, 10]"
 
-  expandIfNeeded(x)
-  inc(x.len)
-  x.head = (x.head - 1) and x.mask
-  x.data[x.head] = item
+  expandIfNeeded(Q)
+  inc(Q.len)
+  Q.head = (Q.head - 1) and Q.mask
+  Q.data[Q.head] = item
 
-proc addLast*[T](x: var Deque[T], item: sink T) =
+proc addLast*[T](Q: var Deque[T], item: sink T) =
   ## Add an `item` to the end of the `deq`.
   ##
   ## See also:
@@ -391,12 +395,12 @@ proc addLast*[T](x: var Deque[T], item: sink T) =
       a.addLast(10*i)
     assert $a == "[10, 20, 30, 40, 50]"
 
-  expandIfNeeded(x)
-  inc(x.len)
-  x.data[x.tail] = item
-  x.tail = (x.tail + 1) and x.mask
+  expandIfNeeded(Q)
+  inc(Q.len)
+  Q.data[Q.tail] = item
+  Q.tail = (Q.tail + 1) and Q.mask
 
-proc peekFirst*[T](x: Deque[T]): lent T {.inline.} =
+proc peekFirst*[T](Q: Deque[T]): lent T {.inline.} =
   ## Returns the first element of `deq`, but does not remove it from the deque.
   ##
   ## See also:
@@ -414,10 +418,10 @@ proc peekFirst*[T](x: Deque[T]): lent T {.inline.} =
     assert a.peekFirst == 10
     assert len(a) == 5
 
-  checkEmpty(x)
-  result = x.data[x.head]
+  checkEmpty(Q)
+  result = Q.data[Q.head]
 
-proc peekFirst*[T](x: var Deque[T]): var T {.inline.} =
+proc peekFirst*[T](Q: var Deque[T]): var T {.inline.} =
   ## Returns the first element of `deq`, but does not remove it from the deque.
   ##
   ## See also:
@@ -435,10 +439,10 @@ proc peekFirst*[T](x: var Deque[T]): var T {.inline.} =
     assert a.peekFirst == 10
     assert len(a) == 5
 
-  checkEmpty(x)
-  result = x.data[x.head]
+  checkEmpty(Q)
+  result = Q.data[Q.head]
 
-proc peekLast*[T](x: Deque[T]): lent T {.inline.} =
+proc peekLast*[T](Q: Deque[T]): lent T {.inline.} =
   ## Returns the last element of `deq`, but does not remove it from the deque.
   ##
   ## See also:
@@ -456,10 +460,10 @@ proc peekLast*[T](x: Deque[T]): lent T {.inline.} =
     assert a.peekLast == 50
     assert len(a) == 5
 
-  checkEmpty(x)
-  result = x.data[(x.tail - 1) and x.mask]
+  checkEmpty(Q)
+  result = Q.data[(Q.tail - 1) and Q.mask]
 
-proc peekLast*[T](x: var Deque[T]): var T {.inline.} =
+proc peekLast*[T](Q: var Deque[T]): var T {.inline.} =
   ## Returns the last element of `deq`, but does not remove it from the deque.
   ##
   ## See also:
@@ -477,10 +481,10 @@ proc peekLast*[T](x: var Deque[T]): var T {.inline.} =
     assert a.peekLast == 50
     assert len(a) == 5
 
-  checkEmpty(x)
-  result = x.data[(x.tail - 1) and x.mask]
+  checkEmpty(Q)
+  result = Q.data[(Q.tail - 1) and Q.mask]
 
-proc popFirst*[T](x: var Deque[T]): T {.inline, discardable.} =
+proc popFirst*[T](Q: var Deque[T]): T =
   ## Remove and returns the first element of the `deq`.
   ##
   ## See also:
@@ -500,13 +504,13 @@ proc popFirst*[T](x: var Deque[T]): T {.inline, discardable.} =
     assert a.popFirst == 10
     assert $a == "[20, 30, 40, 50]"
 
-  checkEmpty(x)
-  dec(x.len)
-  result = x.data[x.head]
-  reset(x.data[x.head])
-  x.head = (x.head + 1) and x.mask
+  checkEmpty(Q)
+  dec(Q.len)
+  result = Q.data[Q.head]
+  reset(Q.data[Q.head])
+  Q.head = (Q.head + 1) and Q.mask
 
-proc popLast*[T](x: var Deque[T]): T {.inline, discardable.} =
+proc popLast*[T](Q: var Deque[T]): T =
   ## Remove and returns the last element of the `deq`.
   ##
   ## See also:
@@ -527,12 +531,12 @@ proc popLast*[T](x: var Deque[T]): T {.inline, discardable.} =
     assert $a == "[10, 20, 30, 40]"
 
   checkEmpty(deq)
-  dec(x.len)
-  x.tail = (x.tail - 1) and x.mask
-  result = x.data[x.tail]
-  reset(x.data[x.tail])
+  dec(Q.len)
+  Q.tail = (Q.tail - 1) and Q.mask
+  result = Q.data[Q.tail]
+  reset(Q.data[Q.tail])
 
-proc delFirst*[T](x: var Deque[T]) {.inline.} =
+proc delFirst*[T](Q: var Deque[T]) =
   ## Remove the first element of the `deq`.
   ##
   ## See also:
@@ -552,13 +556,13 @@ proc delFirst*[T](x: var Deque[T]) {.inline.} =
     assert a.popFirst == 10
     assert $a == "[20, 30, 40, 50]"
 
-  checkEmpty(x)
-  dec(x.len)
-  `=destroy`(x.data[x.head])
-  reset(x.data[x.head])
-  x.head = (x.head + 1) and x.mask
+  checkEmpty(Q)
+  dec(Q.len)
+  `=destroy`(Q.data[Q.head])
+  reset(Q.data[Q.head])
+  Q.head = (Q.head + 1) and Q.mask
 
-proc delLast*[T](x: var Deque[T]) {.inline.} =
+proc delLast*[T](Q: var Deque[T]) =
   ## Remove the last element of the `deq`.
   ##
   ## See also:
@@ -579,12 +583,12 @@ proc delLast*[T](x: var Deque[T]) {.inline.} =
     assert $a == "[10, 20, 30, 40]"
 
   checkEmpty(deq)
-  dec(x.len)
-  x.tail = (x.tail - 1) and x.mask
-  `=destroy`(x.data[x.tail])
-  reset(x.data[x.tail])
+  dec(Q.len)
+  Q.tail = (Q.tail - 1) and Q.mask
+  `=destroy`(Q.data[Q.tail])
+  reset(Q.data[Q.tail])
 
-proc clear*[T](x: var Deque[T]) {.inline.} =
+proc clear*[T](Q: var Deque[T]) =
   ## Resets the deque so that it is empty.
   ##
   ## See also:
@@ -599,13 +603,13 @@ proc clear*[T](x: var Deque[T]) {.inline.} =
     clear(a)
     assert len(a) == 0
 
-  for el in x.mitems(): 
+  for el in Q.mitems(): 
     `=destroy`(el)
     reset(el)
-  x.len = 0
-  x.tail = x.head
+  Q.len = 0
+  Q.tail = Q.head
 
-proc shrink*[T](x: var Deque[T], fromFirst = 0, fromLast = 0) =
+proc shrink*[T](Q: var Deque[T], fromFirst = 0, fromLast = 0) =
   ## Remove `fromFirst` elements from the front of the deque and
   ## `fromLast` elements from the back.
   ##
@@ -625,25 +629,25 @@ proc shrink*[T](x: var Deque[T], fromFirst = 0, fromLast = 0) =
 
   let n = fromFirst + fromLast
 
-  if n > x.len:
-    x.clear()
+  if n > Q.len:
+    Q.clear()
   else:
     for i in 0..<fromFirst:
-      `=destroy`(x.data[x.head])
-      reset(x.data[x.head])
-      x.head = (x.head + 1) and x.mask
+      `=destroy`(Q.data[Q.head])
+      reset(Q.data[Q.head])
+      Q.head = (Q.head + 1) and Q.mask
 
     for i in 0..<fromLast:
-      `=destroy`(x.data[x.tail])
-      reset(x.data[x.tail])
-      x.tail = (x.tail - 1) and x.mask
+      `=destroy`(Q.data[Q.tail])
+      reset(Q.data[Q.tail])
+      Q.tail = (Q.tail - 1) and Q.mask
 
-    dec(x.len, n)
+    dec(Q.len, n)
 
-proc `$`*[T](x: Deque[T]): string =
+proc `$`*[T](Q: Deque[T]): string =
   ## Turn a deque into its string representation.
   result = "["
-  for el in x: 
+  for el in Q: 
     if result.len > 1: 
       result.add(", ")
     result.addQuoted(el)
@@ -711,7 +715,7 @@ when isMainModule:
     try:
       assert deq.len == 4
       for i in 0 ..< 5: 
-        deq.popFirst()
+        deq.delFirst()
       assert false
     except IndexDefect:
       discard
@@ -720,8 +724,8 @@ when isMainModule:
   deq = Deque[int]()
   deq.initDeque()
   for i in 1 .. 4: deq.addLast(i)
-  deq.popFirst()
-  deq.popLast()
+  deq.delFirst()
+  deq.delLast()
   for i in 5 .. 8: deq.addFirst(i)
   assert $deq == "[8, 7, 6, 5, 2, 3]"
 

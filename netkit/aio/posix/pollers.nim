@@ -1,14 +1,21 @@
 
 import std/os
 import std/posix
-import netkit/posix/linux/selector
-import netkit/collections/simplelists
-import netkit/collections/vecs
-import netkit/aio/errors
-import netkit/numbergen
+import netkit/errors
+import netkit/idgen
 import netkit/options
 import netkit/allocmode
 import netkit/objects
+import netkit/collections/simplelists
+import netkit/collections/vecs
+
+when defined(linux):
+  import netkit/aio/posix/linux/interests
+  import netkit/aio/posix/linux/selectors
+elif defined(macosx) or defined(freebsd) or defined(netbsd) or defined(openbsd) or defined(dragonfly):
+  discard
+else:
+  {.fatal: "Platform not supported!".}
 
 const
   MaxConcurrentEventCount* {.intdefine.} = 1024
@@ -31,7 +38,7 @@ type
   InterestVec = object
     data: Vec[Option[InterestData]]
     len: Natural
-    idGenerator: NaturalGenerator
+    idGenerator: IdGenerator
 
   Poller* = object
     selector: Selector
@@ -44,16 +51,16 @@ type
 
 proc `=destroy`*(poller: var Poller) {.raises: [OSError].} = 
   if poller.destructorState == DestructorState.READY:
-    poller.selector.close()
-    poller.interests.data.`=destroy`()
-    poller.interests.idGenerator.`=destroy`()
+    `=destroy`(poller.selector)
+    `=destroy`(poller.interests.data)
+    `=destroy`(poller.interests.idGenerator)
     poller.state = PollerState.DESTROYED
     poller.destructorState = DestructorState.COMPLETED
     
 proc initPoller*(poller: var Poller, initialSize: Natural = 256, mode = AllocMode.THREAD_LOCAL) {.raises: [OSError].} = 
-  poller.selector = initSelector()
+  poller.selector.initSelector()
   poller.interests.data.initVec(initialSize, mode)
-  poller.interests.idGenerator.initNaturalGenerator(initialSize, mode)
+  poller.interests.idGenerator.initIdGenerator(initialSize, mode)
   poller.state = PollerState.CREATED
   poller.destructorState = DestructorState.READY
 
@@ -64,11 +71,11 @@ proc shutdown*(poller: var Poller) {.raises: [IllegalStateError].} =
   of PollerState.RUNNING:
     poller.state = PollerState.SHUTDOWN
   of PollerState.SHUTDOWN:
-    raise newException(IllegalStateError, "reactor still shutdowning")
+    raise newException(IllegalStateError, "poller still shutdowning")
   of PollerState.STOPPED:
-    raise newException(IllegalStateError, "reactor already stopped")
+    raise newException(IllegalStateError, "poller already stopped")
   of PollerState.DESTROYED:
-    raise newException(IllegalStateError, "reactor already closed")
+    raise newException(IllegalStateError, "poller already destroyed")
 
 proc runBlocking*(poller: var Poller, timeout: cint) {.raises: [OSError, IllegalStateError, Exception].} =
   template handleEvents(list: SimpleList) =
@@ -83,13 +90,13 @@ proc runBlocking*(poller: var Poller, timeout: cint) {.raises: [OSError, Illegal
   of PollerState.CREATED:
     poller.state = PollerState.RUNNING
   of PollerState.RUNNING:
-    raise newException(IllegalStateError, "reactor already running")
+    raise newException(IllegalStateError, "poller already running")
   of PollerState.SHUTDOWN:
-    raise newException(IllegalStateError, "reactor still shutdowning")
+    raise newException(IllegalStateError, "poller still shutdowning")
   of PollerState.STOPPED:
     poller.state = PollerState.RUNNING
   of PollerState.DESTROYED:
-    raise newException(IllegalStateError, "reactor already closed")
+    raise newException(IllegalStateError, "poller already destroyed")
   
   var events: array[MaxConcurrentEventCount, Event] 
   while true:
@@ -119,7 +126,7 @@ iterator interests*(poller: var Poller): Natural =
     if data.has:
       yield i
 
-proc register*(poller: var Poller, fd: cint): Natural =
+proc registerHandle*(poller: var Poller, fd: cint): Natural {.raises: [OSError].} =
   let interest = initInterest()
   result = poller.interests.idGenerator.acquire()
   poller.selector.register(fd, UserData(u64: result.uint64), interest)
@@ -129,12 +136,12 @@ proc register*(poller: var Poller, fd: cint): Natural =
   let data = poller.interests.data[result].addr
   data.value.fd = fd
   data.value.interest = interest
-  data.value.readList = initSimpleList()
-  data.value.writeList = initSimpleList()
+  data.value.readList.initSimpleList()
+  data.value.writeList.initSimpleList()
   data.has = true
   poller.interests.len.inc()
 
-proc unregister*(poller: var Poller, id: Natural) {.raises: [OSError, ValueError].} =
+proc unregisterHandle*(poller: var Poller, id: Natural) {.raises: [OSError, ValueError].} =
   let data = poller.interests.data[id].addr
   if not data.has:
     raise newException(ValueError, "file descriptor not registered")
@@ -176,3 +183,36 @@ proc updateWrite*(poller: var Poller, id: Natural, p: ref PollableBase) {.raises
   if not data.value.interest.isWritable():
     data.value.interest.registerWritable()
     poller.selector.update(data.value.fd, UserData(u64: id.uint64), data.value.interest)
+
+# when isMainModule:
+#   import std/posix
+
+#   var poller: Poller
+#   poller.initPoller()
+
+#   var chan: array[2, cint]
+#   discard pipe(chan)
+  
+#   let r1 = chan[0]
+#   let r2 = dup(chan[0])
+#   let id1 = poller.register(r1)
+#   let w = chan[1]
+#   echo "r1:", r1, ", r2:", r2, ", w:", w
+  
+#   let p1 = new(Pollable[int])
+#   p1.poll = proc (p: ref PollableBase): bool =
+#     result = true
+#     echo "p1:", (ref Pollable[int])(p).value
+
+#     var buf = newString(16)
+#     echo "read:", r2.read(buf.addr, sizeof(buf))
+#     echo buf
+
+#   p1.value = 1
+#   poller.updateRead(id1, p1)
+  
+#   var buf = "abc"
+#   echo "write:", w.write(buf.addr, sizeof(buf))
+#   echo "..."
+
+#   poller.runBlocking(500)

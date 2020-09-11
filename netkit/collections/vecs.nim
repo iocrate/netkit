@@ -49,6 +49,16 @@ proc `=`*[T](dest: var Vec[T], source: Vec[T]) =
         dest.data = cast[ptr UncheckedArray[T]](alloc0(blockLen))
       copyMem(dest.data, source.data, blockLen)
 
+proc initVec*[T](vec: var Vec[T], cap: Natural = 4, mode = AllocMode.THREAD_SHARED) = 
+  `=destroy`(vec)
+  vec.mode = mode
+  vec.cap = cap
+  case vec.mode
+  of AllocMode.THREAD_SHARED:
+    vec.data = cast[ptr UncheckedArray[T]](allocShared0(sizeof(T) * cap))
+  of AllocMode.THREAD_LOCAL:
+    vec.data = cast[ptr UncheckedArray[T]](alloc0(sizeof(T) * cap))
+
 proc cap*[T](vec: Vec[T]): Natural {.inline.} = 
   vec.cap
 
@@ -120,16 +130,6 @@ proc resize*[T](vec: var Vec[T], cap: Natural) =
       `=destroy`(vec.data[i])
   vec.data = cast[ptr UncheckedArray[T]](realloc0(vec.data, sizeof(T) * vec.cap, sizeof(T) * cap))
   vec.cap = cap
-
-proc initVec*[T](vec: var Vec[T], cap: Natural = 4, mode = AllocMode.THREAD_SHARED) = 
-  `=destroy`(vec)
-  vec.mode = mode
-  vec.cap = cap
-  case vec.mode
-  of AllocMode.THREAD_SHARED:
-    vec.data = cast[ptr UncheckedArray[T]](allocShared0(sizeof(T) * cap))
-  of AllocMode.THREAD_LOCAL:
-    vec.data = cast[ptr UncheckedArray[T]](alloc0(sizeof(T) * cap))
 
 when isMainModule:
   proc testInt() = 

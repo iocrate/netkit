@@ -8,12 +8,6 @@ discard """
   timeout:  60.0
 """
 
-#            netkit 
-#        (c) Copyright 2020 Wang Tong
-#
-#    See the file "LICENSE", included in this
-#    distribution, for details about the copyright.
-
 import unittest
 import netkit/buffer/constants
 import netkit/buffer/circular

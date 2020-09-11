@@ -1,9 +1,3 @@
-#            netkit 
-#        (c) Copyright 2020 Wang Tong
-#
-#    See the file "LICENSE", included in this
-#    distribution, for details about the copyright.
-
 ## This module contains a definition of HTTP header fields. A distinct table, ``HeaderFields``, which 
 ## represents the set of header fields of a message.
 ## 

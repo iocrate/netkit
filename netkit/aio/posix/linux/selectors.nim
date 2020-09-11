@@ -1,66 +1,22 @@
-from std/posix import EINTR, EINPROGRESS, close
+from std/posix import EINTR, EINPROGRESS, close, dup
 import std/os
-import netkit/posix/linux/epoll
+import netkit/objects
+import netkit/platforms/posix/linux/epoll
+import netkit/aio/posix/linux/interests
 
 type
   Selector* = object # TODO: 考虑多线程，考虑多 epollfd
     epollFD: cint
+    destructorState: DestructorState
 
   Event* = object # 兼容 
     value: EpollEvent 
-
-  Interest* = object # 兼容 
-    value: uint32
 
   UserData* {.union.} = object
     fd*: cint
     data*: pointer
     u32*: uint32
     u64*: uint64
-
-proc initInterest*(): Interest = 
-  result.value = EPOLLET.uint32 # TODO: 考虑 EPOLLET 的利弊
-
-proc registerReadable*(interest: var Interest) {.inline.} = 
-  interest.value = interest.value or EPOLLIN or EPOLLRDHUP
-
-proc registerWritable*(interest: var Interest) {.inline.} = 
-  interest.value = interest.value or EPOLLOUT
-
-proc registerAio*(interest: var Interest) {.inline.} = 
-  discard
-
-proc registerLio*(interest: var Interest) {.inline.} = 
-  discard
-
-proc unregisterReadable*(interest: var Interest) {.inline.} = 
-  # TODO: 考虑常量标记为　uint32 类型
-  interest.value = interest.value and not EPOLLIN.uint32 and not EPOLLRDHUP.uint32
-
-proc unregisterWritable*(interest: var Interest) {.inline.} = 
-  # TODO: 考虑常量标记为　uint32 类型
-  interest.value = interest.value and not EPOLLOUT.uint32 
-
-proc unregisterAio*(interest: var Interest) {.inline.} = 
-  discard
-
-proc unregisterLio*(interest: var Interest) {.inline.} = 
-  discard
-
-proc unregister*(interest: var Interest) {.inline.} = 
-  interest.value = EPOLLET.uint32
-
-proc isReadable*(interest: Interest): bool {.inline.} =
-  (interest.value and EPOLLIN) != 0 
-
-proc isWritable*(interest: Interest): bool {.inline.} =
-  (interest.value and EPOLLOUT) != 0 
-
-proc isAio*(interest: Interest): bool {.inline.} =
-  false
-
-proc isLio*(interest: Interest): bool {.inline.} =
-  false
 
 proc data*(event: Event): UserData {.inline.} =
   cast[UserData](event.value.data)
@@ -92,15 +48,35 @@ proc isLio*(event: Event): bool {.inline.} =
 proc isError*(event: Event): bool {.inline.} =
   (event.value.events and EPOLLERR) != 0 
 
-proc initSelector*(): Selector {.raises: [OSError].} = 
+proc `=destroy`*(s: var Selector)  {.raises: [OSError].} =
+  if s.destructorState == DestructorState.READY:
+    if s.epollFD.close() < 0:
+      raiseOSError(osLastError())
+    s.destructorState = DestructorState.COMPLETED
+
+proc `=sink`*(dest: var Selector, source: Selector) {.raises: [OSError].} =
+  if dest.epollFD != source.epollFD:
+    `=destroy`(dest)
+    dest.epollFD = source.epollFD
+    dest.destructorState = source.destructorState
+
+proc `=`*(dest: var Selector, source: Selector) {.raises: [OSError].} =
+  if dest.epollFD != source.epollFD:
+    `=destroy`(dest)
+    if source.destructorState == DestructorState.READY:
+      dest.epollFD = dup(source.epollFD)
+      if dest.epollFD < 0:
+        raiseOSError(osLastError())
+    else:
+      dest.epollFD = source.epollFD
+    dest.destructorState = source.destructorState
+
+proc initSelector*(s: var Selector) {.raises: [OSError].} = 
   let fd = epoll_create1(EPOLL_CLOEXEC)
   if fd < 0:
     raiseOSError(osLastError())
-  result.epollFD = fd
-
-proc close*(s: var Selector) {.raises: [OSError].} = 
-  if s.epollFD.close() < 0:
-    raiseOSError(osLastError())
+  s.epollFD = fd
+  s.destructorState = DestructorState.READY
 
 proc select*(s: var Selector, events: var openArray[Event], timeout: cint): Natural {.raises: [OSError].} =
   # TODO: timeout: cint 设计一个超时数据结构以提供更好的兼容 ? how about Option<Duration> ?

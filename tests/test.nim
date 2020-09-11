@@ -8,12 +8,6 @@ discard """
   timeout:  60.0
 """
 
-#            netkit 
-#        (c) Copyright 2020 Wang Tong
-#
-#    See the file "LICENSE", included in this
-#    distribution, for details about the copyright.
-
 ###############################################################
 # import locks
 
@@ -440,33 +434,33 @@ discard """
 
 # main()
 
-type
-  Opt = object
-    val1: int
-    val2: int
+# type
+#   Opt = object
+#     val1: int
+#     val2: int
 
-  A = object of RootObj
-    o: Opt
+#   A = object of RootObj
+#     o: Opt
 
-proc finalizer(a: ref A) =
-  echo "finalizer was called"
+# proc finalizer(a: ref A) =
+#   echo "finalizer was called"
 
-# proc `=destroy`*(a: var Opt) = 
-#   echo "Opt destroy"
+# # proc `=destroy`*(a: var Opt) = 
+# #   echo "Opt destroy"
 
-# proc `=destroy`*(a: var A) = 
-#   echo "A destroy"
+# # proc `=destroy`*(a: var A) = 
+# #   echo "A destroy"
 
-proc f() =
-  var a = new(A)
-  a.o.val1 = 1
-  a = nil
+# proc f() =
+#   var a = new(A)
+#   a.o.val1 = 1
+#   a = nil
 
-proc main() =
-  f()
-  GC_fullCollect()
+# proc main() =
+#   f()
+#   GC_fullCollect()
 
-main()
+# main()
 
 # var a = new(Opt)
 # a.val1 = 1
@@ -483,4 +477,176 @@ main()
 
 # echo repr opt
 # echo repr currentOpt()
+
+# type
+#   XpscMode* {.pure.} = enum
+#     SPSC, MPSC
+
+#   XpscQueue* = object 
+#     case mode: XpscMode
+#     of XpscMode.SPSC:
+#       m: int
+#     of XpscMode.MPSC:
+#       a: int
+#     c: int
+
+# proc `=destroy`*(x: var XpscQueue) = 
+#   echo "destroy"
+
+# proc initXpscQueue*(x: var XpscQueue, mode: XpscMode) =
+#   x = XpscQueue(mode: mode)
+#   case mode
+#   of XpscMode.SPSC:
+#     x.m = 100
+#   of XpscMode.MPSC:
+#     x.a = 1
+#     echo 1
+
+# proc main() =
+#   var mq: XpscQueue 
+#   mq.initXpscQueue(XpscMode.MPSC)
+#   echo mq
+
+# main()
+
+# type
+#   Deque = object
+#     data: ptr UncheckedArray[int]
+#     cap: int
+
+#   IdGenerator = object
+#     data: Deque
+
+#   Opt = object
+#     data: IdGenerator
+
+# proc `=destroy`*(g: var Deque) =
+#   echo "Deque destroy"
+
+# proc `=destroy`*(g: var IdGenerator) =
+#   echo "IdGenerator destroy"
+#   `=destroy`(g.data)
+
+# proc `=destroy`*(g: var Opt) =
+#   echo "Opt destroy"
+#   `=destroy`(g.data)
+
+# proc `=sink`*(dest: var Deque, source: Deque) = 
+#   `=destroy`(dest)
+#   echo "Deque sink"
+#   dest.data = source.data
+#   dest.cap = source.cap
+
+# proc `=`*(dest: var Deque, source: Deque) =
+#   `=destroy`(dest)
+#   echo "Deque copy"
+#   dest.data = source.data
+#   dest.cap = source.cap
+
+# proc `=sink`*(dest: var IdGenerator, source: IdGenerator) = 
+#   `=destroy`(dest)
+#   echo "IdGenerator sink"
+#   dest.data = source.data
+
+# proc `=`*(dest: var IdGenerator, source: IdGenerator) =
+#   `=destroy`(dest)
+#   echo "IdGenerator copy"
+#   dest.data = source.data
+
+# proc `=sink`*(dest: var Opt, source: Opt) = 
+#   `=destroy`(dest)
+#   echo "Opt sink"
+#   dest.data = source.data
+
+# proc `=`*(dest: var Opt, source: Opt) =
+#   `=destroy`(dest)
+#   echo "Opt copy"
+#   dest.data = source.data
+
+# proc initDeque(): Deque = 
+#   echo "initDeque ..."
+#   result.cap = 0
+#   echo "initDeque ......"
+
+# proc initIdGenerator(): IdGenerator = 
+#   echo "initIdGenerator ..."
+#   result.data = initDeque()
+#   echo "initIdGenerator ......"
+
+# proc initOpt(): Opt = 
+#   echo "initOpt ..."
+#   result.data = initIdGenerator()
+#   echo "initOpt ......"
+
+# proc initDeque(x: var Deque) = 
+#   echo "initDeque ..."
+#   x.cap = 0
+#   echo "initDeque ......"
+
+# proc initIdGenerator(x: var IdGenerator) = 
+#   echo "initIdGenerator ..."
+#   x.data.initDeque()
+#   echo "initIdGenerator ......"
+
+# proc initOpt(x: var Opt) = 
+#   echo "initOpt ..."
+#   x.data.initIdGenerator()
+#   echo "initOpt ......"
+
+# proc main() = 
+#   echo "....................."
+#   var opt: Opt 
+#   opt.initOpt()
+#   echo "....................."
+
+# main()
+
+type
+  myseq*[T] = object
+    len, cap: int
+    data: ptr UncheckedArray[T]
+
+proc `=destroy`*[T](x: var myseq[T]) =
+  echo "destroy: ", x.data == nil
+  if x.data != nil:
+    dealloc(x.data)
+    x.data = nil
+
+proc `=`*[T](a: var myseq[T]; b: myseq[T]) =
+  # do nothing for self-assignments:
+  if a.data == b.data: 
+    return
+  `=destroy`(a)
+  a.len = b.len
+  a.cap = b.cap
+  if b.data != nil:
+    a.data = cast[type(a.data)](alloc(a.cap * sizeof(T)))
+    for i in 0..<a.len:
+      a.data[i] = b.data[i]
+
+proc `=sink`*[T](a: var myseq[T]; b: myseq[T]) =
+  # move assignment, optional.
+  # Compiler is using `=destroy` and `copyMem` when not provided
+  `=destroy`(a)
+  a.len = b.len
+  a.cap = b.cap
+  a.data = b.data
+
+proc createSeq*[T](elems: varargs[T]): myseq[T] =
+  result.cap = elems.len
+  result.len = elems.len
+  result.data = cast[type(result.data)](alloc(result.cap * sizeof(T)))
+  for i in 0..<result.len: 
+    result.data[i] = elems[i]
+
+proc f(seq1: var myseq[int]) =
+  var seq2: myseq[int] = createSeq[int](1)
+  seq1 = seq2
+
+proc main() = 
+  var seq1: myseq[int]
+  f(seq1)
+  echo seq1.data == nil
+
+main()
 

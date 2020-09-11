@@ -1,9 +1,3 @@
-#            netkit 
-#        (c) Copyright 2020 Wang Tong
-#
-#    See the file "LICENSE", included in this
-#    distribution, for details about the copyright.
-
 ## This module contains miscellaneous functions that don’t really belong in any other module.
 
 template offset*(p: pointer, n: int): pointer = 

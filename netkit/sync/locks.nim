@@ -14,70 +14,47 @@
 ## As with synchronous style locks, you should always operate a lock in window mode and bind a lock to a 
 ## specific object as much as possible to avoid problems such as deadlock and livelock.
 
-import deques
-import asyncdispatch
-
 type
   AsyncLock* = object ## An asynchronous lock.
     locked: bool
-    waiters: Deque[Future[void]]
 
-proc initAsyncLock*(): AsyncLock = 
-  ## Initializes an ``AsyncLock``.
-  result.locked = false
-  result.waiters = initDeque[Future[void]]()
-
-proc acquire*(L: var AsyncLock): Future[void] = 
-  ## Tries to acquire a lock. When this future is completed, it indicates that the lock is acquired.
-  result = newFuture[void]("acquire")
-  if L.locked:
-    L.waiters.addLast(result)
-  else:
-    L.locked = true
-    result.complete()
-
-proc release*(L: var AsyncLock) = 
-  ## Releases the lock that has been acquired. 
-  if L.locked:
-    if L.waiters.len > 0:
-      L.waiters.popFirst().complete()
-    else:
-      L.locked = false
-
-proc isLocked*(L: AsyncLock): bool {.inline.} = 
-  ## Returns ``true`` if ``L`` is locked.
-  L.locked
-  
 type
   SpinLock* = object ## A spin lock.
     locked: bool
 
-proc initSpinLock*(): SpinLock = 
+proc initSpinLock*(L: var SpinLock) = 
   ## Initializes an ``SpinLock``.
-  result.locked = false
+  L.locked = false
 
 proc acquire*(L: var SpinLock) {.inline.} = 
   ## Tries to acquire a lock. When this future is completed, it indicates that the lock is acquired.
-  while not cas(addr L.locked, false, true): cpuRelax()
+  while not cas(addr L.locked, false, true): 
+    cpuRelax()
+
+proc tryAcquire*(L: var SpinLock): bool {.inline.} = 
+  ## Tries to acquire a lock. When this future is completed, it indicates that the lock is acquired.
+  cas(addr L.locked, false, true)
 
 proc release*(L: var SpinLock) {.inline.} = 
   ## Releases the lock that has been acquired. 
+  fence()
   L.locked = false
 
 proc isLocked*(L: SpinLock): bool {.inline.} = 
   ## Returns ``true`` if ``L`` is locked.
   L.locked
   
-template withLock*(L: SpinLock, body: untyped) = 
+template withLock*(L: SpinLock, action: untyped) = 
   L.acquire()
   try:
-    body
+    action
   finally:
     L.release()
 
 when isMainModule:
-  var spinLock = initSpinLock()
+  var spinLock: SpinLock
   var spinCount = 0
+  var spinThreads: array[8, Thread[void]]
 
   proc spinThreadFunc() {.thread.} =
     for j in 0..<100000:
@@ -85,10 +62,10 @@ when isMainModule:
         spinCount = spinCount + 1   
 
   proc spinTest() = 
-    var threads: array[8, Thread[void]]
+    spinLock.initSpinLock()
     for i in 0..<8:
-      createThread(threads[i], spinThreadFunc)
-    joinThreads(threads)
+      createThread(spinThreads[i], spinThreadFunc)
+    joinThreads(spinThreads)
     doAssert spinCount == 800000
 
   spinTest()

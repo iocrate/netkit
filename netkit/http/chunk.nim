@@ -1,9 +1,3 @@
-#            netkit 
-#        (c) Copyright 2020 Wang Tong
-#
-#    See the file "LICENSE", included in this
-#    destribution, for details about the copyright.
-
 ## HTTP 1.1 supports chunked encoding, which allows HTTP messages to be broken up into several parts. 
 ## Chunking is most often used by the server for responses, but clients can also chunk large requests.
 ## By adding ``Transfer-Encoding: chunked`` to a message header, this message can be sent chunk by chunk. 

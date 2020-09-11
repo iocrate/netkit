@@ -1,9 +1,9 @@
 
 import std/cpuinfo
 import netkit/options
-import netkit/locks
-import netkit/aio/error
-import netkit/aio/executors
+import netkit/sync/locks
+import netkit/errors
+import netkit/aio/posix/executors
 
 const
   MaxExecutorCount* {.intdefine.} = 256            ## Maximum size of the event loop gScheduler. 
@@ -13,6 +13,11 @@ const
   ExecutorTimeout* {.intdefine.} = 500
 
 type
+  ExecutorId* = Natural
+
+  ExecutorRole* {.pure.} = enum
+    PRIMARY, SECONDARY
+
   ExecutorGroup* = object
     id: ExecutorGroupId
     start: Natural
@@ -41,18 +46,27 @@ type
 
 var
   gScheduler: ExecutorScheduler
-  currentExecutor* {.threadvar.}: ptr Executor 
-  currentExecutorId {.threadvar.}: int 
+  currentExecutor {.threadvar.}: ptr Executor 
+  currentExecutorId {.threadvar.}: ExecutorId 
+
+proc getCurrentExecutor*(): ptr Executor {.inline.} =
+  currentExecutor
+
+proc isCurrentPrimary*(): bool {.inline.} =
+  currentExecutorId == 0
+
+proc isCurrentSecondary*(): bool {.inline.} =
+  currentExecutorId > 0
 
 proc initExecutorScheduler(s: var ExecutorScheduler) =
   s.cpus = countProcessors()
   s.cap = min(s.cpus, MaxExecutorCount)
   s.mask = s.cap - 1
   s.recursiveExecutorId = 1
-  s.recursiveExecutorLock = initSpinLock()
+  s.recursiveExecutorLock.initSpinLock()
   s.recursiveExecutorGroupId = 0
-  s.recursiveExecutorGroupLock = initSpinLock()
-  s.stateLock = initSpinLock()
+  s.recursiveExecutorGroupLock.initSpinLock()
+  s.stateLock.initSpinLock()
   s.state = ExecutorSchedulerState.CREATED
   for i in 0..<s.cap:
     s.executors[i].initExecutor(InitialPollerSize)
@@ -71,7 +85,7 @@ proc sliceExecutorGroup*(cap: Natural): ExecutorGroupId =
   let group = gScheduler.executorGroups[result].value.addr
   group.cap = min(gScheduler.mask, cap)
   if group.cap > 0:
-    group.recursiveExecutorLock = initSpinLock()
+    group.recursiveExecutorLock.initSpinLock()
     withLock gScheduler.recursiveExecutorLock:
       group.start = gScheduler.recursiveExecutorId - 1
       gScheduler.recursiveExecutorId = (group.start + group.cap) mod gScheduler.mask + 1
@@ -86,7 +100,7 @@ proc spawn*(id: ExecutorGroupId, fiber: ref FiberBase) =
       idInGroup = group.recursiveExecutorId
       group.recursiveExecutorId = (group.recursiveExecutorId + 1) mod group.cap
     let executorId = (group.start + idInGroup) mod gScheduler.mask + 1
-    if currentExecutorId > 0:
+    if isCurrentSecondary():
       gScheduler.executors[executorId].execMpsc(fiber)
     else:
       gScheduler.executors[executorId].execSpsc(fiber)
@@ -123,12 +137,6 @@ proc runExecutorScheduler*() =
     joinThread(gScheduler.threads[i])
   gScheduler.state = ExecutorSchedulerState.STOPPED
 
-# proc shutdownExecutor(ex: ptr Executor, pollable: ref PollableBase): bool =
-#   result = true
-#   for id in ex.poller.interests():
-#     ex.poller.unregister(id)
-#   ex.poller.shutdown()
-
 proc shutdownExecutorScheduler*() =
   withLock gScheduler.stateLock:
     case gScheduler.state
@@ -147,7 +155,7 @@ proc shutdownExecutorScheduler*() =
       gScheduler.executors[i].shutdown()
     gScheduler.executors[0].shutdown()
 
-initExecutorScheduler(gScheduler)
+gScheduler.initExecutorScheduler()
 
 # when isMainModule:
 #   type
