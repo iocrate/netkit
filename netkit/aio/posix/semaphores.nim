@@ -23,27 +23,7 @@ proc `=destroy`*(x: var PollableCounter)  {.raises: [OSError].} =
       raiseOSError(osLastError())
     x.destructorState = DestructorState.COMPLETED
 
-proc `=sink`*(dest: var PollableCounter, source: PollableCounter) {.raises: [OSError].} =
-  if dest.reader != source.reader:
-    `=destroy`(dest)
-    dest.reader = source.reader
-    dest.writer = source.writer
-    dest.destructorState = source.destructorState
-
-proc `=`*(dest: var PollableCounter, source: PollableCounter) {.raises: [OSError].} =
-  if dest.reader != source.reader:
-    `=destroy`(dest)
-    if source.destructorState == DestructorState.READY:
-      dest.reader = dup(source.reader)
-      if dest.reader < 0:
-        raiseOSError(osLastError())
-      dest.writer = dup(source.writer)
-      if dest.writer < 0:
-        raiseOSError(osLastError())
-    else:
-      dest.reader = source.reader
-      dest.writer = source.writer
-    dest.destructorState = source.destructorState
+proc `=`*(dest: var PollableCounter, source: PollableCounter) {.error.} 
 
 proc initPollableCounter*(x: var PollableCounter) {.raises: [OSError].} =
   var duplexer: array[2, cint]

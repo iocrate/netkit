@@ -24,10 +24,8 @@ type
   Executor* = object
     poller: Poller
     spscSemaphoreId: Natural
-    spscSemaphore: PollableSemaphore
     spscQueue: XpscQueue[ref FiberBase, PollableCounter]
     mpscSemaphoreId: Natural
-    mpscSemaphore: PollableSemaphore
     mpscQueue: XpscQueue[ref FiberBase, PollableCounter]
     destructorState: DestructorState
 
@@ -36,8 +34,6 @@ proc `=destroy`*(e: var Executor) {.raises: [OSError].} =
     `=destroy`(e.poller)
     `=destroy`(e.spscQueue)
     `=destroy`(e.mpscQueue)
-    `=destroy`(e.spscSemaphore.value)
-    `=destroy`(e.mpscSemaphore.value)
     e.destructorState = DestructorState.COMPLETED
 
 proc pollSpscQueue(pollable: ref PollableBase): bool =
@@ -53,23 +49,25 @@ proc pollMpscQueue(pollable: ref PollableBase): bool =
 proc initExecutor*(e: var Executor, initialSize: Natural = 1024) {.raises: [OSError, ValueError].} =
   e.poller.initPoller(initialSize)
 
-  e.spscSemaphore.initPollableSemaphore()
-  e.spscQueue.initXpscQueue(e.spscSemaphore, XpscMode.SPSC, initialSize)
-  e.spscSemaphoreId = e.poller.register(e.spscSemaphore)
+  var spscSemaphore: PollableSemaphore
+  spscSemaphore.initPollableSemaphore()
+  e.spscSemaphoreId = e.poller.register(spscSemaphore)
   let spscPollable = new(Pollable[ptr Executor])
   spscPollable.initSimpleNode()
   spscPollable.poll = pollSpscQueue
   spscPollable.value = e.addr
   e.poller.updateRead(e.spscSemaphoreId, spscPollable)
+  e.spscQueue.initXpscQueue(spscSemaphore, XpscMode.SPSC, initialSize)
 
-  e.mpscSemaphore.initPollableSemaphore()
-  e.mpscQueue.initXpscQueue(e.mpscSemaphore, XpscMode.MPSC, initialSize)
-  e.mpscSemaphoreId = e.poller.register(e.mpscSemaphore)
+  var mpscSemaphore: PollableSemaphore
+  mpscSemaphore.initPollableSemaphore()
+  e.mpscSemaphoreId = e.poller.register(mpscSemaphore)
   let mpscPollable = new(Pollable[ptr Executor])
   mpscPollable.initSimpleNode()
   mpscPollable.poll = pollMpscQueue
   mpscPollable.value = e.addr
   e.poller.updateRead(e.mpscSemaphoreId, mpscPollable)
+  e.mpscQueue.initXpscQueue(mpscSemaphore, XpscMode.MPSC, initialSize)
 
   e.destructorState = DestructorState.READY
 

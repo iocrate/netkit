@@ -102,7 +102,7 @@ proc mpscAdd[D, S](Q: var XpscQueue[D, S], item: sink D) =
   Q.writeLock.release()
   Q.semaphore.signal()
 
-proc initXpscQueue*[D, S](Q: var XpscQueue[D, S], semaphore: Semaphore[S], mode: XpscMode, cap: Natural = 1024) =
+proc initXpscQueue*[D, S](Q: var XpscQueue[D, S], semaphore: sink Semaphore[S], mode: XpscMode, cap: Natural = 1024) =
   assert isPowerOfTwo(cap)
   Q.mode = mode
   case mode
@@ -161,12 +161,12 @@ when isMainModule and defined(linux):
     MySemaphore = Semaphore[cint]
 
   proc signal(c: var MySemaphore) = 
-    var buf = 1'u64
+    var buf = 1'u
     if c.value.write(buf.addr, sizeof(buf)) < 0:
       raiseOSError(osLastError())
   
-  proc wait(c: var MySemaphore): uint64 = 
-    var buf = 0'u64
+  proc wait(c: var MySemaphore): uint = 
+    var buf = 0'u
     if c.value.read(buf.addr, sizeof(buf)) < 0:
       raiseOSError(osLastError())
     result = buf 

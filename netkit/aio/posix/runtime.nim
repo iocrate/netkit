@@ -157,99 +157,30 @@ proc shutdownExecutorScheduler*() =
 
 gScheduler.initExecutorScheduler()
 
-# when isMainModule:
-#   type
-#     TestData = object 
-#       value: int
+when isMainModule:
+  type
+    TestData = object 
+      value: int
 
-#   var num = 0
+  var num = 0
 
-#   proc runTestFiber(fiber: ref FiberBase) =
-#     atomicInc(num)
-#     if num == 1000:
-#       shutdownExecutorScheduler()
+  proc runTestFiber(fiber: ref FiberBase) =
+    atomicInc(num)
+    if num == 1000:
+      shutdownExecutorScheduler()
 
-#   proc newTestFiber(value: int): ref Fiber[TestData] =
-#     new(result)
-#     result.value.value = value
-#     result.run = runTestFiber
+  proc newTestFiber(value: int): ref Fiber[TestData] =
+    new(result)
+    result.value.value = value
+    result.run = runTestFiber
 
-#   proc testFiberScheduling() =
-#     var group = sliceExecutorGroup(20)
-#     for i in 0..<1000:
-#       group.spawn(newTestFiber(i))
-#     runExecutorScheduler()
-#     assert num == 1000
+  proc test() =
+    var group = sliceExecutorGroup(20)
+    for i in 0..<1000:
+      group.spawn(newTestFiber(i))
+    runExecutorScheduler()
+    assert num == 1000
+    echo num
 
-#   testFiberScheduling()
-
-#   import std/posix
-
-#   type
-#     ReadData = object 
-#       pod: Pod
-
-#     ReadContext = object 
-
-#     WriteData = object 
-#       pod: Pod
-#       value: int
-
-#     WriteContext = object
-#       value: int
+  test()
   
-#   var data = 100
-#   var channel: array[2, cint]
-#   discard pipe(channel)
-
-#   proc pollReadable(p: ref PollableBase): bool =
-#     result = true
-#     var buffer = newString(9)
-#     if (ref Pollable[WriteData])(p).value.pod.fd.read(buffer.cstring, buffer.len) < 0:
-#       raiseOSError(osLastError())
-#     assert buffer == "hello 100"
-#     (ref Pollable[ReadData])(p).value.pod.close()
-#     shutdownExecutorScheduler()
-
-#   proc runReadFiber(fiber: ref FiberBase) =
-#     var pod: Pod
-#     initPod(pod, channel[0])
-#     var pollable = new(Pollable[ReadData])
-#     pollable.initSimpleNode()
-#     pollable.poll = pollReadable
-#     pollable.value.pod = pod
-#     pod.updateRead(pollable)
-
-#   proc newReadFiber(): ref Fiber[ReadContext] =
-#     new(result)
-#     result.run = runReadFiber
-
-#   proc pollWritable(p: ref PollableBase): bool =
-#     result = true
-#     var buffer = "hello " & $((ref Pollable[WriteData])(p).value.value)
-#     if (ref Pollable[WriteData])(p).value.pod.fd.write(buffer.cstring, buffer.len) < 0:
-#       raiseOSError(osLastError())
-#     (ref Pollable[WriteData])(p).value.pod.close()
-
-#   proc runWriteFiber(fiber: ref FiberBase) =
-#     var pod: Pod
-#     initPod(pod, channel[1])
-#     var pollable = new(Pollable[WriteData])
-#     pollable.initSimpleNode()
-#     pollable.poll = pollWritable
-#     pollable.value.pod = pod
-#     pollable.value.value = (ref Fiber[WriteContext])(fiber).value.value
-#     pod.updateWrite(pollable)
-
-#   proc newWriteFiber(value: int): ref Fiber[WriteContext] =
-#     new(result)
-#     result.value.value = value
-#     result.run = runWriteFiber
-
-#   proc testPolling() =
-#     var group = sliceExecutorGroup(20)
-#     group.spawn(newReadFiber())
-#     group.spawn(newWriteFiber(data))
-#     runExecutorScheduler()
-
-#   testPolling()

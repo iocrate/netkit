@@ -601,52 +601,99 @@ discard """
 
 # main()
 
+# type
+#   myseq*[T] = object
+#     len, cap: int
+#     data: ptr UncheckedArray[T]
+
+# proc `=destroy`*[T](x: var myseq[T]) =
+#   echo "destroy: ", x.data == nil
+#   if x.data != nil:
+#     dealloc(x.data)
+#     x.data = nil
+
+# proc `=`*[T](a: var myseq[T]; b: myseq[T]) =
+#   # do nothing for self-assignments:
+#   if a.data == b.data: 
+#     return
+#   `=destroy`(a)
+#   a.len = b.len
+#   a.cap = b.cap
+#   if b.data != nil:
+#     a.data = cast[type(a.data)](alloc(a.cap * sizeof(T)))
+#     for i in 0..<a.len:
+#       a.data[i] = b.data[i]
+
+# proc `=sink`*[T](a: var myseq[T]; b: myseq[T]) =
+#   # move assignment, optional.
+#   # Compiler is using `=destroy` and `copyMem` when not provided
+#   `=destroy`(a)
+#   a.len = b.len
+#   a.cap = b.cap
+#   a.data = b.data
+
+# proc createSeq*[T](elems: varargs[T]): myseq[T] =
+#   result.cap = elems.len
+#   result.len = elems.len
+#   result.data = cast[type(result.data)](alloc(result.cap * sizeof(T)))
+#   for i in 0..<result.len: 
+#     result.data[i] = elems[i]
+
+# proc f(seq1: var myseq[int]) =
+#   var seq2: myseq[int] = createSeq[int](1)
+#   seq1 = seq2
+
+# proc main() = 
+#   var seq1: myseq[int]
+#   f(seq1)
+#   echo seq1.data == nil
+
+# main()
+
 type
-  myseq*[T] = object
-    len, cap: int
-    data: ptr UncheckedArray[T]
+  A = object
+    val: int
 
-proc `=destroy`*[T](x: var myseq[T]) =
-  echo "destroy: ", x.data == nil
-  if x.data != nil:
-    dealloc(x.data)
-    x.data = nil
+  Xpsc[T] = object
+    val: T
 
-proc `=`*[T](a: var myseq[T]; b: myseq[T]) =
-  # do nothing for self-assignments:
-  if a.data == b.data: 
-    return
-  `=destroy`(a)
-  a.len = b.len
-  a.cap = b.cap
-  if b.data != nil:
-    a.data = cast[type(a.data)](alloc(a.cap * sizeof(T)))
-    for i in 0..<a.len:
-      a.data[i] = b.data[i]
+  C = object
+    x: Xpsc[A]
 
-proc `=sink`*[T](a: var myseq[T]; b: myseq[T]) =
-  # move assignment, optional.
-  # Compiler is using `=destroy` and `copyMem` when not provided
-  `=destroy`(a)
-  a.len = b.len
-  a.cap = b.cap
-  a.data = b.data
+proc `=destroy`*(dest: var A) =
+  echo "destroy A: ", dest.val
 
-proc createSeq*[T](elems: varargs[T]): myseq[T] =
-  result.cap = elems.len
-  result.len = elems.len
-  result.data = cast[type(result.data)](alloc(result.cap * sizeof(T)))
-  for i in 0..<result.len: 
-    result.data[i] = elems[i]
+proc `=sink`*(dest: var A, source: A) =
+  echo "sink A: ", dest.val, ", ", source.val
+  `=destroy`(dest)
+  dest.val = source.val
 
-proc f(seq1: var myseq[int]) =
-  var seq2: myseq[int] = createSeq[int](1)
-  seq1 = seq2
+proc `=`*(dest: var A, source: A) =
+  echo "copy A"
+  dest.val = source.val
 
-proc main() = 
-  var seq1: myseq[int]
-  f(seq1)
-  echo seq1.data == nil
+# proc `=sink`*[T](dest: var Xpsc[T], source: Xpsc[T]) =
+#   echo "sink Xpsc"
+#   dest.val = source.val
 
+# proc `=`*[T](dest: var Xpsc[T], source: Xpsc[T]) =
+#   echo "copy Xpsc"
+#   `=destroy`(dest)
+#   dest.val = source.val
+
+proc intX[T](x: var Xpsc[T], val: sink T) =
+  x.val = val
+  echo "..."
+
+proc main() =
+  var c: C
+  c.x.val.val = 10
+  var a: A
+  a.val = 100
+  # c.x.intX(a)
+  c.x.val = a
+  echo "..."
+  # echo c
+  
 main()
 

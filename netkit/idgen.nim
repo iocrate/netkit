@@ -23,7 +23,7 @@ proc acquire*(G: var IdGenerator): Natural =
 proc release*(G: var IdGenerator, id: Natural) =
   when compileOption("boundChecks"): 
     if unlikely(G.curr <= id): 
-      raise newException(RangeDefect, "value out of range: " & $id & " notin 0 .. " & $(G.curr - 1))
+      raise newException(IndexDefect, "value out of range: " & $id & " notin 0 .. " & $(G.curr - 1))
   G.buckets.addLast(id)
 
 when isMainModule:

@@ -54,22 +54,7 @@ proc `=destroy`*(s: var Selector)  {.raises: [OSError].} =
       raiseOSError(osLastError())
     s.destructorState = DestructorState.COMPLETED
 
-proc `=sink`*(dest: var Selector, source: Selector) {.raises: [OSError].} =
-  if dest.epollFD != source.epollFD:
-    `=destroy`(dest)
-    dest.epollFD = source.epollFD
-    dest.destructorState = source.destructorState
-
-proc `=`*(dest: var Selector, source: Selector) {.raises: [OSError].} =
-  if dest.epollFD != source.epollFD:
-    `=destroy`(dest)
-    if source.destructorState == DestructorState.READY:
-      dest.epollFD = dup(source.epollFD)
-      if dest.epollFD < 0:
-        raiseOSError(osLastError())
-    else:
-      dest.epollFD = source.epollFD
-    dest.destructorState = source.destructorState
+proc `=`*(dest: var Selector, source: Selector) {.error.} 
 
 proc initSelector*(s: var Selector) {.raises: [OSError].} = 
   let fd = epoll_create1(EPOLL_CLOEXEC)

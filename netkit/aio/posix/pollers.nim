@@ -56,6 +56,8 @@ proc `=destroy`*(poller: var Poller) {.raises: [OSError].} =
     `=destroy`(poller.interests.idGenerator)
     poller.state = PollerState.DESTROYED
     poller.destructorState = DestructorState.COMPLETED
+
+proc `=`*(dest: var Poller, source: Poller) {.error.} 
     
 proc initPoller*(poller: var Poller, initialSize: Natural = 256, mode = AllocMode.THREAD_LOCAL) {.raises: [OSError].} = 
   poller.selector.initSelector()
