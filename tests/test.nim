@@ -653,47 +653,56 @@ discard """
 type
   A = object
     val: int
+  
+  # B[T] = object
+  #   val: T
 
-  Xpsc[T] = object
-    val: T
-
-  C = object
-    x: Xpsc[A]
-
-proc `=destroy`*(dest: var A) =
-  echo "destroy A: ", dest.val
-
-proc `=sink`*(dest: var A, source: A) =
-  echo "sink A: ", dest.val, ", ", source.val
-  `=destroy`(dest)
-  dest.val = source.val
-
-proc `=`*(dest: var A, source: A) =
-  echo "copy A"
-  dest.val = source.val
-
-# proc `=sink`*[T](dest: var Xpsc[T], source: Xpsc[T]) =
-#   echo "sink Xpsc"
+# proc `=sink`*(dest: var A, source: A) =
+#   echo "sink A"
 #   dest.val = source.val
 
-# proc `=`*[T](dest: var Xpsc[T], source: Xpsc[T]) =
-#   echo "copy Xpsc"
+# proc `=`*(dest: var A, source: A) =
+#   echo "copy A"
 #   `=destroy`(dest)
 #   dest.val = source.val
 
-proc intX[T](x: var Xpsc[T], val: sink T) =
-  x.val = val
-  echo "..."
+# proc `=sink`*[T](dest: var B[T], source: B[T]) =
+#   echo "sink B"
+#   dest.val = source.val
 
-proc main() =
-  var c: C
-  c.x.val.val = 10
-  var a: A
-  a.val = 100
-  # c.x.intX(a)
-  c.x.val = a
-  echo "..."
-  # echo c
-  
+# proc `=`*[T](dest: var B[T], source: B[T]) =
+#   echo "copy B"
+#   `=destroy`(dest)
+#   dest.val = source.val
+
+# proc dupB[T](b: var B[T]) =
+#   var b2 = b
+
+# proc main() =
+#   var b: B[A]
+#   dupB(b)
+
+# main()
+
+type
+  C = object
+    a: A
+
+proc `=sink`*(dest: var A, source: A) =
+  echo "sink A"
+
+proc `=`*(dest: var A, source: A) =
+  echo "copy A"
+
+proc initA(a: A) = 
+  var val1 = a.val
+  var val2 = a.val
+  echo val1
+  echo val2
+
+proc main() = 
+  var c = new(C)
+  c.a.initA()
+  echo c.a
+
 main()
-

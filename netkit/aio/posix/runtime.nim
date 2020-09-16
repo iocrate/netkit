@@ -52,10 +52,10 @@ var
 proc getCurrentExecutor*(): ptr Executor {.inline.} =
   currentExecutor
 
-proc isCurrentPrimary*(): bool {.inline.} =
+proc isPrimaryExecutor*(): bool {.inline.} =
   currentExecutorId == 0
 
-proc isCurrentSecondary*(): bool {.inline.} =
+proc isSecondaryExecutor*(): bool {.inline.} =
   currentExecutorId > 0
 
 proc initExecutorScheduler(s: var ExecutorScheduler) =
@@ -100,7 +100,7 @@ proc spawn*(id: ExecutorGroupId, fiber: ref FiberBase) =
       idInGroup = group.recursiveExecutorId
       group.recursiveExecutorId = (group.recursiveExecutorId + 1) mod group.cap
     let executorId = (group.start + idInGroup) mod gScheduler.mask + 1
-    if isCurrentSecondary():
+    if isSecondaryExecutor():
       gScheduler.executors[executorId].execMpsc(fiber)
     else:
       gScheduler.executors[executorId].execSpsc(fiber)

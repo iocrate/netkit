@@ -36,6 +36,8 @@ proc `=destroy`*(e: var Executor) {.raises: [OSError].} =
     `=destroy`(e.mpscQueue)
     e.destructorState = DestructorState.COMPLETED
 
+proc `=`*(dest: var Executor, source: Executor) {.error.}
+
 proc pollSpscQueue(pollable: ref PollableBase): bool =
   result = false
   for fiber in (ref Pollable[ptr Executor])(pollable).value.spscQueue.popAll():
@@ -56,7 +58,7 @@ proc initExecutor*(e: var Executor, initialSize: Natural = 1024) {.raises: [OSEr
   spscPollable.initSimpleNode()
   spscPollable.poll = pollSpscQueue
   spscPollable.value = e.addr
-  e.poller.updateRead(e.spscSemaphoreId, spscPollable)
+  e.poller.registerReadable(e.spscSemaphoreId, spscPollable)
   e.spscQueue.initXpscQueue(spscSemaphore, XpscMode.SPSC, initialSize)
 
   var mpscSemaphore: PollableSemaphore
@@ -66,7 +68,7 @@ proc initExecutor*(e: var Executor, initialSize: Natural = 1024) {.raises: [OSEr
   mpscPollable.initSimpleNode()
   mpscPollable.poll = pollMpscQueue
   mpscPollable.value = e.addr
-  e.poller.updateRead(e.mpscSemaphoreId, mpscPollable)
+  e.poller.registerReadable(e.mpscSemaphoreId, mpscPollable)
   e.mpscQueue.initXpscQueue(mpscSemaphore, XpscMode.MPSC, initialSize)
 
   e.destructorState = DestructorState.READY
@@ -89,18 +91,18 @@ proc registerHandle*(e: var Executor, fd: cint): Natural {.inline, raises: [OSEr
 
 proc unregisterHandle*(e: var Executor, id: Natural) {.inline, raises: [OSError, ValueError].} =
   e.poller.unregisterHandle(id)
+
+proc registerReadable*(e: var Executor, id: Natural, pollable: ref PollableBase) {.inline, raises: [OSError, ValueError].} =
+  e.poller.registerReadable(id, pollable)
  
 proc unregisterReadable*(e: var Executor, id: Natural) {.inline, raises: [OSError, ValueError].} =
   e.poller.unregisterReadable(id)
 
+proc registerWritable*(e: var Executor, id: Natural, pollable: ref PollableBase) {.inline, raises: [OSError, ValueError].} =
+  e.poller.registerWritable(id, pollable)
+
 proc unregisterWritable*(e: var Executor, id: Natural) {.inline, raises: [OSError, ValueError].} =
   e.poller.unregisterWritable(id)
-
-proc updateRead*(e: var Executor, id: Natural, pollable: ref PollableBase) {.inline, raises: [OSError, ValueError].} =
-  e.poller.updateRead(id, pollable)
-
-proc updateWrite*(e: var Executor, id: Natural, pollable: ref PollableBase) {.inline, raises: [OSError, ValueError].} =
-  e.poller.updateWrite(id, pollable)
 
 proc runBlocking*(e: var Executor, timeout: cint) {.inline, raises: [OSError, IllegalStateError, Exception].} =
   e.poller.runBlocking(timeout)

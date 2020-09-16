@@ -4,168 +4,141 @@ import netkit/aio/posix/executors
 import netkit/aio/posix/runtime
 
 type
-  Pod* = ref object 
+  Pod* = object 
     fd: cint
     id: Natural
     executor: ptr Executor
 
-  PodFiber[T] = object of FiberBase
-    pod: ref Pod
+  PollableId[T] = object
+    id: Natural
     value: T
 
-proc newPod*(fd: cint): ref Pod = 
-  new(result)
+proc `=destroy`*(pod: var Pod) =
+  if pod.executor != nil:
+    if getCurrentExecutor() == pod.executor:
+      getCurrentExecutor()[].unregisterHandle(pod.id)
+    else:
+      let fiber = new(Fiber[PollableId[void]]) 
+      fiber.run = proc (fiber: ref FiberBase) =
+        getCurrentExecutor()[].unregisterHandle((ref Fiber[PollableId[void]])(fiber).value.id)
+      fiber.value.id = pod.id
+      pod.executor[].execMpsc(fiber)
+
+proc `=`*(dest: var Pod, source: Pod) {.error.}
+ 
+proc initPod*(fd: cint): Pod = 
   result.fd = fd
   result.executor = getCurrentExecutor()
   result.id = getCurrentExecutor()[].registerHandle(fd)
 
-proc close*(pod: ref Pod) =
+proc registerReadable*(pod: Pod, pollable: ref PollableBase) =
   if getCurrentExecutor() == pod.executor:
-    getCurrentExecutor()[].unregisterHandle(pod.id)
+    getCurrentExecutor()[].registerReadable(pod.id, pollable)
   else:
-    var fiber = new(PodFiber[void]) 
+    var fiber = new(Fiber[PollableId[ref PollableBase]]) 
     fiber.run = proc (fiber: ref FiberBase) =
-      getCurrentExecutor()[].unregisterHandle((ref PodFiber[void])(fiber).pod.id)
-    fiber.pod = pod
+      let fiberAlias = (ref Fiber[PollableId[ref PollableBase]])(fiber)
+      getCurrentExecutor()[].registerReadable(fiberAlias.value.id, fiberAlias.value.value)
+    fiber.value.id = pod.id
+    #
+    # fiber.value.value = pollable # crashs! Why?
+    #
+    #   SIGSEGV: Illegal storage access. (Attempt to read from nil?)
+    #
+    fiber.value.value = (ref PollableBase)(pollable)
     pod.executor[].execMpsc(fiber)
- 
-proc cancelReadable*(pod: ref Pod) =
+
+proc unregisterReadable*(pod: Pod) =
   if getCurrentExecutor() == pod.executor:
     getCurrentExecutor()[].unregisterReadable(pod.id)
   else:
-    var fiber = new(PodFiber[void]) 
+    var fiber = new(Fiber[PollableId[void]]) 
     fiber.run = proc (fiber: ref FiberBase) =
-      getCurrentExecutor()[].unregisterReadable((ref PodFiber[void])(fiber).pod.id)
-    fiber.pod = pod
+      getCurrentExecutor()[].unregisterReadable((ref Fiber[PollableId[void]])(fiber).value.id)
+    fiber.value.id = pod.id
     pod.executor[].execMpsc(fiber)
 
-proc cancelWritable*(pod: ref Pod) =
+proc registerWritable*(pod: Pod, pollable: ref PollableBase) =
+  if getCurrentExecutor() == pod.executor:
+    getCurrentExecutor()[].registerWritable(pod.id, pollable)
+  else:
+    var fiber = new(Fiber[PollableId[ref PollableBase]]) 
+    fiber.run = proc (fiber: ref FiberBase) =
+      let fiberAlias = (ref Fiber[PollableId[ref PollableBase]])(fiber)
+      getCurrentExecutor()[].registerWritable(fiberAlias.value.id, fiberAlias.value.value)
+    fiber.value.id = pod.id
+    fiber.value.value = (ref PollableBase)(pollable)
+    pod.executor[].execMpsc(fiber)
+
+proc unregisterWritable*(pod: Pod) =
   if getCurrentExecutor() == pod.executor:
     getCurrentExecutor()[].unregisterWritable(pod.id)
   else:
-    var fiber = new(PodFiber[void]) 
+    var fiber = new(Fiber[PollableId[void]]) 
     fiber.run = proc (fiber: ref FiberBase) =
-      getCurrentExecutor()[].unregisterWritable((ref PodFiber[void])(fiber).pod.id)
-    fiber.pod = pod
+      getCurrentExecutor()[].unregisterWritable((ref Fiber[PollableId[void]])(fiber).value.id)
+    fiber.value.id = pod.id
     pod.executor[].execMpsc(fiber)
 
-proc updateRead*(pod: ref Pod, pollable: ref PollableBase) =
-  if getCurrentExecutor() == pod.executor:
-    getCurrentExecutor()[].updateRead(pod.id, pollable)
-  else:
-    var fiber = new(PodFiber[ref PollableBase]) 
-    fiber.run = proc (fiber: ref FiberBase) =
-      let fiberAlias = (ref PodFiber[ref PollableBase])(fiber)
-      getCurrentExecutor()[].updateRead(fiberAlias.pod.id, fiberAlias.value)
-    fiber.pod = pod
-    fiber.value = pollable
-    pod.executor[].execMpsc(fiber)
-
-proc updateWrite*(pod: ref Pod, pollable: ref PollableBase) =
-  if getCurrentExecutor() == pod.executor:
-    getCurrentExecutor()[].updateWrite(pod.id, pollable)
-  else:
-    var fiber = new(PodFiber[ref PollableBase]) 
-    fiber.run = proc (fiber: ref FiberBase) =
-      let fiberAlias = (ref PodFiber[ref PollableBase])(fiber)
-      getCurrentExecutor()[].updateWrite(fiberAlias.pod.id, fiberAlias.value)
-    fiber.pod = pod
-    fiber.value = pollable
-    pod.executor[].execMpsc(fiber)
 
 when isMainModule:
+  import std/os
+  import std/posix
+  import netkit/collections/simplelists
+
   type
-    TestData = object 
-      value: int
+    Reader = object
+      pod: Pod
 
-  var num = 0
-
-  proc runTestFiber(fiber: ref FiberBase) =
-    atomicInc(num)
-    if num == 1000:
-      shutdownExecutorScheduler()
-
-  proc newTestFiber(value: int): ref Fiber[TestData] =
-    new(result)
-    result.value.value = value
-    result.run = runTestFiber
-
-  proc testFiberScheduling() =
-    var group = sliceExecutorGroup(20)
-    for i in 0..<1000:
-      group.spawn(newTestFiber(i))
-    runExecutorScheduler()
-    assert num == 1000
-
-  testFiberScheduling()
-
-#   import std/posix
-
-#   type
-#     ReadData = object 
-#       pod: Pod
-
-#     ReadContext = object 
-
-#     WriteData = object 
-#       pod: Pod
-#       value: int
-
-#     WriteContext = object
-#       value: int
+    Writer = object
+      pod: Pod
+      value: Natural
   
-#   var data = 100
-#   var channel: array[2, cint]
-#   discard pipe(channel)
+  var channel: array[2, cint]
+  discard pipe(channel)
 
-#   proc pollReadable(p: ref PollableBase): bool =
-#     result = true
-#     var buffer = newString(9)
-#     if (ref Pollable[WriteData])(p).value.pod.fd.read(buffer.cstring, buffer.len) < 0:
-#       raiseOSError(osLastError())
-#     assert buffer == "hello 100"
-#     (ref Pollable[ReadData])(p).value.pod.close()
-#     shutdownExecutorScheduler()
+  proc pollReadable(p: ref PollableBase): bool =
+    result = true
+    var buffer = newString(9)
+    if (ref Pollable[Reader])(p).value.pod.fd.read(buffer.cstring, buffer.len) < 0:
+      raiseOSError(osLastError())
+    assert buffer == "hello 100"
+    shutdownExecutorScheduler()
 
-#   proc runReadFiber(fiber: ref FiberBase) =
-#     var pod: Pod
-#     initPod(pod, channel[0])
-#     var pollable = new(Pollable[ReadData])
-#     pollable.initSimpleNode()
-#     pollable.poll = pollReadable
-#     pollable.value.pod = pod
-#     pod.updateRead(pollable)
+  proc runReadFiber(fiber: ref FiberBase) =
+    var readable = new(Pollable[Reader])
+    readable.initSimpleNode()
+    readable.poll = pollReadable
+    readable.value.pod = initPod(channel[0])
+    readable.value.pod.registerReadable(readable)
 
-#   proc newReadFiber(): ref Fiber[ReadContext] =
-#     new(result)
-#     result.run = runReadFiber
+  proc newReadFiber(): ref Fiber[void] =
+    new(result)
+    result.run = runReadFiber
 
-#   proc pollWritable(p: ref PollableBase): bool =
-#     result = true
-#     var buffer = "hello " & $((ref Pollable[WriteData])(p).value.value)
-#     if (ref Pollable[WriteData])(p).value.pod.fd.write(buffer.cstring, buffer.len) < 0:
-#       raiseOSError(osLastError())
-#     (ref Pollable[WriteData])(p).value.pod.close()
+  proc pollWritable(p: ref PollableBase): bool =
+    result = true
+    var buffer = "hello " & $((ref Pollable[Writer])(p).value.value)
+    if (ref Pollable[Writer])(p).value.pod.fd.write(buffer.cstring, buffer.len) < 0:
+      raiseOSError(osLastError())
 
-#   proc runWriteFiber(fiber: ref FiberBase) =
-#     var pod: Pod
-#     initPod(pod, channel[1])
-#     var pollable = new(Pollable[WriteData])
-#     pollable.initSimpleNode()
-#     pollable.poll = pollWritable
-#     pollable.value.pod = pod
-#     pollable.value.value = (ref Fiber[WriteContext])(fiber).value.value
-#     pod.updateWrite(pollable)
+  proc runWriteFiber(fiber: ref FiberBase) =
+    var writable = new(Pollable[Writer])
+    writable.initSimpleNode()
+    writable.poll = pollWritable
+    writable.value.pod = initPod(channel[1])
+    writable.value.pod.registerWritable(writable)
+    writable.value.value = (ref Fiber[Natural])(fiber).value
 
-#   proc newWriteFiber(value: int): ref Fiber[WriteContext] =
-#     new(result)
-#     result.value.value = value
-#     result.run = runWriteFiber
+  proc newWriteFiber(value: int): ref Fiber[Natural] =
+    new(result)
+    result.run = runWriteFiber
+    result.value = value
 
-#   proc testPolling() =
-#     var group = sliceExecutorGroup(20)
-#     group.spawn(newReadFiber())
-#     group.spawn(newWriteFiber(data))
-#     runExecutorScheduler()
+  proc test() =
+    var group = sliceExecutorGroup(20)
+    group.spawn(newReadFiber())
+    group.spawn(newWriteFiber(100))
+    runExecutorScheduler()
 
-#   testPolling()
+  test()

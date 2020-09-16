@@ -8,7 +8,7 @@ import netkit/platforms/posix/linux/eventfd
 
 type
   PollableCounter* = object
-    duplexer: cint
+    duplexer*: cint
     rbuf: uint
     wbuf: uint
     destructorState: DestructorState

@@ -7,20 +7,25 @@ type
     head: ref SimpleNode
 
 proc initSimpleNode*(node: ref SimpleNode) =
-  node.next = node
-  node.prev = node
+  var n {.cursor.} = node
+  node.next = n
+  node.prev = n
 
 proc initSimpleList*(L: var SimpleList) = 
   L.head = new(SimpleNode)
   L.head.initSimpleNode()
 
 proc addLast*(L: var SimpleList, node: ref SimpleNode) = 
+  assert node.next == node
+  assert node.prev == node
   node.next = L.head
   node.prev = L.head.prev
   L.head.prev.next = node
   L.head.prev = node
 
 proc addFirst*(L: var SimpleList, node: ref SimpleNode) = 
+  assert node.next == node
+  assert node.prev == node
   node.next = L.head.next
   node.prev = L.head
   L.head.next.prev = node
@@ -53,21 +58,19 @@ proc peekFirst*(L: var SimpleList): ref SimpleNode =
 proc remove*(L: var SimpleList, node: ref SimpleNode) = 
   node.next.prev = node.prev
   node.prev.next = node.next
-  node.next = node
-  node.prev = node
+  let n {.cursor.} = node
+  node.next = n
+  node.prev = n
 
 iterator nodes*(L: var SimpleList): ref SimpleNode = 
-  var node = L.head.next
-  var next: ref SimpleNode
-  while node != L.head:
-    next = node.next
-    yield node
-    node = next
+  var node {.cursor.} = L.head
+  while node.next != L.head:
+    yield node.next
+    node = node.next
 
 iterator nodesBackwards*(L: var SimpleList): ref SimpleNode = 
-  var node = L.head.prev
-  var prev: ref SimpleNode
-  while node != L.head:
-    prev = node.prev
-    yield node
-    node = prev
+  var node {.cursor.} = L.head
+  while node.prev != L.head:
+    yield node.prev
+    node = node.prev
+

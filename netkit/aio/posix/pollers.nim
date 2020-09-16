@@ -152,12 +152,30 @@ proc unregisterHandle*(poller: var Poller, id: Natural) {.raises: [OSError, Valu
   poller.interests.len.dec()
   reset(data[]) 
 
+proc registerReadable*(poller: var Poller, id: Natural, p: ref PollableBase) {.raises: [OSError, ValueError].} =
+  let data = poller.interests.data[id].addr
+  if not data.has:
+    raise newException(ValueError, "file descriptor not registered")
+  data.value.readList.addLast(p)
+  if not data.value.interest.isReadable():
+    data.value.interest.registerReadable()
+    poller.selector.update(data.value.fd, UserData(u64: id.uint64), data.value.interest)
+
 proc unregisterReadable*(poller: var Poller, id: Natural) {.raises: [OSError, ValueError].} =
   let data = poller.interests.data[id].addr
   if not data.has:
     raise newException(ValueError, "file descriptor not registered")
   if data.value.interest.isReadable():
     data.value.interest.unregisterReadable()
+    poller.selector.update(data.value.fd, UserData(u64: id.uint64), data.value.interest)
+
+proc registerWritable*(poller: var Poller, id: Natural, p: ref PollableBase) {.raises: [OSError, ValueError].} =
+  let data = poller.interests.data[id].addr
+  if not data.has:
+    raise newException(ValueError, "file descriptor not registered")
+  data.value.writeList.addLast(p)
+  if not data.value.interest.isWritable():
+    data.value.interest.registerWritable()
     poller.selector.update(data.value.fd, UserData(u64: id.uint64), data.value.interest)
 
 proc unregisterWritable*(poller: var Poller, id: Natural) {.raises: [OSError, ValueError].} =
@@ -168,53 +186,37 @@ proc unregisterWritable*(poller: var Poller, id: Natural) {.raises: [OSError, Va
     data.value.interest.unregisterWritable()
     poller.selector.update(data.value.fd, UserData(u64: id.uint64), data.value.interest)
 
-proc updateRead*(poller: var Poller, id: Natural, p: ref PollableBase) {.raises: [OSError, ValueError].} =
-  let data = poller.interests.data[id].addr
-  if not data.has:
-    raise newException(ValueError, "file descriptor not registered")
-  data.value.readList.addLast(p)
-  if not data.value.interest.isReadable():
-    data.value.interest.registerReadable()
-    poller.selector.update(data.value.fd, UserData(u64: id.uint64), data.value.interest)
+when isMainModule:
+  import std/posix
 
-proc updateWrite*(poller: var Poller, id: Natural, p: ref PollableBase) {.raises: [OSError, ValueError].} =
-  let data = poller.interests.data[id].addr
-  if not data.has:
-    raise newException(ValueError, "file descriptor not registered")
-  data.value.writeList.addLast(p)
-  if not data.value.interest.isWritable():
-    data.value.interest.registerWritable()
-    poller.selector.update(data.value.fd, UserData(u64: id.uint64), data.value.interest)
+  var poller: Poller
+  poller.initPoller()
 
-# when isMainModule:
-#   import std/posix
-
-#   var poller: Poller
-#   poller.initPoller()
-
-#   var chan: array[2, cint]
-#   discard pipe(chan)
+  var chan: array[2, cint]
+  discard pipe(chan)
   
-#   let r1 = chan[0]
-#   let r2 = dup(chan[0])
-#   let id1 = poller.register(r1)
-#   let w = chan[1]
-#   echo "r1:", r1, ", r2:", r2, ", w:", w
+  let r1 = chan[0]
+  let r2 = dup(chan[0])
+  let id1 = poller.registerHandle(r1)
+  let w = chan[1]
+  echo "r1:", r1, ", r2:", r2, ", w:", w
   
-#   let p1 = new(Pollable[int])
-#   p1.poll = proc (p: ref PollableBase): bool =
-#     result = true
-#     echo "p1:", (ref Pollable[int])(p).value
+  let p1 = new(Pollable[int])
+  p1.poll = proc (p: ref PollableBase): bool =
+    result = true
+    var buf = newString(16)
+    assert r2.read(buf.addr, sizeof(buf)) > 0
+    echo buf
+  p1.value = 1
+  poller.registerReadable(id1, p1)
 
-#     var buf = newString(16)
-#     echo "read:", r2.read(buf.addr, sizeof(buf))
-#     echo buf
+  let id2 = poller.registerHandle(w)
+  let p2 = new(Pollable[int])
+  p2.poll = proc (p: ref PollableBase): bool =
+    result = true
+    var buf = "abc"
+    assert w.write(buf.addr, sizeof(buf)) > 0
+  p2.value = 1
+  poller.registerWritable(id2, p2)
 
-#   p1.value = 1
-#   poller.updateRead(id1, p1)
-  
-#   var buf = "abc"
-#   echo "write:", w.write(buf.addr, sizeof(buf))
-#   echo "..."
-
-#   poller.runBlocking(500)
+  poller.runBlocking(500)
