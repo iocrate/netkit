@@ -2,7 +2,6 @@
 import netkit/objects
 import netkit/errors
 import netkit/sync/xpsc
-import netkit/collections/simplelists
 import netkit/aio/posix/pollers
 
 when defined(linux):
@@ -55,7 +54,6 @@ proc initExecutor*(e: var Executor, initialSize: Natural = 1024) {.raises: [OSEr
   spscSemaphore.initPollableSemaphore()
   e.spscSemaphoreId = e.poller.register(spscSemaphore)
   let spscPollable = new(Pollable[ptr Executor])
-  spscPollable.initSimpleNode()
   spscPollable.poll = pollSpscQueue
   spscPollable.value = e.addr
   e.poller.registerReadable(e.spscSemaphoreId, spscPollable)
@@ -65,7 +63,6 @@ proc initExecutor*(e: var Executor, initialSize: Natural = 1024) {.raises: [OSEr
   mpscSemaphore.initPollableSemaphore()
   e.mpscSemaphoreId = e.poller.register(mpscSemaphore)
   let mpscPollable = new(Pollable[ptr Executor])
-  mpscPollable.initSimpleNode()
   mpscPollable.poll = pollMpscQueue
   mpscPollable.value = e.addr
   e.poller.registerReadable(e.mpscSemaphoreId, mpscPollable)

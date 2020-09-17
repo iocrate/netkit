@@ -80,11 +80,9 @@ proc unregisterWritable*(pod: Pod) =
     fiber.value.id = pod.id
     pod.executor[].execMpsc(fiber)
 
-
 when isMainModule:
   import std/os
   import std/posix
-  import netkit/collections/simplelists
 
   type
     Reader = object
@@ -107,7 +105,6 @@ when isMainModule:
 
   proc runReadFiber(fiber: ref FiberBase) =
     var readable = new(Pollable[Reader])
-    readable.initSimpleNode()
     readable.poll = pollReadable
     readable.value.pod = initPod(channel[0])
     readable.value.pod.registerReadable(readable)
@@ -124,7 +121,6 @@ when isMainModule:
 
   proc runWriteFiber(fiber: ref FiberBase) =
     var writable = new(Pollable[Writer])
-    writable.initSimpleNode()
     writable.poll = pollWritable
     writable.value.pod = initPod(channel[1])
     writable.value.pod.registerWritable(writable)

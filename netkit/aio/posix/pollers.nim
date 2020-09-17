@@ -6,7 +6,7 @@ import netkit/idgen
 import netkit/options
 import netkit/allocmode
 import netkit/objects
-import netkit/collections/simplelists
+import netkit/collections/simplequeues
 import netkit/collections/vecs
 
 when defined(linux):
@@ -32,8 +32,8 @@ type
   InterestData = object
     fd: cint
     interest: Interest
-    readList: SimpleList
-    writeList: SimpleList
+    readQueue: SimpleQueue
+    writeQueue: SimpleQueue
 
   InterestVec = object
     data: Vec[Option[InterestData]]
@@ -80,11 +80,13 @@ proc shutdown*(poller: var Poller) {.raises: [IllegalStateError].} =
     raise newException(IllegalStateError, "poller already destroyed")
 
 proc runBlocking*(poller: var Poller, timeout: cint) {.raises: [OSError, IllegalStateError, Exception].} =
-  template handleEvents(list: SimpleList) =
-    var listCopy = list
-    for node in listCopy.nodes():
-      if ((ref PollableBase)(node)).poll((ref PollableBase)(node)):
-        listCopy.remove(node)
+  template handleEvents(queue: SimpleQueue) =
+    while true:
+      let p = (ref PollableBase)(queue.peek())
+      if p == nil:
+        break
+      elif p.poll(p):
+        discard queue.pop()
       else:
         break
 
@@ -113,9 +115,9 @@ proc runBlocking*(poller: var Poller, timeout: cint) {.raises: [OSError, Illegal
         let data = poller.interests.data[event.data.u64].addr
         if data.has:
           if event.isReadable or event.isError:
-            data.value.readList.handleEvents()
+            data.value.readQueue.handleEvents()
           if event.isWritable or event.isError:
-            data.value.writeList.handleEvents()
+            data.value.writeQueue.handleEvents()
     if poller.state == PollerState.SHUTDOWN:
       poller.state = PollerState.STOPPED
       return
@@ -138,8 +140,6 @@ proc registerHandle*(poller: var Poller, fd: cint): Natural {.raises: [OSError].
   let data = poller.interests.data[result].addr
   data.value.fd = fd
   data.value.interest = interest
-  data.value.readList.initSimpleList()
-  data.value.writeList.initSimpleList()
   data.has = true
   poller.interests.len.inc()
 
@@ -156,7 +156,7 @@ proc registerReadable*(poller: var Poller, id: Natural, p: ref PollableBase) {.r
   let data = poller.interests.data[id].addr
   if not data.has:
     raise newException(ValueError, "file descriptor not registered")
-  data.value.readList.addLast(p)
+  data.value.readQueue.add(p)
   if not data.value.interest.isReadable():
     data.value.interest.registerReadable()
     poller.selector.update(data.value.fd, UserData(u64: id.uint64), data.value.interest)
@@ -173,7 +173,7 @@ proc registerWritable*(poller: var Poller, id: Natural, p: ref PollableBase) {.r
   let data = poller.interests.data[id].addr
   if not data.has:
     raise newException(ValueError, "file descriptor not registered")
-  data.value.writeList.addLast(p)
+  data.value.writeQueue.add(p)
   if not data.value.interest.isWritable():
     data.value.interest.registerWritable()
     poller.selector.update(data.value.fd, UserData(u64: id.uint64), data.value.interest)

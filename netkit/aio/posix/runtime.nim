@@ -70,6 +70,7 @@ proc initExecutorScheduler(s: var ExecutorScheduler) =
   s.state = ExecutorSchedulerState.CREATED
   for i in 0..<s.cap:
     s.executors[i].initExecutor(InitialPollerSize)
+  currentExecutor = s.executors[0].addr
 
 proc sliceExecutorGroup*(cap: Natural): ExecutorGroupId =
   result = 0
