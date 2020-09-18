@@ -31,13 +31,13 @@ proc createANativeSocket*(
     handle.setSockOptInt(SOL_SOCKET, SO_NOSIGPIPE, 1)
   result = handle.Socket
 
-proc accept(stream: ref SocketStream, inheritable = defined(nimInheritHandles)): ref Future[string] =
-  var future = newFuture[string]()
+proc accept(stream: ref SocketStream, inheritable = defined(nimInheritHandles)): ref Future[Socket] =
+  var future = newFuture[Socket]()
   result = future
-  var readable = new(Pollable[SocketStreamFuture[string]])
+  var readable = new(Pollable[SocketStreamFuture[Socket]])
   readable.poll = proc (p: ref PollableBase): bool =
     result = true
-    var pollable = (ref Pollable[SocketStreamFuture[string]])(p)
+    var pollable = (ref Pollable[SocketStreamFuture[Socket]])(p)
     var stream = pollable.value.stream
     var future = pollable.value.future
     var sockAddress: Sockaddr_storage
@@ -53,7 +53,7 @@ proc accept(stream: ref SocketStream, inheritable = defined(nimInheritHandles)):
       if client != osInvalidSocket and not setInheritable(client, inheritable):
         # Set failure first because close() itself can fail,
         # # altering osLastError().
-        future.fail(newOSError(osLastError()))
+        future.fail(newException(OSError, osErrorMsg(lastError)))
         client.close()
         return false
 
@@ -72,21 +72,24 @@ proc accept(stream: ref SocketStream, inheritable = defined(nimInheritHandles)):
       try:
         let address = getAddrString(cast[ptr SockAddr](addr sockAddress))
         # register(client.AsyncFD)
-        future.complete(address)
+        future.complete(Socket(client))
       except:
         # getAddrString may raise
         client.close()
         future.fail(getCurrentException())
-      client.close()
   readable.value.stream = stream
   readable.value.future = future
   readable.value.stream.pod.registerReadable(readable) 
 
-proc recv(stream: ref SocketStream) =
-  var readable = new(Pollable[ref SocketStream])
+proc recv(stream: ref SocketStream): ref Future[string] =
+  var future = newFuture[string]()
+  result = future
+  var readable = new(Pollable[SocketStreamFuture[string]])
   readable.poll = proc (p: ref PollableBase): bool =
     result = true
-    var stream = (ref Pollable[ref SocketStream])(p).value
+    var pollable = (ref Pollable[SocketStreamFuture[string]])(p)
+    var stream = pollable.value.stream
+    var future = pollable.value.future
     var buffer = newString(1024)
     let res = recv(stream.fd.SocketHandle, addr buffer[0], 1024.cint, 0
                   #[{SocketFlag.SafeDisconn}.toOSFlags()]#)
@@ -94,21 +97,22 @@ proc recv(stream: ref SocketStream) =
       let lastError = osLastError()
       if lastError.int32 != EINTR and lastError.int32 != EWOULDBLOCK and
           lastError.int32 != EAGAIN:
-        discard
+        future.fail(newException(OSError, osErrorMsg(lastError)))
         # if flags.isDisconnectionError(lastError):
         #   retFuture.complete("")
         # else:
         #   retFuture.fail(newException(OSError, osErrorMsg(lastError)))
       else:
-        discard 
-        # result = false # We still want this callback to be called.
+        result = false # We still want this callback to be called.
     elif res == 0:
-      # Disconnected
-      discard
+      # Disconnected TODO
+      future.complete(buffer)
     else:
-      discard
-  readable.value = stream
-  readable.value.pod.registerReadable(readable) 
+      future.complete(buffer)
+    stream.fd.SocketHandle.close()
+  readable.value.stream = stream
+  readable.value.future = future
+  readable.value.stream.pod.registerReadable(readable) 
 
 proc listen*(socket: ref SocketStream, backlog = SOMAXCONN) {.tags: [ReadIOEffect].} =
   if nativesockets.listen(socket.fd.SocketHandle, backlog) < 0'i32: 
@@ -145,7 +149,15 @@ when isMainmodule:
 
   var future = stream.accept()
   future.callback = proc (future: ref FutureBase) = 
-    var future = (ref Future[string])(future)
-    echo future.read()
+    var future = (ref Future[Socket])(future)
+    var client = future.read()
+    var clientStream = new(SocketStream)
+    clientStream.fd = client.cint
+    clientStream.pod = initPod(clientStream.fd.cint)
+
+    var recvFuture = clientStream.recv()
+    recvFuture.callback = proc (future: ref FutureBase) = 
+      var data = (ref Future[string])(future).read()
+      echo data
 
   runExecutorScheduler()
