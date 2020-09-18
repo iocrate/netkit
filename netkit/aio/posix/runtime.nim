@@ -91,7 +91,7 @@ proc sliceExecutorGroup*(cap: Natural): ExecutorGroupId =
       group.start = gScheduler.recursiveExecutorId - 1
       gScheduler.recursiveExecutorId = (group.start + group.cap) mod gScheduler.mask + 1
 
-proc spawn*(id: ExecutorGroupId, fiber: ref FiberBase) =
+proc spawn*(id: ExecutorGroupId, fiber: FiberProc) =
   if not gScheduler.executorGroups[id].has:
     raise newException(IndexDefect, "ExecutorGroup not found")
   let group = gScheduler.executorGroups[id].value.addr
@@ -159,26 +159,15 @@ proc shutdownExecutorScheduler*() =
 gScheduler.initExecutorScheduler()
 
 when isMainModule:
-  type
-    TestData = object 
-      value: int
-
   var num = 0
-
-  proc runTestFiber(fiber: ref FiberBase) =
-    atomicInc(num)
-    if num == 1000:
-      shutdownExecutorScheduler()
-
-  proc newTestFiber(value: int): ref Fiber[TestData] =
-    new(result)
-    result.value.value = value
-    result.run = runTestFiber
 
   proc test() =
     var group = sliceExecutorGroup(20)
     for i in 0..<1000:
-      group.spawn(newTestFiber(i))
+      group.spawn proc () =
+        atomicInc(num)
+        if num == 1000:
+          shutdownExecutorScheduler()
     runExecutorScheduler()
     assert num == 1000
     echo num

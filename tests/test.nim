@@ -650,12 +650,12 @@ discard """
 
 # main()
 
-type
-  A = object
-    val: int
+# type
+#   A = object
+#     val: int
   
-  # B[T] = object
-  #   val: T
+#   B[T] = object
+#     val: T
 
 # proc `=sink`*(dest: var A, source: A) =
 #   echo "sink A"
@@ -684,25 +684,234 @@ type
 
 # main()
 
+# type
+#   C = object
+#     a: A
+
+# proc `=sink`*(dest: var A, source: A) =
+#   echo "sink A"
+
+# proc `=`*(dest: var A, source: A) =
+#   echo "copy A"
+
+# proc initA(a: A) = 
+#   var val1 = a.val
+#   var val2 = a.val
+#   echo val1
+#   echo val2
+
+# proc main() = 
+#   var c = new(C)
+#   c.a.initA()
+#   echo c.a
+
+# main()
+
+# type
+#   Stream = concept
+#     proc read(s: Self)
+
+# proc readline(s: Stream) =
+#   s.read()
+#   s.read()
+#   echo "read a line"
+
+# type
+#   MyStream = object
+#     file: int
+
+# proc read(s: MyStream) =
+#   echo "read a chunk"
+
+# var s1 = MyStream()
+# s1.readline()
+
+# type
+#   AStream[T: Stream] = object
+#     s: T
+
+#   BStream[T: Stream] = object
+#     s: T
+
+# proc recv(a: AStream) =
+#   a.s.read()
+#   echo "recv from AStream"
+
+# proc recv(b: BStream) =
+#   b.s.read()
+#   echo "recv from BStream"
+
+# var a = AStream[MyStream]()
+# a.recv()
+
+# var b = AStream[MyStream]()
+# b.recv()
+
+# type
+#   Container[T: Stream] = object
+#     data: seq[T]
+
+# proc add[T](c: var Container, v: T) =
+#   c.data.add(v)
+
+# iterator items[T](c: Container[T]): T =
+#   for v in c.data:
+#     yield v
+
+# var c = Container[MyStream]()
+# c.add(MyStream(file: 1))
+# c.add(MyStream(file: 2))
+
+# for s in c.items():
+#   s.readline()
+
+# type
+#   Shape = object
+#     base: ref BaseStream
+    
+#   BaseStream = object of RootObj
+#     readImpl: proc (s: ref BaseStream)
+
+#   A = object of BaseStream
+  
+#   B = object of BaseStream
+  
+# var c: seq[ref BaseStream]
+
+# proc read(s: ref BaseStream) =
+#   s.readImpl(s)
+
+# proc readA(s: ref A) =
+#   echo "A"
+
+# proc read(s: ref B) =
+#   echo "B"
+
+# var d = new(A)
+# d.readImpl = readA
+
+# d.read()
+
+# type
+#   DrawFunc = proc ()
+
+#   Container = object
+#     data: seq[DrawFunc]
+
+# proc add(c: var Container, v: DrawFunc) =
+#   c.data.add(v)
+
+# iterator items(c: Container): DrawFunc =
+#   for v in c.data:
+#     yield v
+
 type
-  C = object
-    a: A
+  Shape = object of RootObj
+    name: string
 
-proc `=sink`*(dest: var A, source: A) =
-  echo "sink A"
+  Rect = object of Shape
+  Circle = object of Shape
+  
+  DrawFunc = proc ()
 
-proc `=`*(dest: var A, source: A) =
-  echo "copy A"
+var draws = newSeq[DrawFunc]()
+var shapes = newSeq[ref Shape]()
 
-proc initA(a: A) = 
-  var val1 = a.val
-  var val2 = a.val
-  echo val1
-  echo val2
+var rect = new(Rect)
+rect.name = "Rect 1"
+shapes.add(rect)
+draws.add proc () =
+  echo rect.name
 
-proc main() = 
-  var c = new(C)
-  c.a.initA()
-  echo c.a
+var circle = new(Circle)
+circle.name = "Circle 1"
+shapes.add(circle)
+draws.add proc () =
+  echo circle.name
 
-main()
+for draw in draws.items():
+  draw()
+
+
+proc add(x: int, y: int, fn: DrawFunc) = echo x
+
+1.add 2, proc () =
+  echo rect.name
+
+# type
+#   ReadFunc = proc (x: string)
+#   WriteFunc = proc (x: string)
+
+#   Container = object
+#     reads: seq[ReadFunc]
+#     writes: seq[WriteFunc]
+#     len: int
+
+# proc add(c: var Container, r: ReadFunc, w: WriteFunc) =
+#   c.reads.add(r)
+#   c.writes.add(w)
+
+# iterator items(c: Container): (ReadFunc, WriteFunc) =
+#   for i in 0..<c.len:
+#     yield (c.reads[i], c.writes[i])
+
+# var c = Container()
+
+# c.add do (x: string):
+#   echo "read"
+# do (x: string): 
+#   echo "write"
+
+# c.add do (x: string):
+#   echo "read"
+# do (x: string): 
+#   echo "write"
+
+# for read, write in c.items(): 
+#   read("a")
+#   write("b")
+
+# c.add(new(A))
+# c.add(new(B))
+# (ref A)(c[0]).read()
+
+#   BaseStream = object of RootObj
+#     file: int
+
+#   A = object of BaseStream
+  
+#   B = object of BaseStream
+
+#   TypeInfo[T] = object
+#     info: int
+#     value: T
+
+#   Container[T: ref Stream] = object
+#     data: seq[T]
+#     typeinfos: seq[Any]
+
+# proc add[T](c: var Container, v: T, t: typedesc) =
+#   c.data.add(v)
+#   c.typeinfos.add(toAny(v[]))
+
+# iterator items[T](c: Container[T]): T =
+#   for v in c.data:
+#     yield v
+
+# proc read(s: BaseStream) =
+#   echo "Base"
+
+# proc read(s: A) =
+#   echo "A"
+
+# proc read(s: B) =
+#   echo "B"
+
+# var d = Container[ref BaseStream]()
+# d.add(new(A), A)
+# d.add(new(B), B)
+
+# (cast[ref BaseStream]((d.typeinfos[0])))[].read()
+
+# for s in d.items():
+#   s[].read()

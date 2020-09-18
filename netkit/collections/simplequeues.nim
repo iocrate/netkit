@@ -1,12 +1,13 @@
 type
-  SimpleNode* = object of RootObj
-    next: ref SimpleNode
+  SimpleNode*[T] = object
+    next: ref SimpleNode[T]
+    value*: T
 
-  SimpleQueue* = object
-    head*: ref SimpleNode
-    tail*: ref SimpleNode
+  SimpleQueue*[T] = object
+    head*: ref SimpleNode[T]
+    tail*: ref SimpleNode[T]
 
-proc add*(Q: var SimpleQueue, node: ref SimpleNode) {.raises: [ValueError].} = 
+proc add*[T](Q: var SimpleQueue[T], node: ref SimpleNode[T]) {.raises: [ValueError].} = 
   if node.next != nil:
     raise newException(ValueError, "node already in a list")
   if Q.tail == nil:
@@ -19,7 +20,18 @@ proc add*(Q: var SimpleQueue, node: ref SimpleNode) {.raises: [ValueError].} =
     Q.tail.next = node
     Q.tail = node
 
-proc pop*(Q: var SimpleQueue): ref SimpleNode = 
+proc add*[T](Q: var SimpleQueue[T], value: T) = 
+  var node = new(SimpleNode[T])
+  node.value = value
+  if Q.tail == nil:
+    assert Q.head == nil
+    Q.head = node
+    Q.tail = node
+  else:
+    Q.tail.next = node
+    Q.tail = node
+
+proc pop*[T](Q: var SimpleQueue[T]): ref SimpleNode[T] = 
   result = Q.head
   if Q.head != nil:
     if result.next == nil:
@@ -29,14 +41,21 @@ proc pop*(Q: var SimpleQueue): ref SimpleNode =
       Q.head = result.next
       result.next = nil
 
-proc peek*(Q: var SimpleQueue): ref SimpleNode = 
+proc peek*[T](Q: var SimpleQueue[T]): ref SimpleNode[T] = 
   result = Q.head
 
-iterator nodes*(Q: var SimpleQueue): ref SimpleNode = 
+iterator nodes*[T](Q: var SimpleQueue): ref SimpleNode[T] = 
   var node {.cursor.} = Q.head
   while node != nil:
     var next {.cursor.} = node.next
     yield node
+    node = next
+
+iterator values*[T](Q: var SimpleQueue): ref T = 
+  var node {.cursor.} = Q.head
+  while node != nil:
+    var next {.cursor.} = node.next
+    yield node.value
     node = next
 
 

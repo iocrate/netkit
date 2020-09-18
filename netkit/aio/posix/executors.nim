@@ -12,21 +12,15 @@ else:
   {.fatal: "Platform not supported!".}
 
 type
-  FiberBase* = object of RootObj
-    run*: FiberProc
-
-  Fiber*[T] = object of FiberBase
-    value*: T
-
-  FiberProc* = proc (fiber: ref FiberBase) {.nimcall, gcsafe.}
-
   Executor* = object
     poller: Poller
     spscSemaphoreId: Natural
-    spscQueue: XpscQueue[ref FiberBase, PollableCounter]
+    spscQueue: XpscQueue[FiberProc, PollableCounter]
     mpscSemaphoreId: Natural
-    mpscQueue: XpscQueue[ref FiberBase, PollableCounter]
+    mpscQueue: XpscQueue[FiberProc, PollableCounter]
     destructorState: DestructorState
+    
+  FiberProc* = proc () {.gcsafe.}
 
 proc `=destroy`*(e: var Executor) {.raises: [OSError].} = 
   if e.destructorState == DestructorState.READY:
@@ -37,35 +31,26 @@ proc `=destroy`*(e: var Executor) {.raises: [OSError].} =
 
 proc `=`*(dest: var Executor, source: Executor) {.error.}
 
-proc pollSpscQueue(pollable: ref PollableBase): bool =
-  result = false
-  for fiber in (ref Pollable[ptr Executor])(pollable).value.spscQueue.popAll():
-    fiber.run(fiber)
-
-proc pollMpscQueue(pollable: ref PollableBase): bool =
-  result = false
-  for fiber in (ref Pollable[ptr Executor])(pollable).value.mpscQueue.popAll():
-    fiber.run(fiber)
-
-proc initExecutor*(e: var Executor, initialSize: Natural = 1024) {.raises: [OSError, ValueError].} =
+proc initExecutor*(e: var Executor, initialSize: Natural = 1024) {.raises: [OSError, ValueError, Exception].} =
+  let eAddr = e.addr
   e.poller.initPoller(initialSize)
 
   var spscSemaphore: PollableSemaphore
   spscSemaphore.initPollableSemaphore()
   e.spscSemaphoreId = e.poller.register(spscSemaphore)
-  let spscPollable = new(Pollable[ptr Executor])
-  spscPollable.poll = pollSpscQueue
-  spscPollable.value = e.addr
-  e.poller.registerReadable(e.spscSemaphoreId, spscPollable)
+  e.poller.registerReadable(e.spscSemaphoreId) do () -> bool:
+    result = false
+    for fiber in eAddr.spscQueue.popAll():
+      fiber()
   e.spscQueue.initXpscQueue(spscSemaphore, XpscMode.SPSC, initialSize)
 
   var mpscSemaphore: PollableSemaphore
   mpscSemaphore.initPollableSemaphore()
   e.mpscSemaphoreId = e.poller.register(mpscSemaphore)
-  let mpscPollable = new(Pollable[ptr Executor])
-  mpscPollable.poll = pollMpscQueue
-  mpscPollable.value = e.addr
-  e.poller.registerReadable(e.mpscSemaphoreId, mpscPollable)
+  e.poller.registerReadable(e.mpscSemaphoreId) do () -> bool:
+    result = false
+    for fiber in eAddr.mpscQueue.popAll():
+      fiber()
   e.mpscQueue.initXpscQueue(mpscSemaphore, XpscMode.MPSC, initialSize)
 
   e.destructorState = DestructorState.READY
@@ -73,10 +58,10 @@ proc initExecutor*(e: var Executor, initialSize: Natural = 1024) {.raises: [OSEr
 proc shutdown*(e: var Executor) {.inline, raises: [IllegalStateError].} = 
   e.poller.shutdown()
 
-proc execSpsc*(e: var Executor, fiber: ref FiberBase) {.inline.} = 
+proc execSpsc*(e: var Executor, fiber: FiberProc) {.inline.} = 
   e.spscQueue.add(fiber)
 
-proc execMpsc*(e: var Executor, fiber: ref FiberBase) {.inline.} = 
+proc execMpsc*(e: var Executor, fiber: FiberProc) {.inline.} = 
   e.mpscQueue.add(fiber)
 
 iterator interests*(e: var Executor): Natural {.inline.} =
@@ -89,14 +74,14 @@ proc registerHandle*(e: var Executor, fd: cint): Natural {.inline, raises: [OSEr
 proc unregisterHandle*(e: var Executor, id: Natural) {.inline, raises: [OSError, ValueError].} =
   e.poller.unregisterHandle(id)
 
-proc registerReadable*(e: var Executor, id: Natural, pollable: ref PollableBase) {.inline, raises: [OSError, ValueError].} =
-  e.poller.registerReadable(id, pollable)
+proc registerReadable*(e: var Executor, id: Natural, p: PollableProc) {.inline, raises: [OSError, ValueError].} =
+  e.poller.registerReadable(id, p)
  
 proc unregisterReadable*(e: var Executor, id: Natural) {.inline, raises: [OSError, ValueError].} =
   e.poller.unregisterReadable(id)
 
-proc registerWritable*(e: var Executor, id: Natural, pollable: ref PollableBase) {.inline, raises: [OSError, ValueError].} =
-  e.poller.registerWritable(id, pollable)
+proc registerWritable*(e: var Executor, id: Natural, p: PollableProc) {.inline, raises: [OSError, ValueError].} =
+  e.poller.registerWritable(id, p)
 
 proc unregisterWritable*(e: var Executor, id: Natural) {.inline, raises: [OSError, ValueError].} =
   e.poller.unregisterWritable(id)
