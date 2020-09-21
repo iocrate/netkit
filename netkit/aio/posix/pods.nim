@@ -9,10 +9,6 @@ type
     id: Natural
     executor: ptr Executor
 
-  PollableId[T] = object
-    id: Natural
-    value: T
-
 proc `=destroy`*(pod: var Pod) =
   if pod.executor != nil:
     if getCurrentExecutor() == pod.executor:
@@ -36,11 +32,6 @@ proc registerReadable*(pod: Pod, p: PollableProc) =
     let id = pod.id
     pod.executor[].execMpsc proc () =
       getCurrentExecutor()[].registerReadable(id, p)
-    #
-    # fiber.value.value = p # crashs! Why?
-    #
-    #   SIGSEGV: Illegal storage access. (Attempt to read from nil?)
-    #
 
 proc unregisterReadable*(pod: Pod) =
   if getCurrentExecutor() == pod.executor:
@@ -83,11 +74,10 @@ when isMainModule:
     group.spawn proc () =
       var stream = new(Stream)
       stream.pod = initPod(channel[0])
-      var borrowStream = stream
       stream.pod.registerReadable proc (): bool =
         result = true
         var buffer = newString(9)
-        if borrowStream.pod.fd.read(buffer.cstring, buffer.len) < 0:
+        if stream.pod.fd.read(buffer.cstring, buffer.len) < 0:
           raiseOSError(osLastError())
         assert buffer == "hello 100"
         shutdownExecutorScheduler()
@@ -95,11 +85,10 @@ when isMainModule:
     group.spawn proc () =
       var stream = new(Stream)
       stream.pod = initPod(channel[1])
-      var borrowStream = stream
       stream.pod.registerWritable proc (): bool =
         result = true
         var buffer = "hello " & $(100)
-        if borrowStream.pod.fd.write(buffer.cstring, buffer.len) < 0:
+        if stream.pod.fd.write(buffer.cstring, buffer.len) < 0:
           raiseOSError(osLastError())
 
     runExecutorScheduler()

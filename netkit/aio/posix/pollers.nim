@@ -199,7 +199,7 @@ when isMainModule:
     result = true
     var buf = newString(16)
     assert r2.read(buf.addr, sizeof(buf)) > 0
-    echo buf
+    poller.shutdown()
 
   let id2 = poller.registerHandle(w)
   poller.registerWritable(id2) do () -> bool:

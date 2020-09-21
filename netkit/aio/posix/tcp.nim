@@ -32,14 +32,10 @@ proc createANativeSocket*(
   result = handle.Socket
 
 proc accept(stream: ref SocketStream, inheritable = defined(nimInheritHandles)): ref Future[Socket] =
-  var future = newFuture[Socket]()
-  result = future
-  var readable = new(Pollable[SocketStreamFuture[Socket]])
-  readable.poll = proc (p: ref PollableBase): bool =
+  var retFuture = newFuture[Socket]()
+  result = retFuture
+  stream.pod.registerReadable proc (): bool =
     result = true
-    var pollable = (ref Pollable[SocketStreamFuture[Socket]])(p)
-    var stream = pollable.value.stream
-    var future = pollable.value.future
     var sockAddress: Sockaddr_storage
     var addrLen = sizeof(sockAddress).SockLen
     var client =
@@ -53,7 +49,7 @@ proc accept(stream: ref SocketStream, inheritable = defined(nimInheritHandles)):
       if client != osInvalidSocket and not setInheritable(client, inheritable):
         # Set failure first because close() itself can fail,
         # # altering osLastError().
-        future.fail(newException(OSError, osErrorMsg(lastError)))
+        retFuture.fail(newException(OSError, osErrorMsg(lastError)))
         client.close()
         return false
 
@@ -63,7 +59,7 @@ proc accept(stream: ref SocketStream, inheritable = defined(nimInheritHandles)):
       if lastError.int32 == EINTR:
         return false
       else:
-        future.fail(newException(OSError, osErrorMsg(lastError)))
+        retFuture.fail(newException(OSError, osErrorMsg(lastError)))
         # if flags.isDisconnectionError(lastError):
         #   return false
         # else:
@@ -72,24 +68,17 @@ proc accept(stream: ref SocketStream, inheritable = defined(nimInheritHandles)):
       try:
         let address = getAddrString(cast[ptr SockAddr](addr sockAddress))
         # register(client.AsyncFD)
-        future.complete(Socket(client))
+        retFuture.complete(Socket(client))
       except:
         # getAddrString may raise
         client.close()
-        future.fail(getCurrentException())
-  readable.value.stream = stream
-  readable.value.future = future
-  readable.value.stream.pod.registerReadable(readable) 
+        retFuture.fail(getCurrentException())
 
 proc recv(stream: ref SocketStream): ref Future[string] =
-  var future = newFuture[string]()
-  result = future
-  var readable = new(Pollable[SocketStreamFuture[string]])
-  readable.poll = proc (p: ref PollableBase): bool =
+  var retFuture = newFuture[string]()
+  result = retFuture
+  stream.pod.registerReadable proc (): bool =
     result = true
-    var pollable = (ref Pollable[SocketStreamFuture[string]])(p)
-    var stream = pollable.value.stream
-    var future = pollable.value.future
     var buffer = newString(1024)
     let res = recv(stream.fd.SocketHandle, addr buffer[0], 1024.cint, 0
                   #[{SocketFlag.SafeDisconn}.toOSFlags()]#)
@@ -97,7 +86,7 @@ proc recv(stream: ref SocketStream): ref Future[string] =
       let lastError = osLastError()
       if lastError.int32 != EINTR and lastError.int32 != EWOULDBLOCK and
           lastError.int32 != EAGAIN:
-        future.fail(newException(OSError, osErrorMsg(lastError)))
+        retFuture.fail(newException(OSError, osErrorMsg(lastError)))
         # if flags.isDisconnectionError(lastError):
         #   retFuture.complete("")
         # else:
@@ -106,13 +95,10 @@ proc recv(stream: ref SocketStream): ref Future[string] =
         result = false # We still want this callback to be called.
     elif res == 0:
       # Disconnected TODO
-      future.complete(buffer)
+      retFuture.complete(buffer)
     else:
-      future.complete(buffer)
+      retFuture.complete(buffer)
     stream.fd.SocketHandle.close()
-  readable.value.stream = stream
-  readable.value.future = future
-  readable.value.stream.pod.registerReadable(readable) 
 
 proc listen*(socket: ref SocketStream, backlog = SOMAXCONN) {.tags: [ReadIOEffect].} =
   if nativesockets.listen(socket.fd.SocketHandle, backlog) < 0'i32: 

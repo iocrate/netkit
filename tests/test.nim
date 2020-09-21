@@ -192,29 +192,54 @@ discard """
 
 # f()
 
-# var 
-#   r: int = 0
+var 
+  r: int = 0
 
-# proc threadFunc1() {.thread.} =
-#   while r != 1: 
-#     continue
-#   echo "Got r=2"
+type
+  Func = proc ()
 
-# proc threadFunc2() {.thread.} =
-#   r = 1
+  Obj = object
+    val: ptr UncheckedArray[Func]
 
-# proc main() =
-#   var
-#     thread1: Thread[void]
-#     thread2: Thread[void]
+  A = object
+    val: proc (): bool {.gcsafe.}
 
-#   createThread(thread1, threadFunc1)
-#   createThread(thread2, threadFunc2)
+  B = object 
 
-#   joinThread(thread1)
-#   joinThread(thread2)
+var obj = new(Obj)
+obj.val = cast[ptr UncheckedArray[Func]](allocShared0(sizeof(Func)))
 
-# main()
+proc threadFunc1() {.thread.} =
+  while r != 1: 
+    continue
+  echo "Got r=2"
+  {.gcsafe.}:
+    obj.val[0]()
+
+proc threadFunc2() {.thread.} =
+  r = 1
+
+proc registerTest(b: B, p: proc (): bool {.gcsafe.}) =
+    var a = A(val: p)
+
+proc main() =
+  var
+    thread1: Thread[void]
+    thread2: Thread[void]
+
+  obj.val[0] = proc () =
+    var b: B 
+    registerTest b, proc (): bool =
+      result = true
+      echo b
+
+  createThread(thread1, threadFunc1)
+  createThread(thread2, threadFunc2)
+
+  joinThread(thread1)
+  joinThread(thread2)
+
+main()
 
 
 # type
@@ -805,38 +830,38 @@ discard """
 #   for v in c.data:
 #     yield v
 
-type
-  Shape = object of RootObj
-    name: string
+# type
+#   Shape = object of RootObj
+#     name: string
 
-  Rect = object of Shape
-  Circle = object of Shape
+#   Rect = object of Shape
+#   Circle = object of Shape
   
-  DrawFunc = proc ()
+#   DrawFunc = proc ()
 
-var draws = newSeq[DrawFunc]()
-var shapes = newSeq[ref Shape]()
+# var draws = newSeq[DrawFunc]()
+# var shapes = newSeq[ref Shape]()
 
-var rect = new(Rect)
-rect.name = "Rect 1"
-shapes.add(rect)
-draws.add proc () =
-  echo rect.name
+# var rect = new(Rect)
+# rect.name = "Rect 1"
+# shapes.add(rect)
+# draws.add proc () =
+#   echo rect.name
 
-var circle = new(Circle)
-circle.name = "Circle 1"
-shapes.add(circle)
-draws.add proc () =
-  echo circle.name
+# var circle = new(Circle)
+# circle.name = "Circle 1"
+# shapes.add(circle)
+# draws.add proc () =
+#   echo circle.name
 
-for draw in draws.items():
-  draw()
+# for draw in draws.items():
+#   draw()
 
 
-proc add(x: int, y: int, fn: DrawFunc) = echo x
+# proc add(x: int, y: int, fn: DrawFunc) = echo x
 
-1.add 2, proc () =
-  echo rect.name
+# 1.add 2, proc () =
+#   echo rect.name
 
 # type
 #   ReadFunc = proc (x: string)
