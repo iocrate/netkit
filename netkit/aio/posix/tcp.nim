@@ -105,7 +105,30 @@ proc accept*(stream: AcceptStream): Future[tuple[address: string, client: IoHand
         client.close()
         retFuture.fail(getCurrentException())
 
-proc recv(stream: TcpStream): Future[string] =
+proc send*(stream: TcpStream, buffer: string): Future[void] =
+  var retFuture = newFuture[void]()
+  result = retFuture
+  stream.pod.registerReadable proc (): bool =
+    result = true
+    let res = send(SocketHandle(stream.handle), buffer.cstring, buffer.len, 0
+                  #[{SocketFlag.SafeDisconn}.toOSFlags()]#)
+    if res < 0:
+      let lastError = osLastError()
+      if int32(lastError) == EINTR or int32(lastError) == EWOULDBLOCK or int32(lastError) == EAGAIN:
+        result = false # We still want this callback to be called.
+      else:
+        retFuture.fail(newException(OSError, osErrorMsg(lastError)))
+        # if flags.isDisconnectionError(lastError):
+        #   retFuture.complete("")
+        # else:
+        #   retFuture.fail(newException(OSError, osErrorMsg(lastError)))
+    elif res == 0:
+      # Disconnected TODO
+      retFuture.complete()
+    else:
+      retFuture.complete()
+
+proc recv*(stream: TcpStream): Future[string] =
   var retFuture = newFuture[string]()
   result = retFuture
   stream.pod.registerReadable proc (): bool =
@@ -128,8 +151,6 @@ proc recv(stream: TcpStream): Future[string] =
       retFuture.complete(buffer)
     else:
       retFuture.complete(buffer)
-
-    SocketHandle(stream.handle).close()
 
 proc newAcceptStream*(socket: IoHandle): AcceptStream = 
   new(result)
@@ -175,3 +196,4 @@ when isMainmodule:
     runExecutorScheduler()
 
   test()
+  
