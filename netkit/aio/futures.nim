@@ -3,7 +3,7 @@ import os, tables, strutils, times, heapqueue, options, deques, cstrutils
 import netkit/collections/simplequeues
 
 type
-  FutureBase* = object of RootObj
+  FutureBase* = ref object of RootObj
     callback: CallbackProc
     finished: bool
     error*: ref Exception               ## Stored exception
@@ -13,15 +13,15 @@ type
       id: int
       fromProc: string
 
-  Future*[T] = object of FutureBase     ## Typed future.
+  Future*[T] = ref object of FutureBase     ## Typed future.
     value: T                            ## Stored value
 
   FutureVar*[T] = distinct Future[T]
 
   FutureError* = object of Defect
-    cause*: ref FutureBase
+    cause*: FutureBase
 
-  CallbackProc* = proc (future: ref FutureBase) {.nimcall, gcsafe.}
+  CallbackProc* = proc () {.gcsafe.}
 
 when not defined(release):
   var currentID = 0
@@ -40,12 +40,12 @@ template setupFutureBase(fromProc: string) =
     result.fromProc = fromProc
     currentID.inc()
 
-proc newFuture*[T](fromProc: string = "unspecified"): owned ref Future[T] =
+proc newFuture*[T](fromProc: string = "unspecified"): owned Future[T] =
   setupFutureBase(fromProc)
   when isFutureLoggingEnabled: 
     logFutureStart(result)
 
-proc checkFinished[T](future: ref Future[T]) =
+proc checkFinished[T](future: Future[T]) =
   ## Checks whether `future` is finished. If it is then raises a
   ## ``FutureError``.
   when not defined(release):
@@ -66,39 +66,39 @@ proc checkFinished[T](future: ref Future[T]) =
       err.cause = future
       raise err
 
-proc complete*[T](future: ref Future[T], value: T) =
+proc complete*[T](future: Future[T], value: T) =
   checkFinished(future)
   assert(future.error == nil)
   future.value = value
   future.finished = true
-  future.callback(future)
+  future.callback()
   when isFutureLoggingEnabled: 
     logFutureFinish(future)
 
-proc complete*(future: ref Future[void]) =
+proc complete*(future: Future[void]) =
   checkFinished(future)
   assert(future.error == nil)
   future.finished = true
-  future.callback(future)
+  future.callback()
   when isFutureLoggingEnabled: 
     logFutureFinish(future)
 
-proc fail*[T](future: ref Future[T], error: ref Exception) =
+proc fail*[T](future: Future[T], error: ref Exception) =
   checkFinished(future)
   future.finished = true
   future.error = error
   future.errorStackTrace = if getStackTrace(error) == "": getStackTrace() else: getStackTrace(error)
-  future.callback(future)
+  future.callback()
   when isFutureLoggingEnabled: 
     logFutureFinish(future)
 
-proc `callback=`*[T](future: ref Future[T], cb: CallbackProc) =
+proc `callback=`*[T](future: Future[T], cb: CallbackProc) =
   future.callback = cb
   if future.finished:
-    cb(future)
+    cb()
   # TODO: callSoon
   
-proc injectStacktrace[T](future: ref Future[T]) =
+proc injectStacktrace[T](future: Future[T]) =
   when not defined(release):
     const header = "\nAsync traceback:\n"
 
@@ -123,9 +123,9 @@ proc injectStacktrace[T](future: ref Future[T]) =
     #   newMsg.add "\n" & $entry
     future.error.msg = newMsg
 
-proc read*[T](future: ref Future[T] | ref FutureVar[T]): T =
+proc read*[T](future: Future[T] | ref FutureVar[T]): T =
   {.push hint[ConvFromXtoItselfNotNeeded]: off.}
-  let fut = (ref Future[T])(future)
+  let fut = (Future[T])(future)
   {.pop.}
   if fut.finished:
     if fut.error != nil:
@@ -137,7 +137,7 @@ proc read*[T](future: ref Future[T] | ref FutureVar[T]): T =
     # TODO: Make a custom exception type for this?
     raise newException(ValueError, "Future still in progress.")
 
-proc readError*[T](future: ref Future[T]): ref Exception =
+proc readError*[T](future: Future[T]): ref Exception =
   if future.error != nil: 
     return future.error
   else:
@@ -146,17 +146,17 @@ proc readError*[T](future: ref Future[T]): ref Exception =
 proc mget*[T](future: FutureVar[T]): var T =
   result = Future[T](future).value
 
-proc finished*(future: ref FutureBase | ref FutureVar): bool =
+proc finished*(future: FutureBase | FutureVar): bool =
   when future is FutureVar:
     result = (FutureBase(future)).finished
   else:
     result = future.finished
 
-proc failed*(future: ref FutureBase): bool =
+proc failed*(future: FutureBase): bool =
   ## Determines whether ``future`` completed with an error.
   return future.error != nil
 
-proc asyncCheck*[T](future: ref Future[T]) =
+proc asyncCheck*[T](future: Future[T]) =
   assert(not future.isNil, "Future is nil")
   # TODO: We can likely look at the stack trace here and inject the location
   # where the `asyncCheck` was called to give a better error stack message.

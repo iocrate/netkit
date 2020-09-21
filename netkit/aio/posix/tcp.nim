@@ -3,60 +3,84 @@ import std/os
 import std/posix
 import std/nativesockets
 import netkit/aio/futures
-import netkit/aio/posix/pollers
 import netkit/aio/posix/pods
+import netkit/aio/posix/handles
 
 type
-  Socket = distinct int
-
-  SocketStream = object
-    fd: int
+  AcceptStream* = ref object
+    handle: IoHandle
     pod: Pod
 
-  SocketStreamFuture[T] = object
-    stream: ref SocketStream
-    future: ref Future[T]
+  TcpStream* = ref object
+    handle: IoHandle
+    pod: Pod
 
-proc createANativeSocket*(
+proc createTcpSocket(
   domain: Domain, 
   sockType: SockType,
-  protocol: Protocol,
-  inheritable = defined(nimInheritHandles)
-): Socket =
-  let handle = nativesockets.createNativeSocket(domain, sockType, protocol, inheritable)
-  if handle == osInvalidSocket:
-    return osInvalidSocket.Socket
-  handle.setBlocking(false)
+  protocol: Protocol
+): IoHandle {.raises: [OSError].} =
+  let socket = nativesockets.createNativeSocket(domain, sockType, protocol)
+  if socket == osInvalidSocket:
+    raiseOSError(osLastError())
+  socket.setBlocking(false)
+  socket.setSockOptInt(SOL_SOCKET, SO_REUSEADDR, 1)
   when defined(macosx) and not defined(nimdoc):
-    handle.setSockOptInt(SOL_SOCKET, SO_NOSIGPIPE, 1)
-  result = handle.Socket
+    socket.setSockOptInt(SOL_SOCKET, SO_NOSIGPIPE, 1)
+  result = IoHandle(socket)
 
-proc accept(stream: ref SocketStream, inheritable = defined(nimInheritHandles)): ref Future[Socket] =
-  var retFuture = newFuture[Socket]()
+proc listen(socket: IoHandle, backlog = SOMAXCONN) {.raises: [OSError].} =
+  if nativesockets.listen(SocketHandle(socket), backlog) < 0: 
+    raiseOSError(osLastError())
+
+proc bindAddr(socket: IoHandle, domain: Domain, port: Port, address: string) {.raises: [OSError, ValueError].} =
+  var aiList: ptr AddrInfo
+  if address == "":
+    var realaddr: string
+    case domain
+    of Domain.AF_INET6: realaddr = "::"
+    of Domain.AF_INET: realaddr = "0.0.0.0"
+    else:
+      raise newException(ValueError, "Unknown socket address family and no address specified to bindAddr")
+    aiList = getAddrInfo(realaddr, port, domain)
+  else:
+    aiList = getAddrInfo(address, port, domain)
+  if nativesockets.bindAddr(SocketHandle(socket), aiList.ai_addr, aiList.ai_addrlen.SockLen) < 0:
+    aiList.freeAddrInfo()
+    raiseOSError(osLastError())
+  else:
+    aiList.freeAddrInfo()
+
+proc bindTcp*(
+  domain = Domain.AF_INET, 
+  port = Port(0), 
+  address = "", 
+  backlog = SOMAXCONN
+): IoHandle {.raises: [OSError, ValueError].} =
+  result = createTcpSocket(domain, SockType.SOCK_STREAM, Protocol.IPPROTO_TCP)
+  result.bindAddr(domain, port, address)
+  result.listen()
+  
+proc close*(socket: IoHandle) = 
+  close(SocketHandle(socket))
+
+proc accept*(stream: AcceptStream): Future[tuple[address: string, client: IoHandle]] =
+  var retFuture = newFuture[tuple[address: string, client: IoHandle]]()
   result = retFuture
   stream.pod.registerReadable proc (): bool =
     result = true
     var sockAddress: Sockaddr_storage
-    var addrLen = sizeof(sockAddress).SockLen
+    var addrLen = SockLen(sizeof(sockAddress))
     var client =
       when declared(accept4):
-        accept4(stream.fd.SocketHandle, cast[ptr SockAddr](addr(sockAddress)),
-                addr(addrLen), SOCK_CLOEXEC #[if inheritable: 0 else: SOCK_CLOEXEC]#)
+        accept4(SocketHandle(stream.handle), cast[ptr SockAddr](sockAddress.addr), addrLen.addr, 
+                SOCK_CLOEXEC #[if inheritable: 0 else: SOCK_CLOEXEC]#)
       else:
-        accept(stream.fd.SocketHandle, cast[ptr SockAddr](addr(sockAddress)),
-               addr(addrLen))
-    when declared(setInheritable) and not declared(accept4):
-      if client != osInvalidSocket and not setInheritable(client, inheritable):
-        # Set failure first because close() itself can fail,
-        # # altering osLastError().
-        retFuture.fail(newException(OSError, osErrorMsg(lastError)))
-        client.close()
-        return false
-
+        accept(SocketHandle(stream.handle), cast[ptr SockAddr](sockAddress.addr), addrLen.addr)
     if client == osInvalidSocket:
       let lastError = osLastError()
-      assert lastError.int32 != EWOULDBLOCK and lastError.int32 != EAGAIN
-      if lastError.int32 == EINTR:
+      assert int32(lastError) != EWOULDBLOCK and int32(lastError) != EAGAIN
+      if int32(lastError) == EINTR:
         return false
       else:
         retFuture.fail(newException(OSError, osErrorMsg(lastError)))
@@ -65,85 +89,89 @@ proc accept(stream: ref SocketStream, inheritable = defined(nimInheritHandles)):
         # else:
         #   retFuture.fail(newException(OSError, osErrorMsg(lastError)))
     else:
+      when declared(setInheritable) and not declared(accept4):
+        if not setInheritable(client, inheritable):
+          # Set failure first because close() itself can fail,
+          # # altering osLastError().
+          client.close()
+          retFuture.fail(newException(OSError, osErrorMsg(lastError)))
+          return
       try:
-        let address = getAddrString(cast[ptr SockAddr](addr sockAddress))
-        # register(client.AsyncFD)
-        retFuture.complete(Socket(client))
+        let address = getAddrString(cast[ptr SockAddr](sockAddress.addr))
+        client.setBlocking(false)
+        retFuture.complete((address, IoHandle(client)))
       except:
         # getAddrString may raise
         client.close()
         retFuture.fail(getCurrentException())
 
-proc recv(stream: ref SocketStream): ref Future[string] =
+proc recv(stream: TcpStream): Future[string] =
   var retFuture = newFuture[string]()
   result = retFuture
   stream.pod.registerReadable proc (): bool =
     result = true
     var buffer = newString(1024)
-    let res = recv(stream.fd.SocketHandle, addr buffer[0], 1024.cint, 0
+    let res = recv(SocketHandle(stream.handle), buffer[0].addr, cint(1024), 0
                   #[{SocketFlag.SafeDisconn}.toOSFlags()]#)
     if res < 0:
       let lastError = osLastError()
-      if lastError.int32 != EINTR and lastError.int32 != EWOULDBLOCK and
-          lastError.int32 != EAGAIN:
+      if int32(lastError) == EINTR or int32(lastError) == EWOULDBLOCK or int32(lastError) == EAGAIN:
+        result = false # We still want this callback to be called.
+      else:
         retFuture.fail(newException(OSError, osErrorMsg(lastError)))
         # if flags.isDisconnectionError(lastError):
         #   retFuture.complete("")
         # else:
         #   retFuture.fail(newException(OSError, osErrorMsg(lastError)))
-      else:
-        result = false # We still want this callback to be called.
     elif res == 0:
       # Disconnected TODO
       retFuture.complete(buffer)
     else:
       retFuture.complete(buffer)
-    stream.fd.SocketHandle.close()
 
-proc listen*(socket: ref SocketStream, backlog = SOMAXCONN) {.tags: [ReadIOEffect].} =
-  if nativesockets.listen(socket.fd.SocketHandle, backlog) < 0'i32: 
-    raiseOSError(osLastError())
+    SocketHandle(stream.handle).close()
 
-proc bindAddr*(socket: ref SocketStream, port = Port(0), address = "") {.tags: [ReadIOEffect].} =
-  var realaddr = address
-  # if realaddr == "":
-  #   case socket.domain
-  #   of AF_INET6: realaddr = "::"
-  #   of AF_INET: realaddr = "0.0.0.0"
-  #   else:
-  #     raise newException(ValueError,
-  #       "Unknown socket address family and no address specified to bindAddr")
-  realaddr = "0.0.0.0"
-  var aiList = getAddrInfo(realaddr, port, Domain.AF_INET#[socket.domain]#)
-  if nativesockets.bindAddr(socket.fd.SocketHandle, aiList.ai_addr, aiList.ai_addrlen.SockLen) < 0'i32:
-    freeaddrinfo(aiList)
-    raiseOSError(osLastError())
-  freeaddrinfo(aiList)
-  
+proc newAcceptStream*(socket: IoHandle): AcceptStream = 
+  new(result)
+  result.handle = socket
+  result.pod = initPod(socket.cint)
+
+proc close*(stream: AcceptStream) = 
+  `=destroy`(stream.pod)
+
+proc newTcpStream*(socket: IoHandle): TcpStream = 
+  new(result)
+  result.handle = socket
+  result.pod = initPod(socket.cint)
+
+proc close*(stream: TcpStream) = 
+  `=destroy`(stream.pod)
+
 when isMainmodule:
   import netkit/aio/posix/runtime
 
-  var s = createANativeSocket(Domain.AF_INET, SockType.SOCK_STREAM, Protocol.IPPROTO_TCP)
+  proc test() =
+    var serverHandle = bindTcp(port = Port(10003))
+    var acceptStream = newAcceptStream(serverHandle)
 
-  var stream = new(SocketStream)
-  stream.fd = s.cint
-  stream.pod = initPod(stream.fd.cint) # windows is int
+    var acceptFuture = acceptStream.accept()
+    acceptFuture.callback = proc () =
+      var (clientAddr, clientHandle) = acceptFuture.read()
+      
+      var clientStream = newTcpStream(clientHandle)
+      var recvFuture = clientStream.recv()
+      recvFuture.callback = proc () = 
+        var data = recvFuture.read()
+        echo data
 
-  stream.fd.SocketHandle.setSockOptInt(SOL_SOCKET.cint, SO_REUSEADDR.cint, 1.cint)
-  stream.bindAddr(Port(10003))
-  stream.listen()
+        clientStream.close()
+        clientHandle.close()
 
-  var future = stream.accept()
-  future.callback = proc (future: ref FutureBase) = 
-    var future = (ref Future[Socket])(future)
-    var client = future.read()
-    var clientStream = new(SocketStream)
-    clientStream.fd = client.cint
-    clientStream.pod = initPod(clientStream.fd.cint)
+        acceptStream.close()
+        serverHandle.close()
 
-    var recvFuture = clientStream.recv()
-    recvFuture.callback = proc (future: ref FutureBase) = 
-      var data = (ref Future[string])(future).read()
-      echo data
+        shutdownExecutorScheduler()
 
-  runExecutorScheduler()
+    runExecutorScheduler()
+
+  test()
