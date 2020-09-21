@@ -64,6 +64,14 @@ proc bindTcp*(
 proc close*(socket: IoHandle) = 
   close(SocketHandle(socket))
 
+proc newTcpStream*(socket: IoHandle): TcpStream = 
+  new(result)
+  result.handle = socket
+  result.pod = initPod(socket.cint)
+
+proc close*(stream: AcceptStream) = 
+  `=destroy`(stream.pod)
+
 proc accept*(stream: AcceptStream): Future[tuple[address: string, client: IoHandle]] =
   var retFuture = newFuture[tuple[address: string, client: IoHandle]]()
   result = retFuture
@@ -104,6 +112,14 @@ proc accept*(stream: AcceptStream): Future[tuple[address: string, client: IoHand
         # getAddrString may raise
         client.close()
         retFuture.fail(getCurrentException())
+
+proc newAcceptStream*(socket: IoHandle): AcceptStream = 
+  new(result)
+  result.handle = socket
+  result.pod = initPod(socket.cint)
+
+proc close*(stream: TcpStream) = 
+  `=destroy`(stream.pod)
 
 proc send*(stream: TcpStream, buffer: string): Future[void] =
   var retFuture = newFuture[void]()
@@ -151,22 +167,6 @@ proc recv*(stream: TcpStream): Future[string] =
       retFuture.complete(buffer)
     else:
       retFuture.complete(buffer)
-
-proc newAcceptStream*(socket: IoHandle): AcceptStream = 
-  new(result)
-  result.handle = socket
-  result.pod = initPod(socket.cint)
-
-proc close*(stream: AcceptStream) = 
-  `=destroy`(stream.pod)
-
-proc newTcpStream*(socket: IoHandle): TcpStream = 
-  new(result)
-  result.handle = socket
-  result.pod = initPod(socket.cint)
-
-proc close*(stream: TcpStream) = 
-  `=destroy`(stream.pod)
 
 when isMainmodule:
   import netkit/aio/posix/runtime

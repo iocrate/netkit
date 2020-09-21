@@ -214,7 +214,7 @@ proc threadFunc1() {.thread.} =
     continue
   echo "Got r=2"
   {.gcsafe.}:
-    obj.val[0]()
+    obj.val[0]() 
 
 proc threadFunc2() {.thread.} =
   r = 1
@@ -732,63 +732,63 @@ main()
 
 # main()
 
-# type
-#   Stream = concept
-#     proc read(s: Self)
+type
+  Stream = concept
+    proc read(s: Self)
 
-# proc readline(s: Stream) =
-#   s.read()
-#   s.read()
-#   echo "read a line"
+proc readline(s: Stream) =
+  s.read()
+  s.read()
+  echo "read a line"
 
-# type
-#   MyStream = object
-#     file: int
+type
+  MyStream = object
+    file: int
 
-# proc read(s: MyStream) =
-#   echo "read a chunk"
+proc read(s: MyStream) =
+  echo "read a chunk"
 
-# var s1 = MyStream()
-# s1.readline()
+var s1 = MyStream()
+s1.readline()
 
-# type
-#   AStream[T: Stream] = object
-#     s: T
+type
+  AStream[T: Stream] = object
+    s: T
 
-#   BStream[T: Stream] = object
-#     s: T
+  BStream[T: Stream] = object
+    s: T
 
-# proc recv(a: AStream) =
-#   a.s.read()
-#   echo "recv from AStream"
+proc recv(a: AStream) =
+  a.s.read()
+  echo "recv from AStream"
 
-# proc recv(b: BStream) =
-#   b.s.read()
-#   echo "recv from BStream"
+proc recv(b: BStream) =
+  b.s.read()
+  echo "recv from BStream"
 
-# var a = AStream[MyStream]()
-# a.recv()
+var a = AStream[MyStream]() 
+a.recv()
 
-# var b = AStream[MyStream]()
-# b.recv()
+var b = AStream[MyStream]()
+b.recv()
 
-# type
-#   Container[T: Stream] = object
-#     data: seq[T]
+type
+  Container[T: Stream] = object
+    data: seq[T]
 
-# proc add[T](c: var Container, v: T) =
-#   c.data.add(v)
+proc add[T](c: var Container, v: T) =
+  c.data.add(v)
 
-# iterator items[T](c: Container[T]): T =
-#   for v in c.data:
-#     yield v
+iterator items[T](c: Container[T]): T =
+  for v in c.data:
+    yield v
 
-# var c = Container[MyStream]()
-# c.add(MyStream(file: 1))
-# c.add(MyStream(file: 2))
+var c = Container[MyStream]()
+c.add(MyStream(file: 1))
+c.add(MyStream(file: 2))
 
-# for s in c.items():
-#   s.readline()
+for s in c.items():
+  s.readline()
 
 # type
 #   Shape = object
