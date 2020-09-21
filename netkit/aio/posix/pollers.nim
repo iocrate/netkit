@@ -24,8 +24,8 @@ type
   InterestData = object
     fd: cint
     interest: Interest
-    readQueue: SimpleQueue[PollableProc]
-    writeQueue: SimpleQueue[PollableProc]
+    readQueue: SimpleQueue[Pollable]
+    writeQueue: SimpleQueue[Pollable]
 
   InterestVec = object
     data: Vec[Option[InterestData]]
@@ -41,7 +41,7 @@ type
   PollerState* {.pure.} = enum
     CREATED, RUNNING, SHUTDOWN, STOPPED, DESTROYED
 
-  PollableProc* = proc (): bool {.gcsafe.}
+  Pollable* = proc (): bool {.gcsafe.}
 
 proc `=destroy`*(poller: var Poller) {.raises: [OSError].} = 
   if poller.destructorState == DestructorState.READY:
@@ -146,7 +146,7 @@ proc unregisterHandle*(poller: var Poller, id: Natural) {.raises: [OSError, Valu
   poller.interests.len.dec()
   reset(data[]) 
 
-proc registerReadable*(poller: var Poller, id: Natural, p: PollableProc) {.raises: [OSError, ValueError].} =
+proc registerReadable*(poller: var Poller, id: Natural, p: Pollable) {.raises: [OSError, ValueError].} =
   let data = poller.interests.data[id].addr
   if not data.has:
     raise newException(ValueError, "file descriptor not registered")
@@ -163,7 +163,7 @@ proc unregisterReadable*(poller: var Poller, id: Natural) {.raises: [OSError, Va
     data.value.interest.unregisterReadable()
     poller.selector.update(data.value.fd, UserData(u64: id.uint64), data.value.interest)
 
-proc registerWritable*(poller: var Poller, id: Natural, p: PollableProc) {.raises: [OSError, ValueError].} =
+proc registerWritable*(poller: var Poller, id: Natural, p: Pollable) {.raises: [OSError, ValueError].} =
   let data = poller.interests.data[id].addr
   if not data.has:
     raise newException(ValueError, "file descriptor not registered")

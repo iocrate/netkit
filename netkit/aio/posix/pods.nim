@@ -25,7 +25,7 @@ proc initPod*(fd: cint): Pod =
   result.executor = getCurrentExecutor()
   result.id = getCurrentExecutor()[].registerHandle(fd)
 
-proc registerReadable*(pod: Pod, p: PollableProc) =
+proc registerReadable*(pod: Pod, p: Pollable) =
   if getCurrentExecutor() == pod.executor:
     getCurrentExecutor()[].registerReadable(pod.id, p)
   else:
@@ -41,7 +41,7 @@ proc unregisterReadable*(pod: Pod) =
     pod.executor[].execMpsc proc () =
       getCurrentExecutor()[].unregisterReadable(id)
 
-proc registerWritable*(pod: Pod, p: PollableProc) =
+proc registerWritable*(pod: Pod, p: Pollable) =
   if getCurrentExecutor() == pod.executor:
     getCurrentExecutor()[].registerWritable(pod.id, p)
   else:

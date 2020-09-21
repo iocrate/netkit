@@ -2,20 +2,17 @@
 import std/os
 import std/posix
 import netkit/objects
-import netkit/sync/semaphores
 import netkit/aio/posix/pollers
 
 type
-  PollableCounter* = object
+  PollableSemaphore* = object
     reader: cint
     writer: cint
     rbuf: uint
     wbuf: uint
     destructorState: DestructorState
 
-  PollableSemaphore* = Semaphore[PollableCounter]
-
-proc `=destroy`*(x: var PollableCounter)  {.raises: [OSError].} =
+proc `=destroy`*(x: var PollableSemaphore)  {.raises: [OSError].} =
   if x.destructorState == DestructorState.READY:
     if x.reader.close() < 0:
       raiseOSError(osLastError())
@@ -23,9 +20,9 @@ proc `=destroy`*(x: var PollableCounter)  {.raises: [OSError].} =
       raiseOSError(osLastError())
     x.destructorState = DestructorState.COMPLETED
 
-proc `=`*(dest: var PollableCounter, source: PollableCounter) {.error.} 
+proc `=`*(dest: var PollableSemaphore, source: PollableSemaphore) {.error.} 
 
-proc initPollableCounter*(x: var PollableCounter) {.raises: [OSError].} =
+proc initPollableSemaphore*(x: var PollableSemaphore) {.raises: [OSError].} =
   var duplexer: array[2, cint]
   let retPipe = pipe(duplexer)
   if retPipe < 0:
@@ -37,9 +34,9 @@ proc initPollableCounter*(x: var PollableCounter) {.raises: [OSError].} =
     raiseOSError(osLastError())
   x.destructorState = DestructorState.READY
 
-proc signal(s: var PollableSemaphore) = 
-  s.value.wbuf = 1'u
-  while s.value.writer.write(s.value.wbuf.addr, sizeof(uint)) < 0:
+proc signal*(s: var PollableSemaphore) = 
+  s.wbuf = 1'u
+  while s.writer.write(s.wbuf.addr, sizeof(uint)) < 0:
     let errorCode = osLastError()
     if errorCode.int32 == EINTR:
       discard
@@ -48,10 +45,10 @@ proc signal(s: var PollableSemaphore) =
     else:
       raiseOSError(errorCode) 
 
-proc wait(s: var PollableSemaphore): uint = 
-  s.value.rbuf = 0'u
+proc wait*(s: var PollableSemaphore): uint = 
+  s.rbuf = 0'u
   while true:
-    let ret = s.value.reader.read(s.value.rbuf.addr, sizeof(uint)) 
+    let ret = s.reader.read(s.rbuf.addr, sizeof(uint)) 
     if ret < 0:
       let errorCode = osLastError()
       if errorCode.int32 == EINTR:
@@ -63,14 +60,9 @@ proc wait(s: var PollableSemaphore): uint =
     elif ret == 0:
       assert false
     else:
-      result = result + s.value.rbuf
-      s.value.rbuf = 0'u
-
-proc initPollableSemaphore*(s: var PollableSemaphore) {.raises: [OSError].} =
-  s.value.initPollableCounter()
-  s.signalImpl = signal
-  s.waitImpl = wait
+      result = result + s.rbuf
+      s.rbuf = 0'u
 
 proc register*(poller: var Poller, s: PollableSemaphore): Natural {.raises: [OSError].} =
-  result = poller.registerHandle(s.value.reader)
+  result = poller.registerHandle(s.reader)
 

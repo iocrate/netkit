@@ -91,7 +91,7 @@ proc sliceExecutorGroup*(cap: Natural): ExecutorGroupId =
       group.start = gScheduler.recursiveExecutorId - 1
       gScheduler.recursiveExecutorId = (group.start + group.cap) mod gScheduler.mask + 1
 
-proc spawn*(id: ExecutorGroupId, fiber: FiberProc) =
+proc spawn*(id: ExecutorGroupId, r: Runnable) =
   if not gScheduler.executorGroups[id].has:
     raise newException(IndexDefect, "ExecutorGroup not found")
   let group = gScheduler.executorGroups[id].value.addr
@@ -102,11 +102,11 @@ proc spawn*(id: ExecutorGroupId, fiber: FiberProc) =
       group.recursiveExecutorId = (group.recursiveExecutorId + 1) mod group.cap
     let executorId = (group.start + idInGroup) mod gScheduler.mask + 1
     if isSecondaryExecutor():
-      gScheduler.executors[executorId].execMpsc(fiber)
+      gScheduler.executors[executorId].execMpsc(r)
     else:
-      gScheduler.executors[executorId].execSpsc(fiber)
+      gScheduler.executors[executorId].execSpsc(r)
   else:
-    gScheduler.executors[0].execSpsc(fiber)
+    gScheduler.executors[0].execSpsc(r)
 
 proc runExecutor(id: Natural) {.thread.} =
   currentExecutorId = id

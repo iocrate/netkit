@@ -8,7 +8,7 @@ type
   XpscMode* {.pure, size: sizeof(uint8).} = enum
     SPSC, MPSC
 
-  XpscQueue*[D, S] = object 
+  XpscQueue*[D; S: Semaphore] = object 
     mode: XpscMode
     writeLock: SpinLock
     data: ptr UncheckedArray[D]
@@ -17,9 +17,12 @@ type
     cap: Natural
     len: Natural
     mask: Natural
-    semaphore: Semaphore[S]
-    tryAddImpl: proc (Q: var XpscQueue[D, S], item: sink D): bool {.nimcall, gcsafe.}
-    addImpl: proc (Q: var XpscQueue[D, S], item: sink D) {.nimcall, gcsafe.}
+    semaphore: S
+    varOperation: VariantOperation[D, S]
+
+  VariantOperation[D, S] = object
+    tryAdd: proc (Q: var XpscQueue[D, S], item: sink D): bool {.nimcall, gcsafe.}
+    add: proc (Q: var XpscQueue[D, S], item: sink D) {.nimcall, gcsafe.}
 
 proc `=destroy`*[D, S](Q: var XpscQueue[D, S]) = 
   if Q.data != nil:
@@ -40,8 +43,7 @@ proc `=sink`*[D, S](dest: var XpscQueue[D, S], source: XpscQueue[D, S]) =
   dest.len = source.len
   dest.mask = source.mask
   dest.semaphore = source.semaphore
-  dest.tryAddImpl = source.tryAddImpl
-  dest.addImpl = source.addImpl
+  dest.varOperation = source.varOperation
 
 proc `=`*[D, S](dest: var XpscQueue[D, S], source: XpscQueue[D, S]) =
   if dest.data != source.data: 
@@ -57,8 +59,7 @@ proc `=`*[D, S](dest: var XpscQueue[D, S], source: XpscQueue[D, S]) =
     dest.len = source.len
     dest.mask = source.mask
     dest.semaphore = source.semaphore
-    dest.tryAddImpl = source.tryAddImpl
-    dest.addImpl = source.addImpl
+    dest.varOperation = source.varOperation
 
 proc spscTryAdd[D, S](Q: var XpscQueue[D, S], item: sink D): bool = 
   result = true
@@ -102,16 +103,16 @@ proc mpscAdd[D, S](Q: var XpscQueue[D, S], item: sink D) =
   Q.writeLock.release()
   Q.semaphore.signal()
 
-proc initXpscQueue*[D, S](Q: var XpscQueue[D, S], semaphore: sink Semaphore[S], mode: XpscMode, cap: Natural = 1024) =
+proc initXpscQueue*[D, S](Q: var XpscQueue[D, S], semaphore: sink S, mode: XpscMode, cap: Natural = 1024) =
   assert isPowerOfTwo(cap)
   Q.mode = mode
   case mode
   of XpscMode.SPSC:
-    Q.tryAddImpl = spscTryAdd[D, S]
-    Q.addImpl = spscAdd[D, S]
+    Q.varOperation.tryAdd = spscTryAdd[D, S]
+    Q.varOperation.add = spscAdd[D, S]
   of XpscMode.MPSC:
-    Q.tryAddImpl = mpscTryAdd[D, S]
-    Q.addImpl = mpscAdd[D, S]
+    Q.varOperation.tryAdd = mpscTryAdd[D, S]
+    Q.varOperation.add = mpscAdd[D, S]
     Q.writeLock.initSpinLock()
   Q.data = cast[ptr UncheckedArray[D]](allocShared0(sizeof(D) * cap))
   Q.head = 0
@@ -122,10 +123,10 @@ proc initXpscQueue*[D, S](Q: var XpscQueue[D, S], semaphore: sink Semaphore[S], 
   Q.semaphore = semaphore
 
 proc tryAdd*[D, S](Q: var XpscQueue[D, S], item: sink D): bool {.inline.} = 
-  Q.addTryImpl(Q, item)
+  Q.varOperation.addTry(Q, item)
 
 proc add*[D, S](Q: var XpscQueue[D, S], item: sink D) {.inline.} = 
-  Q.addImpl(Q, item)
+  Q.varOperation.add(Q, item)
 
 proc tryPop*[D, S](Q: var XpscQueue[D, S]): Option[D] = 
   if Q.len > 0:
@@ -158,23 +159,22 @@ when isMainModule and defined(linux):
   import netkit/platforms/posix/linux/eventfd
 
   type 
-    MySemaphore = Semaphore[cint]
+    MySemaphore = object
+      fd: cint
 
   proc signal(c: var MySemaphore) = 
     var buf = 1'u
-    if c.value.write(buf.addr, sizeof(buf)) < 0:
+    if c.fd.write(buf.addr, sizeof(buf)) < 0:
       raiseOSError(osLastError())
   
   proc wait(c: var MySemaphore): uint = 
     var buf = 0'u
-    if c.value.read(buf.addr, sizeof(buf)) < 0:
+    if c.fd.read(buf.addr, sizeof(buf)) < 0:
       raiseOSError(osLastError())
     result = buf 
 
   proc intMySemaphore(fd: cint): MySemaphore = 
-    result.value = fd
-    result.signalImpl = signal
-    result.waitImpl = wait
+    result.fd = fd
 
   type 
     Task = object
@@ -197,7 +197,7 @@ when isMainModule and defined(linux):
     counter = 0
     sum = 0
     efd: cint
-    mq: XpscQueue[ptr Task, cint]
+    mq: XpscQueue[ptr Task, MySemaphore]
     producers: array[4, Thread[void]]
     comsumer: Thread[void]
 

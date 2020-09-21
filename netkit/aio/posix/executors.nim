@@ -15,12 +15,12 @@ type
   Executor* = object
     poller: Poller
     spscSemaphoreId: Natural
-    spscQueue: XpscQueue[FiberProc, PollableCounter]
+    spscQueue: XpscQueue[Runnable, PollableSemaphore]
     mpscSemaphoreId: Natural
-    mpscQueue: XpscQueue[FiberProc, PollableCounter]
+    mpscQueue: XpscQueue[Runnable, PollableSemaphore]
     destructorState: DestructorState
     
-  FiberProc* = proc () {.gcsafe.}
+  Runnable* = proc () {.gcsafe.}
 
 proc `=destroy`*(e: var Executor) {.raises: [OSError].} = 
   if e.destructorState == DestructorState.READY:
@@ -40,8 +40,8 @@ proc initExecutor*(e: var Executor, initialSize: Natural = 1024) {.raises: [OSEr
   e.spscSemaphoreId = e.poller.register(spscSemaphore)
   e.poller.registerReadable(e.spscSemaphoreId) do () -> bool:
     result = false
-    for fiber in eAddr.spscQueue.popAll():
-      fiber()
+    for run in eAddr.spscQueue.popAll():
+      run()
   e.spscQueue.initXpscQueue(spscSemaphore, XpscMode.SPSC, initialSize)
 
   var mpscSemaphore: PollableSemaphore
@@ -49,8 +49,8 @@ proc initExecutor*(e: var Executor, initialSize: Natural = 1024) {.raises: [OSEr
   e.mpscSemaphoreId = e.poller.register(mpscSemaphore)
   e.poller.registerReadable(e.mpscSemaphoreId) do () -> bool:
     result = false
-    for fiber in eAddr.mpscQueue.popAll():
-      fiber()
+    for run in eAddr.mpscQueue.popAll():
+      run()
   e.mpscQueue.initXpscQueue(mpscSemaphore, XpscMode.MPSC, initialSize)
 
   e.destructorState = DestructorState.READY
@@ -58,11 +58,11 @@ proc initExecutor*(e: var Executor, initialSize: Natural = 1024) {.raises: [OSEr
 proc shutdown*(e: var Executor) {.inline, raises: [IllegalStateError].} = 
   e.poller.shutdown()
 
-proc execSpsc*(e: var Executor, fiber: FiberProc) {.inline.} = 
-  e.spscQueue.add(fiber)
+proc execSpsc*(e: var Executor, r: Runnable) {.inline.} = 
+  e.spscQueue.add(r)
 
-proc execMpsc*(e: var Executor, fiber: FiberProc) {.inline.} = 
-  e.mpscQueue.add(fiber)
+proc execMpsc*(e: var Executor, r: Runnable) {.inline.} = 
+  e.mpscQueue.add(r)
 
 iterator interests*(e: var Executor): Natural {.inline.} =
   for i in e.poller.interests:
@@ -74,13 +74,13 @@ proc registerHandle*(e: var Executor, fd: cint): Natural {.inline, raises: [OSEr
 proc unregisterHandle*(e: var Executor, id: Natural) {.inline, raises: [OSError, ValueError].} =
   e.poller.unregisterHandle(id)
 
-proc registerReadable*(e: var Executor, id: Natural, p: PollableProc) {.inline, raises: [OSError, ValueError].} =
+proc registerReadable*(e: var Executor, id: Natural, p: Pollable) {.inline, raises: [OSError, ValueError].} =
   e.poller.registerReadable(id, p)
  
 proc unregisterReadable*(e: var Executor, id: Natural) {.inline, raises: [OSError, ValueError].} =
   e.poller.unregisterReadable(id)
 
-proc registerWritable*(e: var Executor, id: Natural, p: PollableProc) {.inline, raises: [OSError, ValueError].} =
+proc registerWritable*(e: var Executor, id: Natural, p: Pollable) {.inline, raises: [OSError, ValueError].} =
   e.poller.registerWritable(id, p)
 
 proc unregisterWritable*(e: var Executor, id: Natural) {.inline, raises: [OSError, ValueError].} =

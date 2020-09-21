@@ -2,36 +2,33 @@
 import std/os
 import std/posix
 import netkit/objects
-import netkit/sync/semaphores
 import netkit/aio/posix/pollers
 import netkit/platforms/posix/linux/eventfd
 
 type
-  PollableCounter* = object
+  PollableSemaphore* = object
     duplexer*: cint
     rbuf: uint
     wbuf: uint
     destructorState: DestructorState
 
-  PollableSemaphore* = Semaphore[PollableCounter]
-
-proc `=destroy`*(x: var PollableCounter)  {.raises: [OSError].} =
+proc `=destroy`*(x: var PollableSemaphore)  {.raises: [OSError].} =
   if x.destructorState == DestructorState.READY:
     if x.duplexer.close() < 0:
       raiseOSError(osLastError())
     x.destructorState = DestructorState.COMPLETED
 
-proc `=`*(dest: var PollableCounter, source: PollableCounter) {.error.}
+proc `=`*(dest: var PollableSemaphore, source: PollableSemaphore) {.error.}
 
-proc initPollableCounter*(x: var PollableCounter) {.raises: [OSError].} =
+proc initPollableSemaphore*(x: var PollableSemaphore) {.raises: [OSError].} =
   x.duplexer = eventfd(0, 0)
   if x.duplexer < 0:
     raiseOSError(osLastError())
   x.destructorState = DestructorState.READY
 
-proc signal(s: var PollableSemaphore) = 
-  s.value.wbuf = 1'u
-  while s.value.duplexer.write(s.value.wbuf.addr, sizeof(uint)) < 0:
+proc signal*(s: var PollableSemaphore) = 
+  s.wbuf = 1'u
+  while s.duplexer.write(s.wbuf.addr, sizeof(uint)) < 0:
     let errorCode = osLastError()
     if errorCode.int32 == EINTR:
       discard
@@ -40,9 +37,9 @@ proc signal(s: var PollableSemaphore) =
     else:
       raiseOSError(errorCode) 
 
-proc wait(s: var PollableSemaphore): uint = 
-  s.value.rbuf = 0'u
-  while s.value.duplexer.read(s.value.rbuf.addr, sizeof(uint)) < 0:
+proc wait*(s: var PollableSemaphore): uint = 
+  s.rbuf = 0'u
+  while s.duplexer.read(s.rbuf.addr, sizeof(uint)) < 0:
     let errorCode = osLastError()
     if errorCode.int32 == EINTR:
       discard
@@ -50,14 +47,9 @@ proc wait(s: var PollableSemaphore): uint =
       raise newException(IOError, "signal duplexer should not be non-blocking")
     else:
       raiseOSError(osLastError()) 
-  result = s.value.rbuf 
+  result = s.rbuf 
   assert result > 0
 
-proc initPollableSemaphore*(s: var PollableSemaphore) {.raises: [OSError].} =
-  s.value.initPollableCounter()
-  s.signalImpl = signal
-  s.waitImpl = wait
-
 proc register*(poller: var Poller, s: PollableSemaphore): Natural {.raises: [OSError].} =
-  result = poller.registerHandle(s.value.duplexer)
+  result = poller.registerHandle(s.duplexer)
 
