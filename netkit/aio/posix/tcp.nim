@@ -4,7 +4,7 @@ import std/posix
 import std/nativesockets
 import netkit/aio/futures
 import netkit/aio/posix/pods
-import netkit/aio/posix/handles
+import netkit/aio/handles
 
 type
   AcceptStream* = ref object
