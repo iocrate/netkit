@@ -1,5 +1,5 @@
 
-import os, tables, strutils, times, heapqueue, options, deques, cstrutils
+import std/strutils
 import netkit/collections/simplequeues
 
 type
