@@ -6,7 +6,7 @@ type
     HttpVer11 = "HTTP/1.1"
     HttpVer20 = "HTTP/2.0"
 
-proc parseHttpVersion*(s: string): HttpVersion  {.raises: [ValueError].} =
+proc parseHttpVersion*(s: string): HttpVersion  =
   ## Converts a string to HTTP version. A ``ValueError`` is raised when ``s`` is not a valid version. Currently
   ## only `"HTTP/1.0"` and `"HTTP/1.1"` are valid versions.
   ## 

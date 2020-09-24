@@ -48,7 +48,7 @@ proc isLio*(event: Event): bool {.inline.} =
 proc isError*(event: Event): bool {.inline.} =
   (event.value.events and EPOLLERR) != 0 
 
-proc `=destroy`*(s: var Selector)  {.raises: [OSError].} =
+proc `=destroy`*(s: var Selector)  =
   if s.destructorState == DestructorState.READY:
     if s.epollFD.close() < 0:
       raiseOSError(osLastError())
@@ -56,14 +56,14 @@ proc `=destroy`*(s: var Selector)  {.raises: [OSError].} =
 
 proc `=`*(dest: var Selector, source: Selector) {.error.} 
 
-proc initSelector*(s: var Selector) {.raises: [OSError].} = 
+proc initSelector*(s: var Selector) = 
   let fd = epoll_create1(EPOLL_CLOEXEC)
   if fd < 0:
     raiseOSError(osLastError())
   s.epollFD = fd
   s.destructorState = DestructorState.READY
 
-proc select*(s: var Selector, events: var openArray[Event], timeout: cint): Natural {.raises: [OSError].} =
+proc select*(s: var Selector, events: var openArray[Event], timeout: cint): Natural =
   # TODO: timeout: cint 设计一个超时数据结构以提供更好的兼容 ? how about Option<Duration> ?
   result = epoll_wait(s.epollFD, events[0].value.addr, cint(events.len), timeout)
   while result < 0:
@@ -74,12 +74,12 @@ proc select*(s: var Selector, events: var openArray[Event], timeout: cint): Natu
       result = 0
       raiseOSError(err)
 
-proc register*(s: var Selector, fd: cint, data: UserData, interest: Interest) {.raises: [OSError].} =
+proc register*(s: var Selector, fd: cint, data: UserData, interest: Interest) =
   var event = EpollEvent(events: interest.value, data: cast[EpollData](data))
   if epoll_ctl(s.epollFD, EPOLL_CTL_ADD, fd, event.addr) != 0:
     raiseOSError(osLastError())
 
-proc unregister*(s: var Selector, fd: cint) {.raises: [OSError].} =
+proc unregister*(s: var Selector, fd: cint) =
   # `Epoll Manpage <http://man7.org/linux/man-pages/man2/epoll_ctl.2.html>`_
   #
   # ..
@@ -90,7 +90,7 @@ proc unregister*(s: var Selector, fd: cint) {.raises: [OSError].} =
   if epoll_ctl(s.epollFD, EPOLL_CTL_DEL, fd, event.addr) != 0:
     raiseOSError(osLastError())
 
-proc update*(s: var Selector, fd: cint, data: UserData, interest: Interest) {.raises: [OSError].} =
+proc update*(s: var Selector, fd: cint, data: UserData, interest: Interest) =
   var event = EpollEvent(events: interest.value, data: cast[EpollData](data))
   if epoll_ctl(s.epollFD, EPOLL_CTL_MOD, fd, event.addr) != 0:
     raiseOSError(osLastError())

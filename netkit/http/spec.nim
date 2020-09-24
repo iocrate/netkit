@@ -22,7 +22,7 @@ const
   HTAB* = '\x09'
   WSP* = {SP, HTAB}
 
-proc checkFieldName*(s: string) {.raises: [ValueError].} = 
+proc checkFieldName*(s: string) = 
   ## Checks if ``s`` is a valid name of a HTTP header field. 
   ##
   ## `HTTP RFC 5234 <https://tools.ietf.org/html/rfc5234>`_
@@ -57,7 +57,7 @@ proc checkFieldName*(s: string) {.raises: [ValueError].} =
     if c notin TokenChars:
       raise newException(ValueError, "Invalid field name")
 
-proc checkFieldValue*(s: string) {.raises: [ValueError].} = 
+proc checkFieldValue*(s: string) = 
   ## Checks if ``s`` is a valid value of a HTTP header field. 
   ## 
   ## `HTTP RFC 5234 <https://tools.ietf.org/html/rfc5234>`_

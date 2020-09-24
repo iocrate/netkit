@@ -22,7 +22,7 @@ type
     
   Runnable* = proc () {.gcsafe.}
 
-proc `=destroy`*(e: var Executor) {.raises: [OSError].} = 
+proc `=destroy`*(e: var Executor) = 
   if e.destructorState == DestructorState.READY:
     `=destroy`(e.poller)
     `=destroy`(e.spscQueue)
@@ -31,7 +31,7 @@ proc `=destroy`*(e: var Executor) {.raises: [OSError].} =
 
 proc `=`*(dest: var Executor, source: Executor) {.error.}
 
-proc initExecutor*(e: var Executor, initialSize: Natural = 1024) {.raises: [OSError, ValueError, Exception].} =
+proc initExecutor*(e: var Executor, initialSize: Natural = 1024) =
   let eAddr = e.addr
   e.poller.initPoller(initialSize)
 
@@ -68,24 +68,24 @@ iterator interests*(e: var Executor): Natural {.inline.} =
   for i in e.poller.interests:
     yield i
 
-proc registerHandle*(e: var Executor, fd: cint): Natural {.inline, raises: [OSError].} = 
+proc registerHandle*(e: var Executor, fd: cint): Natural {.inline.} = 
   e.poller.registerHandle(fd)
 
-proc unregisterHandle*(e: var Executor, id: Natural) {.inline, raises: [OSError, ValueError].} =
+proc unregisterHandle*(e: var Executor, id: Natural) {.inline.} =
   e.poller.unregisterHandle(id)
 
-proc registerReadable*(e: var Executor, id: Natural, p: Pollable) {.inline, raises: [OSError, ValueError].} =
+proc registerReadable*(e: var Executor, id: Natural, p: Pollable) {.inline.} =
   e.poller.registerReadable(id, p)
  
-proc unregisterReadable*(e: var Executor, id: Natural) {.inline, raises: [OSError, ValueError].} =
+proc unregisterReadable*(e: var Executor, id: Natural) {.inline.} =
   e.poller.unregisterReadable(id)
 
-proc registerWritable*(e: var Executor, id: Natural, p: Pollable) {.inline, raises: [OSError, ValueError].} =
+proc registerWritable*(e: var Executor, id: Natural, p: Pollable) {.inline.} =
   e.poller.registerWritable(id, p)
 
-proc unregisterWritable*(e: var Executor, id: Natural) {.inline, raises: [OSError, ValueError].} =
+proc unregisterWritable*(e: var Executor, id: Natural) {.inline.} =
   e.poller.unregisterWritable(id)
 
-proc runBlocking*(e: var Executor, timeout: cint) {.inline, raises: [OSError, IllegalStateError, Exception].} =
+proc runBlocking*(e: var Executor, timeout: cint) {.inline.} =
   e.poller.runBlocking(timeout)
 

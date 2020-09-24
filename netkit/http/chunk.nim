@@ -188,7 +188,7 @@ template seek(r: string, v: string, start: Natural, stop: Natural) =
       r = move(s)
   start = stop + 1
 
-proc parseChunkHeader*(s: string): ChunkHeader {.raises: [ValueError].} = 
+proc parseChunkHeader*(s: string): ChunkHeader = 
   ## Converts a string to a ``ChunkHeader``. 
   ##
   ## Examples:

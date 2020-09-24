@@ -12,7 +12,7 @@ type
     wbuf: uint
     destructorState: DestructorState
 
-proc `=destroy`*(x: var PollableSemaphore)  {.raises: [OSError].} =
+proc `=destroy`*(x: var PollableSemaphore) =
   if x.destructorState == DestructorState.READY:
     if x.reader.close() < 0:
       raiseOSError(osLastError())
@@ -22,7 +22,7 @@ proc `=destroy`*(x: var PollableSemaphore)  {.raises: [OSError].} =
 
 proc `=`*(dest: var PollableSemaphore, source: PollableSemaphore) {.error.} 
 
-proc initPollableSemaphore*(x: var PollableSemaphore) {.raises: [OSError].} =
+proc initPollableSemaphore*(x: var PollableSemaphore) =
   var duplexer: array[2, cint]
   let retPipe = pipe(duplexer)
   if retPipe < 0:
@@ -63,6 +63,6 @@ proc wait*(s: var PollableSemaphore): uint =
       result = result + s.rbuf
       s.rbuf = 0'u
 
-proc register*(poller: var Poller, s: PollableSemaphore): Natural {.raises: [OSError].} =
+proc register*(poller: var Poller, s: PollableSemaphore): Natural =
   result = poller.registerHandle(s.reader)
 

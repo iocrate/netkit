@@ -7,7 +7,7 @@ type
     head*: ref SimpleNode[T]
     tail*: ref SimpleNode[T]
 
-proc add*[T](Q: var SimpleQueue[T], node: ref SimpleNode[T]) {.raises: [ValueError].} = 
+proc add*[T](Q: var SimpleQueue[T], node: ref SimpleNode[T]) = 
   if node.next != nil:
     raise newException(ValueError, "node already in a list")
   if Q.tail == nil:

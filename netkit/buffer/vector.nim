@@ -44,7 +44,7 @@ proc reset*(b: var VectorBuffer): Natural =
   b.endPos = 0
   b.value = newSeqOfCap[byte](b.capacity)
 
-proc expand*(b: var VectorBuffer) {.raises: [OverflowError].} = 
+proc expand*(b: var VectorBuffer) = 
   ## Expands the capacity of the buffer. If it exceeds the maximum capacity, an exception is raised.
   let newCapacity = b.capacity * 2
   if newCapacity > b.maxCapacity:

@@ -24,7 +24,7 @@ type
     HttpConnect = "CONNECT", 
     HttpPatch = "PATCH" 
 
-proc parseHttpMethod*(s: string): HttpMethod {.raises: [ValueError].} =
+proc parseHttpMethod*(s: string): HttpMethod =
   ## Converts a string to an HTTP request method. A ``ValueError`` is raised when ``s`` is not a valid method.
   ## 
   ## Examples:

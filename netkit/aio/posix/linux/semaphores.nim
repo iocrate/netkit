@@ -12,7 +12,7 @@ type
     wbuf: uint
     destructorState: DestructorState
 
-proc `=destroy`*(x: var PollableSemaphore)  {.raises: [OSError].} =
+proc `=destroy`*(x: var PollableSemaphore) =
   if x.destructorState == DestructorState.READY:
     if x.duplexer.close() < 0:
       raiseOSError(osLastError())
@@ -20,7 +20,7 @@ proc `=destroy`*(x: var PollableSemaphore)  {.raises: [OSError].} =
 
 proc `=`*(dest: var PollableSemaphore, source: PollableSemaphore) {.error.}
 
-proc initPollableSemaphore*(x: var PollableSemaphore) {.raises: [OSError].} =
+proc initPollableSemaphore*(x: var PollableSemaphore) =
   x.duplexer = eventfd(0, 0)
   if x.duplexer < 0:
     raiseOSError(osLastError())
@@ -50,6 +50,6 @@ proc wait*(s: var PollableSemaphore): uint =
   result = s.rbuf 
   assert result > 0
 
-proc register*(poller: var Poller, s: PollableSemaphore): Natural {.raises: [OSError].} =
+proc register*(poller: var Poller, s: PollableSemaphore): Natural =
   result = poller.registerHandle(s.duplexer)
 

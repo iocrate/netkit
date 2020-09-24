@@ -63,7 +63,7 @@ type
     Http504 = "504 Gateway Timeout"
     Http505 = "505 HTTP Version Not Supported"
 
-proc parseHttpCode*(code: int): HttpCode  {.raises: [ValueError].} =
+proc parseHttpCode*(code: int): HttpCode  =
   ## Converts an integer to a status code. A ``ValueError`` is raised when ``code`` is not a valid code.
   ## 
   ## Examples:

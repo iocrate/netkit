@@ -43,7 +43,7 @@ type
 
   Pollable* = proc (): bool {.gcsafe.}
 
-proc `=destroy`*(poller: var Poller) {.raises: [OSError].} = 
+proc `=destroy`*(poller: var Poller) = 
   if poller.destructorState == DestructorState.READY:
     `=destroy`(poller.selector)
     `=destroy`(poller.interests.data)
@@ -53,14 +53,14 @@ proc `=destroy`*(poller: var Poller) {.raises: [OSError].} =
 
 proc `=`*(dest: var Poller, source: Poller) {.error.} 
     
-proc initPoller*(poller: var Poller, initialSize: Natural = 256, mode = AllocMode.THREAD_LOCAL) {.raises: [OSError].} = 
+proc initPoller*(poller: var Poller, initialSize: Natural = 256, mode = AllocMode.THREAD_LOCAL) = 
   poller.selector.initSelector()
   poller.interests.data.initVec(initialSize, mode)
   poller.interests.idGenerator.initIdGenerator(initialSize, mode)
   poller.state = PollerState.CREATED
   poller.destructorState = DestructorState.READY
 
-proc shutdown*(poller: var Poller) {.raises: [IllegalStateError].} = 
+proc shutdown*(poller: var Poller) = 
   case poller.state 
   of PollerState.CREATED:
     poller.state = PollerState.RUNNING
@@ -73,7 +73,7 @@ proc shutdown*(poller: var Poller) {.raises: [IllegalStateError].} =
   of PollerState.DESTROYED:
     raise newException(IllegalStateError, "poller already destroyed")
 
-proc runBlocking*(poller: var Poller, timeout: cint) {.raises: [OSError, IllegalStateError, Exception].} =
+proc runBlocking*(poller: var Poller, timeout: cint) =
   template handleEvents(queue: SimpleQueue) =
     while true:
       let node = queue.peek()
@@ -124,7 +124,7 @@ iterator interests*(poller: var Poller): Natural =
     if data.has:
       yield i
 
-proc registerHandle*(poller: var Poller, fd: cint): Natural {.raises: [OSError].} =
+proc registerHandle*(poller: var Poller, fd: cint): Natural =
   let interest = initInterest()
   result = poller.interests.idGenerator.acquire()
   poller.selector.register(fd, UserData(u64: result.uint64), interest)
@@ -137,7 +137,7 @@ proc registerHandle*(poller: var Poller, fd: cint): Natural {.raises: [OSError].
   data.has = true
   poller.interests.len.inc()
 
-proc unregisterHandle*(poller: var Poller, id: Natural) {.raises: [OSError, ValueError].} =
+proc unregisterHandle*(poller: var Poller, id: Natural) =
   let data = poller.interests.data[id].addr
   if not data.has:
     raise newException(ValueError, "file descriptor not registered")
@@ -146,7 +146,7 @@ proc unregisterHandle*(poller: var Poller, id: Natural) {.raises: [OSError, Valu
   poller.interests.len.dec()
   reset(data[]) 
 
-proc registerReadable*(poller: var Poller, id: Natural, p: Pollable) {.raises: [OSError, ValueError].} =
+proc registerReadable*(poller: var Poller, id: Natural, p: Pollable) =
   let data = poller.interests.data[id].addr
   if not data.has:
     raise newException(ValueError, "file descriptor not registered")
@@ -155,7 +155,7 @@ proc registerReadable*(poller: var Poller, id: Natural, p: Pollable) {.raises: [
     data.value.interest.registerReadable()
     poller.selector.update(data.value.fd, UserData(u64: id.uint64), data.value.interest)
 
-proc unregisterReadable*(poller: var Poller, id: Natural) {.raises: [OSError, ValueError].} =
+proc unregisterReadable*(poller: var Poller, id: Natural) =
   let data = poller.interests.data[id].addr
   if not data.has:
     raise newException(ValueError, "file descriptor not registered")
@@ -163,7 +163,7 @@ proc unregisterReadable*(poller: var Poller, id: Natural) {.raises: [OSError, Va
     data.value.interest.unregisterReadable()
     poller.selector.update(data.value.fd, UserData(u64: id.uint64), data.value.interest)
 
-proc registerWritable*(poller: var Poller, id: Natural, p: Pollable) {.raises: [OSError, ValueError].} =
+proc registerWritable*(poller: var Poller, id: Natural, p: Pollable) =
   let data = poller.interests.data[id].addr
   if not data.has:
     raise newException(ValueError, "file descriptor not registered")
@@ -172,7 +172,7 @@ proc registerWritable*(poller: var Poller, id: Natural, p: Pollable) {.raises: [
     data.value.interest.registerWritable()
     poller.selector.update(data.value.fd, UserData(u64: id.uint64), data.value.interest)
 
-proc unregisterWritable*(poller: var Poller, id: Natural) {.raises: [OSError, ValueError].} =
+proc unregisterWritable*(poller: var Poller, id: Natural) =
   let data = poller.interests.data[id].addr
   if not data.has:
     raise newException(ValueError, "file descriptor not registered")

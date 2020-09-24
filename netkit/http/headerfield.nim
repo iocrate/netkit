@@ -400,7 +400,7 @@ proc clear*(fields: var HeaderFields) =
   ## Resets this fields so that it is empty.
   Table[string, seq[string]](fields).clear()
 
-proc `[]`*(fields: HeaderFields, name: string): seq[string] {.raises: [KeyError].} =
+proc `[]`*(fields: HeaderFields, name: string): seq[string] =
   ## Returns the value of the field associated with ``name``. If ``name`` is not in this fields, the 
   ## ``KeyError`` exception is raised. 
   ## 
@@ -651,7 +651,7 @@ proc parseMultiRule(v: string, res: var seq[seq[tuple[key: string, value: string
   if item.len > 0:
     res.add(item)
 
-proc parseSingleRule*(fields: HeaderFields, name: string): seq[tuple[key: string, value: string]] {.raises: [ValueError].} =
+proc parseSingleRule*(fields: HeaderFields, name: string): seq[tuple[key: string, value: string]] =
   ## Parses the field value that matches **single-line-rule**. 
   if fields.contains(name):
     var v = fields[name]
