@@ -192,54 +192,54 @@ discard """
 
 # f()
 
-var 
-  r: int = 0
+# var 
+#   r: int = 0
 
-type
-  Func = proc ()
+# type
+#   Func = proc ()
 
-  Obj = object
-    val: ptr UncheckedArray[Func]
+#   Obj = object
+#     val: ptr UncheckedArray[Func]
 
-  A = object
-    val: proc (): bool {.gcsafe.}
+#   A = object
+#     val: proc (): bool {.gcsafe.}
 
-  B = object 
+#   B = object 
 
-var obj = new(Obj)
-obj.val = cast[ptr UncheckedArray[Func]](allocShared0(sizeof(Func)))
+# var obj = new(Obj)
+# obj.val = cast[ptr UncheckedArray[Func]](allocShared0(sizeof(Func)))
 
-proc threadFunc1() {.thread.} =
-  while r != 1: 
-    continue
-  echo "Got r=2"
-  {.gcsafe.}:
-    obj.val[0]() 
+# proc threadFunc1() {.thread.} =
+#   while r != 1: 
+#     continue
+#   echo "Got r=2"
+#   {.gcsafe.}:
+#     obj.val[0]() 
 
-proc threadFunc2() {.thread.} =
-  r = 1
+# proc threadFunc2() {.thread.} =
+#   r = 1
 
-proc registerTest(b: B, p: proc (): bool {.gcsafe.}) =
-    var a = A(val: p)
+# proc registerTest(b: B, p: proc (): bool {.gcsafe.}) =
+#     var a = A(val: p)
 
-proc main() =
-  var
-    thread1: Thread[void]
-    thread2: Thread[void]
+# proc main() =
+#   var
+#     thread1: Thread[void]
+#     thread2: Thread[void]
 
-  obj.val[0] = proc () =
-    var b: B 
-    registerTest b, proc (): bool =
-      result = true
-      echo b
+#   obj.val[0] = proc () =
+#     var b: B 
+#     registerTest b, proc (): bool =
+#       result = true
+#       echo b
 
-  createThread(thread1, threadFunc1)
-  createThread(thread2, threadFunc2)
+#   createThread(thread1, threadFunc1)
+#   createThread(thread2, threadFunc2)
 
-  joinThread(thread1)
-  joinThread(thread2)
+#   joinThread(thread1)
+#   joinThread(thread2)
 
-main()
+# main()
 
 
 # type
@@ -732,63 +732,63 @@ main()
 
 # main()
 
-type
-  Stream = concept
-    proc read(s: Self)
+# type
+#   Stream = concept
+#     proc read(s: Self)
 
-proc readline(s: Stream) =
-  s.read()
-  s.read()
-  echo "read a line"
+# proc readline(s: Stream) =
+#   s.read()
+#   s.read()
+#   echo "read a line"
 
-type
-  MyStream = object
-    file: int
+# type
+#   MyStream = object
+#     file: int
 
-proc read(s: MyStream) =
-  echo "read a chunk"
+# proc read(s: MyStream) =
+#   echo "read a chunk"
 
-var s1 = MyStream()
-s1.readline()
+# var s1 = MyStream()
+# s1.readline()
 
-type
-  AStream[T: Stream] = object
-    s: T
+# type
+#   AStream[T: Stream] = object
+#     s: T
 
-  BStream[T: Stream] = object
-    s: T
+#   BStream[T: Stream] = object
+#     s: T
 
-proc recv(a: AStream) =
-  a.s.read()
-  echo "recv from AStream"
+# proc recv(a: AStream) =
+#   a.s.read()
+#   echo "recv from AStream"
 
-proc recv(b: BStream) =
-  b.s.read()
-  echo "recv from BStream"
+# proc recv(b: BStream) =
+#   b.s.read()
+#   echo "recv from BStream"
 
-var a = AStream[MyStream]() 
-a.recv()
+# var a = AStream[MyStream]() 
+# a.recv()
 
-var b = AStream[MyStream]()
-b.recv()
+# var b = AStream[MyStream]()
+# b.recv()
 
-type
-  Container[T: Stream] = object
-    data: seq[T]
+# type
+#   Container[T: Stream] = object
+#     data: seq[T]
 
-proc add[T](c: var Container, v: T) =
-  c.data.add(v)
+# proc add[T](c: var Container, v: T) =
+#   c.data.add(v)
 
-iterator items[T](c: Container[T]): T =
-  for v in c.data:
-    yield v
+# iterator items[T](c: Container[T]): T =
+#   for v in c.data:
+#     yield v
 
-var c = Container[MyStream]()
-c.add(MyStream(file: 1))
-c.add(MyStream(file: 2))
+# var c = Container[MyStream]()
+# c.add(MyStream(file: 1))
+# c.add(MyStream(file: 2))
 
-for s in c.items():
-  s.readline()
+# for s in c.items():
+#   s.readline()
 
 # type
 #   Shape = object
@@ -940,3 +940,21 @@ for s in c.items():
 
 # for s in d.items():
 #   s[].read()
+
+type
+  A = object
+
+proc `=destroy`(a: var A) =
+  echo "destroy"
+
+proc f() =
+  var a = A()
+  if true:
+    raise newException(ValueError, "abc")
+  echo 100
+
+proc main() =
+  f()
+  echo 100
+
+main()
