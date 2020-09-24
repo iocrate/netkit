@@ -1,6 +1,5 @@
 
 import std/nativesockets
-import std/options
 
 type
   IpAddressFamily* {.pure.} = enum ## Describes the type of an IP address.

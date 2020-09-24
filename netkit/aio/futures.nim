@@ -1,9 +1,11 @@
 
 import std/strutils
 import netkit/collections/simplequeues
+import netkit/aio/posix/runtime
 
 type
   FutureBase* = ref object of RootObj
+    owner: ExecutorId
     callback: CallbackProc
     finished: bool
     error*: ref Exception               ## Stored exception
@@ -33,6 +35,7 @@ const
 
 template setupFutureBase(fromProc: string) =
   new(result)
+  result.owner = getCurrentExecutor()
   result.finished = false
   when not defined(release):
     result.stackTrace = getStackTraceEntries()
@@ -71,7 +74,13 @@ proc complete*[T](future: Future[T], value: T) =
   assert(future.error == nil)
   future.value = value
   future.finished = true
-  future.callback()
+  if getCurrentExecutor() == future.owner:
+    if future.callback != nil:
+      future.callback()
+  else:
+    future.owner.exec proc =
+      if future.callback != nil:
+        future.callback()
   when isFutureLoggingEnabled: 
     logFutureFinish(future)
 
@@ -79,7 +88,13 @@ proc complete*(future: Future[void]) =
   checkFinished(future)
   assert(future.error == nil)
   future.finished = true
-  future.callback()
+  if getCurrentExecutor() == future.owner:
+    if future.callback != nil:
+      future.callback()
+  else:
+    future.owner.exec proc =
+      if future.callback != nil:
+        future.callback()
   when isFutureLoggingEnabled: 
     logFutureFinish(future)
 
@@ -88,14 +103,26 @@ proc fail*[T](future: Future[T], error: ref Exception) =
   future.finished = true
   future.error = error
   future.errorStackTrace = if getStackTrace(error) == "": getStackTrace() else: getStackTrace(error)
-  future.callback()
+  if getCurrentExecutor() == future.owner:
+    if future.callback != nil:
+      future.callback()
+  else:
+    future.owner.exec proc =
+      if future.callback != nil:
+        future.callback()
   when isFutureLoggingEnabled: 
     logFutureFinish(future)
 
 proc `callback=`*[T](future: Future[T], cb: CallbackProc) =
   future.callback = cb
   if future.finished:
-    cb()
+    if getCurrentExecutor() == future.owner:
+      if future.callback != nil:
+        future.callback()
+    else:
+      future.owner.exec proc =
+        if future.callback != nil:
+          future.callback()
   # TODO: callSoon
   
 proc injectStacktrace[T](future: Future[T]) =
